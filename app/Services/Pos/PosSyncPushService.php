@@ -550,6 +550,21 @@ class PosSyncPushService
         ]);
         $invoice = $this->orders->createInvoiceFromOrder($order, (int) $user->id);
 
+        $metadata = is_array($invoice->metadata) ? $invoice->metadata : [];
+        $localNumber = trim((string) ($data['local_invoice_number'] ?? ''));
+        if ($localNumber !== '') {
+            $metadata['local_invoice_number'] = $localNumber;
+        }
+        $paymentMethod = trim((string) ($data['payment_method'] ?? ''));
+        if ($paymentMethod !== '') {
+            $metadata['payment_method'] = $paymentMethod;
+        }
+        if ($metadata !== (array) ($invoice->metadata ?? [])) {
+            $invoice->update(['metadata' => $metadata]);
+        }
+
+        $order->refresh();
+
         return [
             'entity_type' => 'invoice',
             'entity_id' => (int) $invoice->id,
@@ -557,7 +572,11 @@ class PosSyncPushService
                 'invoice_id' => $invoice->id,
                 'id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
+                'local_invoice_number' => $metadata['local_invoice_number'] ?? null,
                 'total_amount' => (float) $invoice->total_amount,
+                'subtotal' => (float) $invoice->subtotal,
+                'discount_amount' => (float) $invoice->discount_amount,
+                'tax_amount' => (float) $order->tax_amount,
                 'currency' => $invoice->currency,
             ],
         ];
