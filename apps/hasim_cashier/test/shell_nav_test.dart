@@ -648,6 +648,7 @@ void main() {
     expect(find.textContaining('غير مرتبط بالسحابة'), findsOneWidget);
     await tester.tap(find.widgetWithText(HsPrimaryButton, 'مزامنة الآن'));
     await tester.pump();
+    await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('اربط الحساب السحابي'), findsOneWidget);
   });

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -112,11 +114,20 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     });
     await _refreshUsers();
     await _refreshOpenShift();
+    unawaited(_hydrateCloudQuietly());
     await _refreshSyncStatus();
   }
 
+  Future<void> _hydrateCloudQuietly() async {
+    try {
+      await ref.read(authControllerProvider.notifier).hydrateCloudLinkSession();
+      if (mounted) await _refreshSyncStatus();
+    } catch (_) {
+      // Secure storage can stall in tests; in-memory link is enough to sync.
+    }
+  }
+
   Future<void> _refreshSyncStatus() async {
-    await ref.read(authControllerProvider.notifier).hydrateCloudLinkSession();
     final cloud = CashierRequestAuth.activeLink(
       ref.read(cloudLinkSessionProvider),
     );
@@ -149,16 +160,20 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     if (_syncing) return;
     setState(() => _syncing = true);
     try {
-      await ref.read(authControllerProvider.notifier).hydrateCloudLinkSession();
       final cloud = CashierRequestAuth.activeLink(
         ref.read(cloudLinkSessionProvider),
       );
+      final sessionToken = ref.read(authControllerProvider).valueOrNull?.token;
+      if (!CashierRequestAuth.canSync(sessionToken: sessionToken, cloud: cloud)) {
+        _showSyncMessage(
+          'اربط الحساب السحابي أولاً من شاشة الدخول (وضع السحابة)، ثم ادخل بالـ PIN. تشغيل Laravel وحده لا يكفي.',
+        );
+        return;
+      }
       final coordinator = ref.read(posSyncCoordinatorProvider);
       if (!coordinator.allowNetwork) {
         _showSyncMessage(
-          cloud == null
-              ? 'اربط الحساب السحابي أولاً من شاشة الدخول (وضع السحابة)، ثم ادخل بالـ PIN. تشغيل Laravel وحده لا يكفي.'
-              : 'تعذر فتح مسار المزامنة. تحقق من ربط الجهاز وتوكن السحابة.',
+          'تعذر فتح مسار المزامنة. تحقق من ربط الجهاز وتوكن السحابة.',
         );
         return;
       }
