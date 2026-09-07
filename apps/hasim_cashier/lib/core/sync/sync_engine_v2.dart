@@ -573,10 +573,14 @@ class SyncEngineV2 {
   }
 
   Future<bool> _rowReadyForPush(SyncQueueItem row) async {
-    // Phase 2B batch push: takeaway order.created + parent customer.created only.
+    // Phase 2B/2C-1 batch: takeaway order.created, takeaway invoice.created,
+    // and parent customer.created. Table invoices stay off this path.
     if (!_isPhase2BBatchOp(row)) return false;
     if (row.entityType == 'order') {
       return _takeawayCreateReady(row);
+    }
+    if (row.entityType == 'invoice') {
+      return _takeawayInvoiceReady(row);
     }
     return true;
   }
@@ -586,6 +590,11 @@ class SyncEngineV2 {
       return true;
     }
     if (row.entityType == 'order' && row.operation == 'create') {
+      final payload = _decode(row.payloadJson);
+      return '${payload['order_type'] ?? ''}'.trim().toLowerCase() ==
+          'takeaway';
+    }
+    if (row.entityType == 'invoice' && row.operation == 'create') {
       final payload = _decode(row.payloadJson);
       return '${payload['order_type'] ?? ''}'.trim().toLowerCase() ==
           'takeaway';
@@ -615,8 +624,45 @@ class SyncEngineV2 {
     return true;
   }
 
+  Future<bool> _takeawayInvoiceReady(SyncQueueItem row) async {
+    final payload = _decode(row.payloadJson);
+    if ('${payload['order_type'] ?? ''}'.trim().toLowerCase() != 'takeaway') {
+      return false;
+    }
+    final orderLocalId = '${payload['order_local_id'] ?? ''}'.trim();
+    if (orderLocalId.isEmpty) return false;
+    final order =
+        await (_db.select(_db.localOrders)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.localId.equals(orderLocalId),
+            ))
+            .getSingleOrNull();
+    if (order == null) return false;
+    if (order.orderType.trim().toLowerCase() != 'takeaway') return false;
+    return order.serverId != null && order.serverId! > 0;
+  }
+
   Future<Map<String, dynamic>> _pushData(SyncQueueItem row) async {
     final payload = _decode(row.payloadJson);
+    if (row.entityType == 'invoice') {
+      final orderLocalId = '${payload['order_local_id'] ?? ''}'.trim();
+      if (orderLocalId.isNotEmpty) {
+        payload['order_local_id'] = orderLocalId;
+        payload['client_reference'] = orderLocalId;
+        final order =
+            await (_db.select(_db.localOrders)..where(
+                  (t) =>
+                      t.workspaceId.equals(row.workspaceId) &
+                      t.localId.equals(orderLocalId),
+                ))
+                .getSingleOrNull();
+        if (order?.serverId != null && order!.serverId! > 0) {
+          payload['order_server_id'] = order.serverId;
+        }
+      }
+      return payload;
+    }
     payload['client_reference'] = row.clientReference;
     if (row.entityType != 'order' || row.operation != 'create') {
       return payload;
@@ -1003,12 +1049,16 @@ class SyncEngineV2 {
     final prev = existing == null
         ? <String, dynamic>{}
         : _decode(existing.payloadJson);
+    final serverNumber = data['invoice_number']?.toString();
+    final serverId =
+        (data['invoice_id'] as num?)?.toInt() ?? (data['id'] as num?)?.toInt();
     final merged = {
       ...prev,
       'id': data['invoice_id'] ?? data['id'],
-      'invoice_number': data['invoice_number'],
-      'total_amount': data['total_amount'],
-      'currency': data['currency'],
+      'server_id': serverId,
+      if (serverNumber != null && serverNumber.isNotEmpty)
+        'server_invoice_number': serverNumber,
+      'currency': data['currency'] ?? prev['currency'],
       'sync_status': 'synced',
     };
     await _db.transaction(() async {
@@ -1016,15 +1066,11 @@ class SyncEngineV2 {
         _db.localInvoices,
       )..where((t) => t.localId.equals(invoiceLocalId))).write(
         LocalInvoicesCompanion(
-          serverId: Value(
-            (data['invoice_id'] as num?)?.toInt() ??
-                (data['id'] as num?)?.toInt(),
-          ),
-          invoiceNumber: Value(data['invoice_number']?.toString()),
-          totalAmount: Value(
-            data['total_amount'] is num
-                ? Money.toCents(data['total_amount'])
-                : (existing?.totalAmount ?? 0),
+          serverId: Value(serverId),
+          serverInvoiceNumber: Value(
+            (serverNumber != null && serverNumber.isNotEmpty)
+                ? serverNumber
+                : existing?.serverInvoiceNumber,
           ),
           syncStatus: const Value('synced'),
           payloadJson: Value(jsonEncode(merged)),
@@ -1214,42 +1260,7 @@ class SyncEngineV2 {
         idempotencyKey: row.clientReference,
       );
     }
-    final invoiceLocalId = row.entityId;
-    final existing = await (_db.select(
-      _db.localInvoices,
-    )..where((t) => t.localId.equals(invoiceLocalId))).getSingleOrNull();
-    final prev = existing == null
-        ? <String, dynamic>{}
-        : _decode(existing.payloadJson);
-    final merged = {
-      ...prev,
-      'id': data['invoice_id'],
-      'invoice_number': data['invoice_number'],
-      'total_amount': data['total_amount'],
-      'currency': data['currency'],
-      'sync_status': 'synced',
-    };
-    await _db.transaction(() async {
-      await (_db.update(
-        _db.localInvoices,
-      )..where((t) => t.localId.equals(invoiceLocalId))).write(
-        LocalInvoicesCompanion(
-          serverId: Value((data['invoice_id'] as num?)?.toInt()),
-          invoiceNumber: Value(data['invoice_number']?.toString()),
-          totalAmount: Value(
-            data['total_amount'] is num
-                ? Money.toCents(data['total_amount'])
-                : (existing?.totalAmount ?? 0),
-          ),
-          syncStatus: const Value('synced'),
-          payloadJson: Value(jsonEncode(merged)),
-        ),
-      );
-      await (_db.update(_db.localPayments)
-            ..where((t) => t.invoiceLocalId.equals(invoiceLocalId)))
-          .write(const LocalPaymentsCompanion(syncStatus: Value('synced')));
-      await _queue.markSynced(row.id);
-    });
+    await _finalizeInvoice(row, data);
   }
 
   Future<void> _pushCreate(SyncQueueItem row) async {

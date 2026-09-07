@@ -388,10 +388,12 @@ void main() {
     expect(cloudOrder.workspaceId, 10);
     expect(cloudOrder.syncStatus, 'pending');
     final queued = await db.select(db.syncQueueItems).get();
-    expect(queued, hasLength(1));
-    expect(queued.single.entityType, 'order');
-    expect(queued.single.operation, 'create');
-    expect(queued.single.clientReference, 'cloud-sale');
+    expect(queued.map((r) => r.entityType).toSet(), {'order', 'invoice'});
+    final orderRow = queued.singleWhere((r) => r.entityType == 'order');
+    expect(orderRow.operation, 'create');
+    expect(orderRow.clientReference, 'cloud-sale');
+    final invoiceRow = queued.singleWhere((r) => r.entityType == 'invoice');
+    expect(invoiceRow.operation, 'create');
   });
 
   test('401 403 422 errors stay visible', () async {

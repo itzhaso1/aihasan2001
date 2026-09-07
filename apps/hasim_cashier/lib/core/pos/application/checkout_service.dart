@@ -325,7 +325,11 @@ class CheckoutService {
               taxAmount: Value(quote.taxCents),
               totalAmount: Value(quote.totalCents),
               createdByUserId: Value(cmd.createdByUserId),
-              syncStatus: Value(cmd.connected ? 'pending' : 'local'),
+              syncStatus: Value(
+                _shouldEnqueueTakeaway(cmd)
+                    ? 'pending'
+                    : (cmd.connected ? 'pending' : 'local'),
+              ),
               payloadJson: Value(jsonEncode(invoicePayload)),
               createdAt: now,
             ),
@@ -383,6 +387,13 @@ class CheckoutService {
         cmd: cmd,
         quote: quote,
         orderLocalId: orderId,
+      );
+      await _enqueueTakeawayInvoiceCreated(
+        cmd: cmd,
+        quote: quote,
+        orderLocalId: orderId,
+        invoiceLocalId: invoiceId,
+        invoiceNumber: invoiceNumber,
       );
 
       if (cmd.clearDraftChannel != null) {
@@ -515,6 +526,50 @@ class CheckoutService {
         ],
       },
       clientReference: cmd.clientReference,
+    );
+  }
+
+  Future<void> _enqueueTakeawayInvoiceCreated({
+    required CheckoutCommand cmd,
+    required PriceBreakdown quote,
+    required String orderLocalId,
+    required String invoiceLocalId,
+    required String invoiceNumber,
+  }) async {
+    if (!_shouldEnqueueTakeaway(cmd)) return;
+
+    final existing = await _queue.findOpenOp(
+      workspaceId: cmd.workspaceId,
+      entityType: 'invoice',
+      entityId: invoiceLocalId,
+      operation: 'create',
+    );
+    if (existing != null) return;
+
+    final currency = await _storeCurrency(cmd.workspaceId);
+    final itemDiscountCents = Money.toCents(quote.itemDiscountTotal);
+    final subtotalAfterItemDiscount = Money.fromCents(
+      quote.subtotalCents - itemDiscountCents,
+    );
+
+    await _queue.enqueue(
+      workspaceId: cmd.workspaceId,
+      deviceId: cmd.deviceId,
+      entityType: 'invoice',
+      entityId: invoiceLocalId,
+      operation: 'create',
+      payload: {
+        'order_type': 'takeaway',
+        'order_local_id': orderLocalId,
+        'local_invoice_number': invoiceNumber,
+        'currency': currency,
+        'subtotal_amount': subtotalAfterItemDiscount,
+        'discount_amount': quote.orderDiscount,
+        'tax_amount': quote.taxAmount,
+        'total_amount': quote.total,
+        'payment_method': cmd.payments.map((p) => p.method).join('+'),
+      },
+      clientReference: invoiceLocalId,
     );
   }
 
