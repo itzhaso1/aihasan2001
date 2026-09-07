@@ -428,7 +428,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
 
       final occupiedTable = cart.channel == OrderChannel.table;
       if (cart.channel == OrderChannel.takeaway ||
-          cart.channel == OrderChannel.table) {
+          cart.channel == OrderChannel.table ||
+          cart.channel == OrderChannel.delivery) {
         unawaited(
           ref
               .read(posSyncCoordinatorProvider)

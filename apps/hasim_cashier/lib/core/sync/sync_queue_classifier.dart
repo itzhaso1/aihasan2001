@@ -8,7 +8,7 @@ import '../repositories/sync_queue_repository.dart';
 
 /// Why a queue row is still visible after a successful takeaway push.
 enum SyncQueueBucket {
-  /// A — paid takeaway/table sale ready for /sync/push.
+  /// A — paid takeaway/table/delivery sale ready for /sync/push.
   ready,
 
   /// Invoice waiting for its local order.server_id.
@@ -26,7 +26,7 @@ enum SyncQueueBucket {
   /// E — reserved standalone workspace 900001 mixed into a connected queue.
   standalone,
 
-  /// Paid table/takeaway sale not yet ready (backoff or missing product id).
+  /// Paid sale not yet ready (backoff or missing product id).
   blocked,
 }
 
@@ -61,7 +61,7 @@ class SyncQueueCountsByBucket {
   final int standalone;
   final int blocked;
 
-  /// Paid takeaway/table rows that should move on the next successful push.
+  /// Paid invoice rows that should move on the next successful push.
   /// Unpaid table leftovers, session ops, and missing product ids stay out.
   int get invoicePending => ready + waitingParent;
 
@@ -81,7 +81,7 @@ class SyncQueueClassifier {
 
   final AppDatabase _db;
 
-  static const saleTypes = {'takeaway', 'table'};
+  static const saleTypes = {'takeaway', 'table', 'delivery'};
 
   static Map<String, dynamic> decodePayload(String raw) {
     try {
@@ -199,7 +199,7 @@ class SyncQueueClassifier {
       return SyncQueueClassification(
         row: row,
         bucket: SyncQueueBucket.unsupported,
-        reason: 'نوع الطلب "$type" خارج عقد السفري/الطاولة.',
+        reason: 'نوع الطلب "$type" خارج عقد الفاتورة (سفري/طاولة/توصيل).',
       );
     }
     final order = await _order(row.workspaceId, row.entityId);
@@ -249,7 +249,9 @@ class SyncQueueClassifier {
       bucket: SyncQueueBucket.ready,
       reason: type == 'table'
           ? 'طلب طاولة مدفوع جاهز للدفع.'
-          : 'طلب سفري جاهز للدفع.',
+          : type == 'delivery'
+              ? 'طلب توصيل جاهز للدفع.'
+              : 'طلب سفري جاهز للدفع.',
     );
   }
 

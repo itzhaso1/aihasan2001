@@ -235,7 +235,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         return;
       }
       _showSyncMessage(
-        'لا توجد فواتير سفري أو طاولات بانتظار المزامنة. التوصيل يبقى محلياً.',
+        'لا توجد فواتير بانتظار المزامنة.',
       );
     } catch (e) {
       _showSyncMessage(
@@ -925,7 +925,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       iconColor: HasimColors.brandDark,
       title: 'مزامنة السحابة',
       subtitle:
-          'إرسال فواتير السفري والطاولات النقدية إلى حساب Hasim. الهوية من السحابة.',
+          'إرسال أي فاتورة بيع نقدية إلى حساب حاسم. الهوية من السحابة.',
       highlight: true,
       children: [
         _infoBanner(
@@ -974,7 +974,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       iconColor: HasimColors.brandDark,
       title: 'حسابات الكاشير والشيف',
       subtitle:
-          'كل مستخدم يدخل بإيميل وكلمة مرور. الصلاحيات تُحدد لكل شخص بشكل مستقل من تبويب المستخدمون.',
+          'فتح الجهاز محلياً فقط. أنشئ Admin / Cashier / Chef من منصة حاسم. لا يُنشأ حساب Laravel من هنا.',
       children: [
         if (_users.isEmpty)
           const Text(

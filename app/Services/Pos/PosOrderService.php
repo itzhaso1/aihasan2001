@@ -18,6 +18,7 @@ use App\Services\Audit\AuditLogService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -107,6 +108,7 @@ class PosOrderService
                     taxAmount: $financials['tax_amount'],
                     totalAmount: $financials['total_amount'],
                     subtotalAmount: $financials['subtotal'],
+                    placedAt: $offlineSale ? $this->parseOfflineTimestamp($payload['placed_at'] ?? null) : null,
                 );
 
                 event(new \App\Events\OrderCreated($order));
@@ -872,7 +874,7 @@ class PosOrderService
         ]);
     }
 
-    public function createInvoiceFromOrder(Order $order, int $actorUserId): PosCashierInvoice
+    public function createInvoiceFromOrder(Order $order, int $actorUserId, ?Carbon $closedAt = null): PosCashierInvoice
     {
         if ($order->pos_cashier_invoice_id) {
             $existing = PosCashierInvoice::withoutGlobalScopes()->whereKey($order->pos_cashier_invoice_id)->first();
@@ -896,7 +898,7 @@ class PosOrderService
             }
         }
 
-        return DB::transaction(function () use ($order, $actorUserId): PosCashierInvoice {
+        return DB::transaction(function () use ($order, $actorUserId, $closedAt): PosCashierInvoice {
             $lockedOrder = Order::query()
                 ->with(['items', 'table', 'tableSession'])
                 ->whereKey($order->id)
@@ -907,7 +909,8 @@ class PosOrderService
                 orders: collect([$lockedOrder]),
                 table: $lockedOrder->table,
                 session: $lockedOrder->tableSession,
-                actorUserId: $actorUserId
+                actorUserId: $actorUserId,
+                closedAt: $closedAt,
             );
 
             $lockedOrder->update([
@@ -1346,6 +1349,21 @@ class PosOrderService
         return false;
     }
 
+    public function parseOfflineTimestamp(mixed $value): ?Carbon
+    {
+        if ($value instanceof Carbon) {
+            return $value;
+        }
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     /**
      * Merge matching lines into the current table session; create a new order only for leftovers.
      *
@@ -1492,6 +1510,7 @@ class PosOrderService
         ?float $taxAmount = null,
         ?float $totalAmount = null,
         ?float $subtotalAmount = null,
+        ?Carbon $placedAt = null,
     ): Order {
         $subtotal = round($subtotalAmount ?? (float) $items->sum('total_amount'), 2);
         $discountAmount = max(0, round($discountAmount, 2));
@@ -1525,7 +1544,7 @@ class PosOrderService
             'total_amount' => $total,
             'notes' => $notes,
             'metadata' => $metadata,
-            'placed_at' => now(),
+            'placed_at' => $placedAt ?? now(),
         ]);
 
         foreach ($items as $item) {
@@ -1559,7 +1578,7 @@ class PosOrderService
                 $customer->update([
                     'orders_count' => $customer->orders()->count(),
                     'total_purchases' => $customer->orders()->sum('total_amount'),
-                    'last_order_at' => now(),
+                    'last_order_at' => $placedAt ?? now(),
                 ]);
             }
         }
@@ -1574,7 +1593,8 @@ class PosOrderService
         Collection $orders,
         ?DiningTable $table,
         ?TableSession $session,
-        int $actorUserId
+        int $actorUserId,
+        ?Carbon $closedAt = null,
     ): PosCashierInvoice {
         if ($orders->isEmpty()) {
             throw new RuntimeException('لا توجد طلبات لإنشاء الفاتورة.');
@@ -1597,7 +1617,7 @@ class PosOrderService
             'subtotal' => $subtotal,
             'discount_amount' => $discount,
             'total_amount' => $total,
-            'closed_at' => now(),
+            'closed_at' => $closedAt ?? now(),
             'metadata' => [
                 'orders_count' => $orders->count(),
                 'orders' => $orders->pluck('order_number')->values()->all(),

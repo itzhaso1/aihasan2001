@@ -209,6 +209,7 @@ void main() {
     expect(payload['order_type'], 'table');
     expect(payload['offline_sale'], isTrue);
     expect(payload['dining_table_id'], 4);
+    expect(payload['placed_at'], isNotNull);
     expect(payload['total_amount'], 11.5);
     expect((payload['items'] as List).single['unit_price'], 10);
 

@@ -26,18 +26,27 @@ class PosReportController extends PosBaseController
     public function daily(Request $request): View
     {
         $this->authorizePos($request, 'reports.view');
-        $date = $request->date('date')?->toDateString() ?? now()->toDateString();
+        $window = $this->posOrderStatsService->resolveReportWindow(
+            $request->input('date'),
+            $request->input('from'),
+            $request->input('to'),
+        );
+        $date = $window['date'];
+        $from = $window['from'];
+        $to = $window['to'];
 
         $cashierInvoices = PosCashierInvoice::query()
             ->with(['table:id,name', 'closer:id,name', 'items'])
-            ->whereDate('closed_at', $date)
+            ->whereDate('closed_at', '>=', $from)
+            ->whereDate('closed_at', '<=', $to)
             ->latest('id')
             ->get();
 
         $orders = Order::query()
             ->with(['customer:id,name,phone', 'table:id,name', 'items'])
             ->whereIn('source', ['pos', 'qr_menu'])
-            ->whereDate('placed_at', $date)
+            ->whereDate('placed_at', '>=', $from)
+            ->whereDate('placed_at', '<=', $to)
             ->latest('id')
             ->get();
 
@@ -62,12 +71,26 @@ class PosReportController extends PosBaseController
         $customerSummary = $this->buildCustomerSummary($orders);
         $salesByHour = $this->buildSalesByHour($orders->whereNotNull('pos_cashier_invoice_id'));
         $orderChannelStats = $this->posOrderStatsService->channelCounts(
-            \Illuminate\Support\Carbon::parse($date)->startOfDay()
+            \Illuminate\Support\Carbon::parse($from)->startOfDay(),
+            \Illuminate\Support\Carbon::parse($to)->startOfDay(),
         );
+        $cashSalesTotal = (float) $cashierInvoices
+            ->filter(fn (PosCashierInvoice $invoice): bool => $this->isCashInvoice($invoice))
+            ->sum('total_amount');
+        $salesByDay = $cashierInvoices
+            ->groupBy(fn (PosCashierInvoice $invoice): string => optional($invoice->closed_at)?->toDateString() ?: $from)
+            ->map(fn (Collection $group, string $day): array => [
+                'date' => $day,
+                'invoices_count' => $group->count(),
+                'sales_total' => (float) $group->sum('total_amount'),
+            ])
+            ->sortKeys()
+            ->values();
 
         $recentOperations = AuditLog::query()
             ->with('user:id,name')
-            ->whereDate('occurred_at', $date)
+            ->whereDate('occurred_at', '>=', $from)
+            ->whereDate('occurred_at', '<=', $to)
             ->whereIn('entity_type', [
                 Order::class,
                 OrderItem::class,
@@ -84,9 +107,12 @@ class PosReportController extends PosBaseController
 
         return view('workspace.pos.reports.daily', [
             'date' => $date,
+            'from' => $from,
+            'to' => $to,
             'summary' => [
                 'invoice_sales_total' => (float) $cashierInvoices->sum('total_amount'),
                 'invoices_count' => $cashierInvoices->count(),
+                'cash_sales_total' => $cashSalesTotal,
                 'total_quantity' => (int) $quantityByType->sum('quantity'),
                 'orders_count' => $orders->count(),
                 'paid_orders_count' => $orders->where('payment_status', 'paid')->count(),
@@ -95,6 +121,7 @@ class PosReportController extends PosBaseController
                 'takeaway_orders_count' => (int) $orderChannelStats['takeaway'],
                 'delivery_orders_count' => (int) $orderChannelStats['delivery'],
             ],
+            'salesByDay' => $salesByDay,
             'orderChannelStats' => $orderChannelStats,
             'quantityByType' => $quantityByType,
             'topTypes' => $quantityByType->take(10),
@@ -106,6 +133,13 @@ class PosReportController extends PosBaseController
             'cashierInvoices' => $cashierInvoices,
             'allOrders' => $orders,
         ]);
+    }
+
+    private function isCashInvoice(PosCashierInvoice $invoice): bool
+    {
+        $method = strtolower(trim((string) data_get($invoice->metadata, 'payment_method', '')));
+
+        return $method === 'cash' || str_contains($method, 'cash');
     }
 
     /**

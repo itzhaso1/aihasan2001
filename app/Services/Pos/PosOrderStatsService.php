@@ -21,15 +21,39 @@ class PosOrderStatsService
      *     open_total: int
      * }
      */
-    public function channelCounts(?Carbon $day = null): array
+    /**
+     * @return array{from: string, to: string, date: string}
+     */
+    public function resolveReportWindow(?string $date, ?string $from, ?string $to): array
     {
-        $date = ($day ?? now())->toDateString();
+        $single = filled($date) ? Carbon::parse($date)->toDateString() : now()->toDateString();
+        $start = filled($from) ? Carbon::parse($from)->toDateString() : $single;
+        $end = filled($to) ? Carbon::parse($to)->toDateString() : (filled($from) ? $start : $single);
+        if ($start > $end) {
+            [$start, $end] = [$end, $start];
+        }
+
+        return [
+            'from' => $start,
+            'to' => $end,
+            'date' => $end,
+        ];
+    }
+
+    public function channelCounts(?Carbon $day = null, ?Carbon $endDay = null): array
+    {
+        $from = ($day ?? now())->toDateString();
+        $to = ($endDay ?? $day ?? now())->toDateString();
+        if ($from > $to) {
+            [$from, $to] = [$to, $from];
+        }
 
         $todayRows = $this->groupedCounts(
             Order::query()
                 ->whereIn('source', ['pos', 'qr_menu'])
                 ->where('pos_status', '!=', 'cancelled')
-                ->whereDate('placed_at', $date)
+                ->whereDate('placed_at', '>=', $from)
+                ->whereDate('placed_at', '<=', $to)
         );
 
         $openRows = $this->groupedCounts(
@@ -40,7 +64,7 @@ class PosOrderStatsService
         );
 
         return [
-            'date' => $date,
+            'date' => $from,
             'table' => (int) ($todayRows['table'] ?? 0),
             'takeaway' => (int) ($todayRows['takeaway'] ?? 0),
             'delivery' => (int) ($todayRows['delivery'] ?? 0),
