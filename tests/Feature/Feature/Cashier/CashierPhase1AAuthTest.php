@@ -117,6 +117,9 @@ class CashierPhase1AAuthTest extends TestCase
         $this->assertSame(1, PosDevice::withoutGlobalScopes()->count());
         $this->assertNotEmpty($first->json('data.registered_at'));
 
+        $this->flushHeaders();
+        $this->flushSession();
+        $this->app['auth']->forgetGuards();
         $tokenB = $this->loginToken($ownerB);
         $this->withToken($tokenB)
             ->withHeaders(['X-Workspace-Id' => (string) $workspaceB->id])

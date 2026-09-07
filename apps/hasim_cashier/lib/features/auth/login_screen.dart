@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/cashier_api.dart';
 import '../../core/auth/auth_controller.dart';
-import '../../core/auth/cloud_link_store.dart';
 import '../../core/pos/application/pos_providers.dart';
 import '../../core/pos/pos_errors.dart';
 import '../../core/theme/hasim_colors.dart';
