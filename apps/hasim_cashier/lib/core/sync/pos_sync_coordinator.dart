@@ -1,11 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/cashier_api.dart';
+import '../api/cashier_request_auth.dart';
 import '../auth/auth_controller.dart';
 import '../local_db/local_db_providers.dart';
 import '../offline/pending_order.dart';
 import '../offline/sync_engine.dart';
-import '../pos/pos_mode.dart';
 import 'sync_engine_v2.dart';
 
 /// Primary sync path is SyncEngineV2. Legacy Hive flush runs only to drain
@@ -74,14 +74,15 @@ final syncEngineV2Provider = Provider<SyncEngineV2>((ref) {
 
 final posSyncCoordinatorProvider = Provider<PosSyncCoordinator>((ref) {
   final session = ref.watch(authControllerProvider).valueOrNull;
-  final token = session?.token;
-  final standalone =
-      token == null || token.isEmpty || PosMode.isStandaloneToken(token);
+  final cloud = ref.watch(cloudLinkSessionProvider);
   return PosSyncCoordinator(
     hiveEngine: ref.watch(syncEngineProvider),
     sqliteEngine: ref.watch(syncEngineV2Provider),
     // Phase 2B: Sanctum + registered device may push takeaway order.created
-    // even while checkout stays SQLite-first / offlineOnly.
-    allowNetwork: !standalone,
+    // even while checkout stays SQLite-first / offlineOnly / PIN session.
+    allowNetwork: CashierRequestAuth.canSync(
+      sessionToken: session?.token,
+      cloud: cloud,
+    ),
   );
 });

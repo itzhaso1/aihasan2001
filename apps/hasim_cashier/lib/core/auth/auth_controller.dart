@@ -236,8 +236,21 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
 
   final Ref _ref;
 
+  Future<void> hydrateCloudLinkSession() => _hydrateCloudLinkSession();
+
+  Future<void> _hydrateCloudLinkSession() async {
+    final link = await _ref.read(cloudLinkStoreProvider).read();
+    final active = link != null && link.isLinked ? link : null;
+    _ref.read(cloudLinkSessionProvider.notifier).state = active;
+    final deviceId = active?.deviceId?.trim();
+    if (deviceId != null && deviceId.isNotEmpty) {
+      _ref.read(deviceIdHeaderProvider.notifier).state = deviceId;
+    }
+  }
+
   Future<void> _bootstrap() async {
     try {
+      await _hydrateCloudLinkSession();
       final restored = await _ref.read(authRepositoryProvider).restore();
       if (restored == null) {
         state = const AsyncValue.data(null);
@@ -534,6 +547,7 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
         connectedMode: true,
       );
     }
+    await _hydrateCloudLinkSession();
     final catalogWorkspaceId = await CashierCloudLinkService.catalogWorkspaceId(
       localStoreWorkspaceId: store.workspaceId as int,
       link: link,
@@ -639,6 +653,7 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
   Future<void> abortCloudSetup() => _clearCloudSetupSession();
 
   Future<void> _finishCloudSetup() async {
+    await _hydrateCloudLinkSession();
     await _clearCloudSetupSession();
   }
 
