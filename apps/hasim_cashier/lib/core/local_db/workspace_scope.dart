@@ -66,10 +66,11 @@ extension WorkspaceScopedDb on AppDatabase {
     String cursor, {
     String? deviceId,
   }) async {
+    final integer = SyncCursor.requireInteger(cursor);
     await writeMeta(
       workspaceId,
       SyncMetaKeys.syncCursor,
-      cursor,
+      '$integer',
       deviceId: deviceId,
     );
   }
@@ -156,4 +157,34 @@ class SyncMetaKeys {
   static const syncCursor = 'sync_cursor';
   static const lastPullAt = 'last_pull_at';
   static const lastPushAt = 'last_push_at';
+}
+
+/// Pull cursor is `pos_sync_changes.id` (integer). Never an ISO timestamp.
+class SyncCursor {
+  static final _integer = RegExp(r'^\d+$');
+
+  static bool isInteger(String value) => _integer.hasMatch(value.trim());
+
+  static int requireInteger(Object? raw) {
+    if (raw is int) {
+      if (raw < 0) {
+        throw StateError('sync cursor must be a non-negative integer, got: $raw');
+      }
+      return raw;
+    }
+    if (raw is num && raw == raw.roundToDouble()) {
+      final value = raw.toInt();
+      if (value < 0) {
+        throw StateError('sync cursor must be a non-negative integer, got: $raw');
+      }
+      return value;
+    }
+    final text = '$raw'.trim();
+    if (!_integer.hasMatch(text)) {
+      throw StateError(
+        'sync cursor must be a non-negative integer, got: $raw',
+      );
+    }
+    return int.parse(text);
+  }
 }

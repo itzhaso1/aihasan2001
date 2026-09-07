@@ -43,6 +43,7 @@ final cashierCloudLinkServiceProvider = Provider<CashierCloudLinkService>((ref) 
     db: ref.watch(appDatabaseProvider),
     localAuth: LocalAuthService(ref.watch(appDatabaseProvider)),
     deviceId: () => ref.read(deviceIdentityProvider).getOrCreateDeviceId(),
+    initialSync: ref.watch(initialSyncServiceProvider),
   );
 });
 

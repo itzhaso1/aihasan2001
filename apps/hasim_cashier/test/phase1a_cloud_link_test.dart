@@ -105,6 +105,52 @@ void main() {
         offlineOnly: true,
         token: 'sanctum-token',
         path: '/catalog/items',
+        method: 'GET',
+      ),
+      isTrue,
+    );
+    expect(
+      CashierNetworkPolicy.allowRequest(
+        offlineOnly: true,
+        token: 'sanctum-token',
+        path: '/catalog/items',
+        method: 'POST',
+      ),
+      isFalse,
+    );
+    expect(
+      CashierNetworkPolicy.allowRequest(
+        offlineOnly: true,
+        token: 'sanctum-token',
+        path: '/bootstrap',
+        method: 'GET',
+      ),
+      isTrue,
+    );
+    expect(
+      CashierNetworkPolicy.allowRequest(
+        offlineOnly: true,
+        token: 'sanctum-token',
+        path: '/tables',
+        method: 'GET',
+      ),
+      isTrue,
+    );
+    expect(
+      CashierNetworkPolicy.allowRequest(
+        offlineOnly: true,
+        token: 'sanctum-token',
+        path: '/sync/pull',
+        method: 'POST',
+      ),
+      isTrue,
+    );
+    expect(
+      CashierNetworkPolicy.allowRequest(
+        offlineOnly: true,
+        token: 'sanctum-token',
+        path: '/orders',
+        method: 'POST',
       ),
       isFalse,
     );

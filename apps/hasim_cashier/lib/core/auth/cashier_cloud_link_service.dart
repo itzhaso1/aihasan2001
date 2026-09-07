@@ -3,6 +3,8 @@ import 'package:drift/drift.dart';
 import '../api/cashier_api.dart';
 import '../device/device_registration_service.dart';
 import '../local_db/app_database.dart';
+import '../local_db/initial_sync_service.dart';
+import '../local_db/workspace_scope.dart';
 import '../pos/application/local_auth_service.dart';
 import '../pos/pos_mode.dart';
 import 'cloud_link_store.dart';
@@ -15,12 +17,14 @@ class CashierCloudLinkService {
     required AppDatabase db,
     required LocalAuthService localAuth,
     required Future<String> Function() deviceId,
+    InitialSyncService? initialSync,
   }) : _api = api,
        _store = store,
        _devices = devices,
        _db = db,
        _localAuth = localAuth,
-       _deviceId = deviceId;
+       _deviceId = deviceId,
+       _initialSync = initialSync;
 
   final CashierApiClient _api;
   final CloudLinkStore _store;
@@ -28,6 +32,7 @@ class CashierCloudLinkService {
   final AppDatabase _db;
   final LocalAuthService _localAuth;
   final Future<String> Function() _deviceId;
+  final InitialSyncService? _initialSync;
 
   Future<List<Map<String, dynamic>>> loadWorkspaces() async {
     final data = await _api.get('/workspaces');
@@ -106,7 +111,34 @@ class CashierCloudLinkService {
     await _store.save(snapshot);
     await _persistLocalDevice(snapshot);
     await _markExistingStoreConnected();
+    final initialSync = _initialSync;
+    if (initialSync != null) {
+      await initialSync.run(
+        serverWorkspaceId,
+        deviceId: snapshot.deviceId,
+      );
+    }
     return snapshot;
+  }
+
+  /// PIN sessions stay on the local store; catalog/tables read the Laravel
+  /// workspace only after a successful Phase 1B snapshot.
+  static Future<int> catalogWorkspaceId({
+    required int localStoreWorkspaceId,
+    required CloudLinkSnapshot? link,
+    required AppDatabase db,
+  }) async {
+    final cloudId = link?.workspaceId;
+    if (link?.isLinked != true || cloudId == null || cloudId <= 0) {
+      return localStoreWorkspaceId;
+    }
+    if (PosMode.isReservedStandaloneWorkspace(cloudId)) {
+      return localStoreWorkspaceId;
+    }
+    if (await db.hasInitialSync(cloudId)) {
+      return cloudId;
+    }
+    return localStoreWorkspaceId;
   }
 
   Future<CloudLinkSnapshot?> readLink() => _store.read();

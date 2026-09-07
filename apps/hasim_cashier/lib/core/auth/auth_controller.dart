@@ -534,6 +534,11 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
         connectedMode: true,
       );
     }
+    final catalogWorkspaceId = await CashierCloudLinkService.catalogWorkspaceId(
+      localStoreWorkspaceId: store.workspaceId as int,
+      link: link,
+      db: _ref.read(appDatabaseProvider),
+    );
     final session = AuthSession(
       token: token,
       user: {
@@ -544,16 +549,17 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
         'role': user.role,
       },
       workspace: {
-        'id': store.workspaceId,
+        'id': catalogWorkspaceId,
         'name': store.name,
         'pos_enabled': true,
         'store_id': store.localId,
         'tax_rate': store.taxRate,
         'currency': store.currency,
         'allow_negative_stock': store.allowNegativeStock,
+        'local_store_workspace_id': store.workspaceId,
       },
       workspaces: [
-        {'id': store.workspaceId, 'name': store.name, 'pos_enabled': true},
+        {'id': catalogWorkspaceId, 'name': store.name, 'pos_enabled': true},
       ],
       permissions: permissions,
       posEnabled: true,
@@ -561,7 +567,7 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     );
     await _ref
         .read(authRepositoryProvider)
-        .persistWorkspace(store.workspaceId as int);
+        .persistWorkspace(catalogWorkspaceId);
     await _ref
         .read(secureStorageProvider)
         .write(key: 'cashier_token', value: token);

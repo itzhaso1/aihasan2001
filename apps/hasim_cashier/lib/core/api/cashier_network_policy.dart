@@ -1,9 +1,10 @@
 import '../pos/pos_mode.dart';
 
-/// Phase 1A network gate.
+/// Phase 1A+1B network gate.
 ///
-/// `offlineOnly` still blocks catalog/order/sync HTTP. First-connect auth,
-/// workspace, and device registration are the only allowed cloud calls.
+/// `offlineOnly` still blocks orders / invoices / payments / sync push.
+/// First-connect may call auth, workspace, device registration, then the
+/// snapshot endpoints: bootstrap, catalog GET, tables GET, sync pull.
 class CashierNetworkPolicy {
   const CashierNetworkPolicy._();
 
@@ -17,22 +18,48 @@ class CashierNetworkPolicy {
     '/devices/register',
   };
 
-  static bool isCloudSetupPath(String path) {
-    final normalized = path.split('?').first.trim();
-    if (normalized.contains('/sync/') ||
-        normalized.contains('/catalog/') ||
-        normalized.contains('/orders') ||
-        normalized.contains('/invoices') ||
-        normalized.contains('/payments')) {
-      return false;
-    }
-    for (final allowed in cloudSetupPaths) {
-      if (normalized == allowed) return true;
-      if (normalized.endsWith(allowed) &&
-          (normalized.contains('/cashier/v1') ||
-              normalized.contains('/api/cashier/v1'))) {
-        return true;
+  static const snapshotGetPaths = <String>{
+    '/bootstrap',
+    '/catalog/categories',
+    '/catalog/items',
+    '/tables',
+  };
+
+  static const snapshotPostPaths = <String>{
+    '/sync/pull',
+  };
+
+  static String normalizePath(String path) {
+    var normalized = path.split('?').first.trim();
+    const markers = ['/api/cashier/v1', '/cashier/v1'];
+    for (final marker in markers) {
+      final index = normalized.indexOf(marker);
+      if (index >= 0) {
+        normalized = normalized.substring(index + marker.length);
+        break;
       }
+    }
+    if (normalized.isEmpty) return '/';
+    if (!normalized.startsWith('/')) normalized = '/$normalized';
+    if (normalized.length > 1 && normalized.endsWith('/')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    return normalized;
+  }
+
+  static bool isCloudSetupPath(String path) {
+    final normalized = normalizePath(path);
+    return cloudSetupPaths.contains(normalized);
+  }
+
+  static bool isSnapshotPath(String path, [String? method]) {
+    final normalized = normalizePath(path);
+    final verb = (method ?? '').trim().toUpperCase();
+    if (snapshotGetPaths.contains(normalized)) {
+      return verb.isEmpty || verb == 'GET';
+    }
+    if (snapshotPostPaths.contains(normalized)) {
+      return verb.isEmpty || verb == 'POST';
     }
     return false;
   }
@@ -41,9 +68,11 @@ class CashierNetworkPolicy {
     required bool offlineOnly,
     required String? token,
     required String path,
+    String? method,
   }) {
     if (PosMode.isStandaloneToken(token)) return false;
     if (!offlineOnly) return true;
-    return isCloudSetupPath(path);
+    if (isCloudSetupPath(path)) return true;
+    return isSnapshotPath(path, method);
   }
 }

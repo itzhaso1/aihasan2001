@@ -42,12 +42,14 @@ final dioProvider = Provider<Dio>((ref) {
         final token = ref.read(authTokenProvider);
         final workspaceId = ref.read(workspaceIdProvider);
         final deviceId = ref.read(deviceIdHeaderProvider);
-        // Standalone POS never uses HTTP. offlineOnly still blocks sync /
-        // catalog / orders; Phase 1A cloud setup paths are allowed.
+        // Standalone POS never uses HTTP. offlineOnly still blocks orders /
+        // invoices / payments / sync push. Phase 1A setup + Phase 1B snapshot
+        // paths are allowed while a Sanctum token is in memory.
         if (!CashierNetworkPolicy.allowRequest(
           offlineOnly: AppConfig.offlineOnly,
           token: token,
           path: options.path,
+          method: options.method,
         )) {
           handler.reject(
             DioException(
@@ -228,9 +230,20 @@ class CashierApiClient {
       );
     }
     final data = map['data'];
-    if (data is Map<String, dynamic>) return data;
-    if (data is Map) return Map<String, dynamic>.from(data);
-    return {'value': data, 'message': map['message'], 'meta': map['meta']};
+    final result = <String, dynamic>{};
+    if (data is Map) {
+      result.addAll(Map<String, dynamic>.from(data));
+    } else {
+      result['value'] = data;
+    }
+    if (map['message'] is String && result['message'] == null) {
+      result['message'] = map['message'];
+    }
+    // Laravel puts pagination on the envelope (`meta`), not inside `data`.
+    if (map['meta'] is Map) {
+      result['meta'] = Map<String, dynamic>.from(map['meta'] as Map);
+    }
+    return result;
   }
 
   ApiException _mapError(DioException e) {
