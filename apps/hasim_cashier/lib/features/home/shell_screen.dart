@@ -429,10 +429,9 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
       final occupiedTable = cart.channel == OrderChannel.table;
       if (cart.channel == OrderChannel.takeaway) {
         unawaited(
-          ref.read(posSyncCoordinatorProvider).flushPendingOrders(
-            workspaceId: workspaceId,
-            deviceId: deviceId,
-          ),
+          ref
+              .read(posSyncCoordinatorProvider)
+              .flushPendingOrders(workspaceId: workspaceId, deviceId: deviceId),
         );
       }
       ref.read(cartControllerProvider.notifier).clear();

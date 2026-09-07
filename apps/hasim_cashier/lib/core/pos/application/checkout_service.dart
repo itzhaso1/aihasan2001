@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../local_db/app_database.dart';
+import '../../local_db/workspace_scope.dart';
 import '../../repositories/sync_queue_repository.dart';
 import '../../repositories/tables_repository.dart';
 import '../domain/pricing_service.dart';
@@ -462,13 +463,13 @@ class CheckoutService {
     int? customerServerId;
     final customerLocalId = cmd.customerLocalId?.trim();
     if (customerLocalId != null && customerLocalId.isNotEmpty) {
-      final customer = await (_db.select(_db.localCustomers)
-            ..where(
-              (t) =>
-                  t.workspaceId.equals(cmd.workspaceId) &
-                  t.localId.equals(customerLocalId),
-            ))
-          .getSingleOrNull();
+      final customer =
+          await (_db.select(_db.localCustomers)..where(
+                (t) =>
+                    t.workspaceId.equals(cmd.workspaceId) &
+                    t.localId.equals(customerLocalId),
+              ))
+              .getSingleOrNull();
       customerServerId = customer?.serverId;
     }
 
@@ -518,9 +519,9 @@ class CheckoutService {
   }
 
   Future<String> _storeCurrency(int workspaceId) async {
-    final store = await (_db.select(_db.localStores)
-          ..where((t) => t.workspaceId.equals(workspaceId)))
-        .getSingleOrNull();
+    final store = await (_db.select(
+      _db.localStores,
+    )..where((t) => t.workspaceId.equals(workspaceId))).getSingleOrNull();
     final currency = store?.currency.trim().toUpperCase() ?? '';
     if (RegExp(r'^[A-Z]{3}$').hasMatch(currency)) return currency;
     return 'SAR';
@@ -542,13 +543,13 @@ class CheckoutService {
     }
     final serverId = cmd.tableServerId;
     if (serverId == null || serverId <= 0) return null;
-    final byServer = await (_db.select(_db.localTables)
-          ..where(
-            (t) =>
-                t.workspaceId.equals(cmd.workspaceId) &
-                t.serverId.equals(serverId),
-          ))
-        .getSingleOrNull();
+    final byServer =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.workspaceId.equals(cmd.workspaceId) &
+                  t.serverId.equals(serverId),
+            ))
+            .getSingleOrNull();
     if (byServer == null) return null;
     return {
       'id': byServer.serverId ?? serverId,

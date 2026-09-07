@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../api/cashier_api.dart';
 import '../auth/auth_controller.dart';
 import '../local_db/local_db_providers.dart';
 import '../offline/pending_order.dart';
@@ -75,9 +76,7 @@ final posSyncCoordinatorProvider = Provider<PosSyncCoordinator>((ref) {
   final session = ref.watch(authControllerProvider).valueOrNull;
   final token = session?.token;
   final standalone =
-      token == null ||
-      token.isEmpty ||
-      PosMode.isStandaloneToken(token);
+      token == null || token.isEmpty || PosMode.isStandaloneToken(token);
   return PosSyncCoordinator(
     hiveEngine: ref.watch(syncEngineProvider),
     sqliteEngine: ref.watch(syncEngineV2Provider),

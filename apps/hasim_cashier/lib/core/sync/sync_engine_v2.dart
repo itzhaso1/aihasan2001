@@ -21,43 +21,48 @@ class SyncEngineV2 {
     Future<Map<String, dynamic>> Function(
       Map<String, dynamic> payload,
       String idempotencyKey,
-    )? postOrder,
+    )?
+    postOrder,
     Future<Map<String, dynamic>> Function(
       int serverOrderId,
       Map<String, dynamic> payload,
-    )? postOrderItems,
+    )?
+    postOrderItems,
     Future<void> Function(int serverOrderId)? deleteOrder,
     Future<Map<String, dynamic>> Function(int since, int limit)? fetchChanges,
     Future<Map<String, dynamic>> Function(
       int tableServerId,
       String idempotencyKey,
-    )? postSessionOpen,
+    )?
+    postSessionOpen,
     Future<Map<String, dynamic>> Function(
       int tableServerId,
       int sessionServerId,
       Map<String, dynamic> payload,
       String idempotencyKey,
-    )? postSessionClose,
+    )?
+    postSessionClose,
     Future<Map<String, dynamic>> Function(
       int orderServerId,
       String idempotencyKey,
-    )? postInvoice,
+    )?
+    postInvoice,
     Future<Map<String, dynamic>> Function(int tableServerId)? getTable,
     Future<Map<String, dynamic>> Function(Map<String, dynamic> body)?
-        postPushBatch,
+    postPushBatch,
     Future<Map<String, dynamic>> Function(Map<String, dynamic> body)? postPull,
-  })  : _api = api,
-        _pullApplier = pullApplier ?? SyncPullApplier(_db),
-        _postOrder = postOrder,
-        _postOrderItems = postOrderItems,
-        _deleteOrder = deleteOrder,
-        _fetchChanges = fetchChanges,
-        _postSessionOpen = postSessionOpen,
-        _postSessionClose = postSessionClose,
-        _postInvoice = postInvoice,
-        _getTable = getTable,
-        _postPushBatch = postPushBatch,
-        _postPull = postPull;
+  }) : _api = api,
+       _pullApplier = pullApplier ?? SyncPullApplier(_db),
+       _postOrder = postOrder,
+       _postOrderItems = postOrderItems,
+       _deleteOrder = deleteOrder,
+       _fetchChanges = fetchChanges,
+       _postSessionOpen = postSessionOpen,
+       _postSessionClose = postSessionClose,
+       _postInvoice = postInvoice,
+       _getTable = getTable,
+       _postPushBatch = postPushBatch,
+       _postPull = postPull;
 
   final AppDatabase _db;
   final SyncQueueRepository _queue;
@@ -66,33 +71,38 @@ class SyncEngineV2 {
   final Future<Map<String, dynamic>> Function(
     Map<String, dynamic> payload,
     String idempotencyKey,
-  )? _postOrder;
+  )?
+  _postOrder;
   final Future<Map<String, dynamic>> Function(
     int serverOrderId,
     Map<String, dynamic> payload,
-  )? _postOrderItems;
+  )?
+  _postOrderItems;
   final Future<void> Function(int serverOrderId)? _deleteOrder;
   final Future<Map<String, dynamic>> Function(int since, int limit)?
-      _fetchChanges;
+  _fetchChanges;
   final Future<Map<String, dynamic>> Function(
     int tableServerId,
     String idempotencyKey,
-  )? _postSessionOpen;
+  )?
+  _postSessionOpen;
   final Future<Map<String, dynamic>> Function(
     int tableServerId,
     int sessionServerId,
     Map<String, dynamic> payload,
     String idempotencyKey,
-  )? _postSessionClose;
+  )?
+  _postSessionClose;
   final Future<Map<String, dynamic>> Function(
     int orderServerId,
     String idempotencyKey,
-  )? _postInvoice;
+  )?
+  _postInvoice;
   final Future<Map<String, dynamic>> Function(int tableServerId)? _getTable;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> body)?
-      _postPushBatch;
+  _postPushBatch;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> body)?
-      _postPull;
+  _postPull;
 
   var _flushing = false;
   bool get isFlushing => _flushing;
@@ -140,7 +150,8 @@ class SyncEngineV2 {
     String? deviceId,
   }) async {
     final data = await _loadChanges(since: 0, limit: 0, deviceId: deviceId);
-    final serverCursor = (data['server_cursor'] as num?)?.toInt() ??
+    final serverCursor =
+        (data['server_cursor'] as num?)?.toInt() ??
         (data['cursor'] as num?)?.toInt() ??
         0;
     await _db.writeCursor(workspaceId, '$serverCursor', deviceId: deviceId);
@@ -219,7 +230,8 @@ class SyncEngineV2 {
         }
       }
       final rows = await _queue.pendingForWorkspace(workspaceId);
-      final ordered = [...rows]..sort((a, b) {
+      final ordered = [...rows]
+        ..sort((a, b) {
           final pa = _pushPriority(a);
           final pb = _pushPriority(b);
           if (pa != pb) return pa.compareTo(pb);
@@ -237,7 +249,8 @@ class SyncEngineV2 {
           kept++;
           continue;
         }
-        final supported = row.entityType == 'order' ||
+        final supported =
+            row.entityType == 'order' ||
             row.entityType == 'customer' ||
             row.entityType == 'table_session' ||
             row.entityType == 'invoice';
@@ -400,8 +413,10 @@ class SyncEngineV2 {
     return '${row.entityType}.${row.operation}';
   }
 
-  Future<({SyncEngineV2Result result, bool fellBackToRow, int synced, int failed})>
-      _pushPendingBatch(int workspaceId) async {
+  Future<
+    ({SyncEngineV2Result result, bool fellBackToRow, int synced, int failed})
+  >
+  _pushPendingBatch(int workspaceId) async {
     var synced = 0;
     var failed = 0;
     var kept = 0;
@@ -409,7 +424,8 @@ class SyncEngineV2 {
 
     for (var round = 0; round < 6; round++) {
       final rows = await _queue.pendingForWorkspace(workspaceId);
-      final ordered = [...rows]..sort((a, b) {
+      final ordered = [...rows]
+        ..sort((a, b) {
           final pa = _pushPriority(a);
           final pb = _pushPriority(b);
           if (pa != pb) return pa.compareTo(pb);
@@ -571,7 +587,8 @@ class SyncEngineV2 {
     }
     if (row.entityType == 'order' && row.operation == 'create') {
       final payload = _decode(row.payloadJson);
-      return '${payload['order_type'] ?? ''}'.trim().toLowerCase() == 'takeaway';
+      return '${payload['order_type'] ?? ''}'.trim().toLowerCase() ==
+          'takeaway';
     }
     return false;
   }
@@ -608,13 +625,13 @@ class SyncEngineV2 {
     if (customerId > 0) return payload;
     final customerLocal = '${payload['customer_local_id'] ?? ''}'.trim();
     if (customerLocal.isEmpty) return payload;
-    final customer = await (_db.select(_db.localCustomers)
-          ..where(
-            (t) =>
-                t.workspaceId.equals(row.workspaceId) &
-                t.localId.equals(customerLocal),
-          ))
-        .getSingleOrNull();
+    final customer =
+        await (_db.select(_db.localCustomers)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.localId.equals(customerLocal),
+            ))
+            .getSingleOrNull();
     if (customer?.serverId != null && customer!.serverId! > 0) {
       payload['customer_id'] = customer.serverId;
     }
@@ -694,21 +711,25 @@ class SyncEngineV2 {
     final payload = _decode(row.payloadJson);
     var sessionId = (payload['session_server_id'] as num?)?.toInt();
     if (sessionId != null && sessionId > 0) return true;
-    final table = await (_db.select(_db.localTables)
-          ..where((t) =>
-              t.localId.equals(row.entityId) &
-              t.workspaceId.equals(row.workspaceId)))
-        .getSingleOrNull();
+    final table =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.localId.equals(row.entityId) &
+                  t.workspaceId.equals(row.workspaceId),
+            ))
+            .getSingleOrNull();
     sessionId = table?.sessionServerId;
     if (sessionId != null && sessionId > 0) return true;
     // Transfer/merge may have moved session onto target table.
     final targetId = (payload['target_table_id'] as num?)?.toInt();
     if (targetId != null && targetId > 0) {
-      final target = await (_db.select(_db.localTables)
-            ..where((t) =>
-                t.workspaceId.equals(row.workspaceId) &
-                t.serverId.equals(targetId)))
-          .getSingleOrNull();
+      final target =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.serverId.equals(targetId),
+              ))
+              .getSingleOrNull();
       if (target?.sessionServerId != null && target!.sessionServerId! > 0) {
         return true;
       }
@@ -726,11 +747,13 @@ class SyncEngineV2 {
     }
     var sessionId = (payload['session_server_id'] as num?)?.toInt();
     if (sessionId == null || sessionId <= 0) {
-      final table = await (_db.select(_db.localTables)
-            ..where((t) =>
-                t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
-          .getSingleOrNull();
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .getSingleOrNull();
       sessionId = table?.sessionServerId;
     }
     final api = _api;
@@ -796,24 +819,28 @@ class SyncEngineV2 {
   }
 
   Future<bool> _hasUnsyncedOrdersForTable(int workspaceId, int tableId) async {
-    final rows = await (_db.select(_db.localOrders)
-          ..where((t) =>
-              t.workspaceId.equals(workspaceId) &
-              t.tableServerId.equals(tableId) &
-              t.posStatus.isNotValue('cancelled') &
-              (t.syncStatus.equals('pending') |
-                  t.syncStatus.equals('syncing') |
-                  t.syncStatus.equals('failed'))))
-        .get();
+    final rows =
+        await (_db.select(_db.localOrders)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) &
+                  t.tableServerId.equals(tableId) &
+                  t.posStatus.isNotValue('cancelled') &
+                  (t.syncStatus.equals('pending') |
+                      t.syncStatus.equals('syncing') |
+                      t.syncStatus.equals('failed')),
+            ))
+            .get();
     return rows.isNotEmpty;
   }
 
   Future<bool> _orderNeedsServerId(int workspaceId, String orderLocalId) async {
-    final order = await (_db.select(_db.localOrders)
-          ..where((t) =>
-              t.workspaceId.equals(workspaceId) &
-              t.localId.equals(orderLocalId)))
-        .getSingleOrNull();
+    final order =
+        await (_db.select(_db.localOrders)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) &
+                  t.localId.equals(orderLocalId),
+            ))
+            .getSingleOrNull();
     if (order == null) return true;
     return order.serverId == null || order.serverId! <= 0;
   }
@@ -827,59 +854,62 @@ class SyncEngineV2 {
         : int.tryParse('${data['id']}');
     final orderNumber = '${data['order_number'] ?? ''}'.trim();
     await _db.transaction(() async {
-      await (_db.update(_db.localOrders)
-            ..where((t) =>
+      await (_db.update(_db.localOrders)..where(
+            (t) =>
                 t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
+                t.workspaceId.equals(row.workspaceId),
+          ))
           .write(
-        LocalOrdersCompanion(
-          serverId: Value(serverId),
-          orderNumber: orderNumber.isEmpty
-              ? const Value.absent()
-              : Value(orderNumber),
-          syncStatus: const Value('synced'),
-          lastError: const Value(null),
-          syncedAt: Value(DateTime.now()),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
+            LocalOrdersCompanion(
+              serverId: Value(serverId),
+              orderNumber: orderNumber.isEmpty
+                  ? const Value.absent()
+                  : Value(orderNumber),
+              syncStatus: const Value('synced'),
+              lastError: const Value(null),
+              syncedAt: Value(DateTime.now()),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
       await _queue.markSynced(row.id);
     });
   }
 
   Future<void> _finalizeOrderUpdate(SyncQueueItem row) async {
     await _db.transaction(() async {
-      await (_db.update(_db.localOrders)
-            ..where((t) =>
+      await (_db.update(_db.localOrders)..where(
+            (t) =>
                 t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
+                t.workspaceId.equals(row.workspaceId),
+          ))
           .write(
-        LocalOrdersCompanion(
-          syncStatus: const Value('synced'),
-          lastError: const Value(null),
-          syncedAt: Value(DateTime.now()),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
+            LocalOrdersCompanion(
+              syncStatus: const Value('synced'),
+              lastError: const Value(null),
+              syncedAt: Value(DateTime.now()),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
       await _queue.markSynced(row.id);
     });
   }
 
   Future<void> _finalizeOrderDelete(SyncQueueItem row) async {
     await _db.transaction(() async {
-      await (_db.update(_db.localOrders)
-            ..where((t) =>
+      await (_db.update(_db.localOrders)..where(
+            (t) =>
                 t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
+                t.workspaceId.equals(row.workspaceId),
+          ))
           .write(
-        LocalOrdersCompanion(
-          posStatus: const Value('cancelled'),
-          syncStatus: const Value('synced'),
-          lastError: const Value(null),
-          syncedAt: Value(DateTime.now()),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
+            LocalOrdersCompanion(
+              posStatus: const Value('cancelled'),
+              syncStatus: const Value('synced'),
+              lastError: const Value(null),
+              syncedAt: Value(DateTime.now()),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
       await _queue.markSynced(row.id);
     });
   }
@@ -893,19 +923,22 @@ class SyncEngineV2 {
         ? asIntOr(data['id'])
         : int.tryParse('${data['id']}');
     await _db.transaction(() async {
-      await (_db.update(_db.localCustomers)
-            ..where((t) =>
+      await (_db.update(_db.localCustomers)..where(
+            (t) =>
                 t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
+                t.workspaceId.equals(row.workspaceId),
+          ))
           .write(
-        LocalCustomersCompanion(
-          serverId: Value(serverId),
-          syncStatus: const Value('synced'),
-          name: Value('${data['name'] ?? payload['name'] ?? ''}'),
-          phone: Value(data['phone'] as String? ?? payload['phone'] as String?),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
+            LocalCustomersCompanion(
+              serverId: Value(serverId),
+              syncStatus: const Value('synced'),
+              name: Value('${data['name'] ?? payload['name'] ?? ''}'),
+              phone: Value(
+                data['phone'] as String? ?? payload['phone'] as String?,
+              ),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
       await _queue.markSynced(row.id);
     });
   }
@@ -917,11 +950,13 @@ class SyncEngineV2 {
     final sessionId = (data['session_id'] as num?)?.toInt();
     final now = DateTime.now();
     await _db.transaction(() async {
-      final table = await (_db.select(_db.localTables)
-            ..where((t) =>
-                t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
-          .getSingleOrNull();
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .getSingleOrNull();
       if (table != null) {
         final prev = _decode(table.payloadJson);
         final next = {
@@ -931,9 +966,9 @@ class SyncEngineV2 {
           'status': 'occupied',
           if (data['opened_at'] != null) 'opened_at': data['opened_at'],
         };
-        await (_db.update(_db.localTables)
-              ..where((t) => t.localId.equals(table.localId)))
-            .write(
+        await (_db.update(
+          _db.localTables,
+        )..where((t) => t.localId.equals(table.localId))).write(
           LocalTablesCompanion(
             sessionServerId: Value(sessionId),
             status: const Value('occupied'),
@@ -962,11 +997,12 @@ class SyncEngineV2 {
     Map<String, dynamic> data,
   ) async {
     final invoiceLocalId = row.entityId;
-    final existing = await (_db.select(_db.localInvoices)
-          ..where((t) => t.localId.equals(invoiceLocalId)))
-        .getSingleOrNull();
-    final prev =
-        existing == null ? <String, dynamic>{} : _decode(existing.payloadJson);
+    final existing = await (_db.select(
+      _db.localInvoices,
+    )..where((t) => t.localId.equals(invoiceLocalId))).getSingleOrNull();
+    final prev = existing == null
+        ? <String, dynamic>{}
+        : _decode(existing.payloadJson);
     final merged = {
       ...prev,
       'id': data['invoice_id'] ?? data['id'],
@@ -976,9 +1012,9 @@ class SyncEngineV2 {
       'sync_status': 'synced',
     };
     await _db.transaction(() async {
-      await (_db.update(_db.localInvoices)
-            ..where((t) => t.localId.equals(invoiceLocalId)))
-          .write(
+      await (_db.update(
+        _db.localInvoices,
+      )..where((t) => t.localId.equals(invoiceLocalId))).write(
         LocalInvoicesCompanion(
           serverId: Value(
             (data['invoice_id'] as num?)?.toInt() ??
@@ -996,9 +1032,7 @@ class SyncEngineV2 {
       );
       await (_db.update(_db.localPayments)
             ..where((t) => t.invoiceLocalId.equals(invoiceLocalId)))
-          .write(
-        const LocalPaymentsCompanion(syncStatus: Value('synced')),
-      );
+          .write(const LocalPaymentsCompanion(syncStatus: Value('synced')));
       await _queue.markSynced(row.id);
     });
   }
@@ -1035,11 +1069,13 @@ class SyncEngineV2 {
 
     var sessionId = (payload['session_server_id'] as num?)?.toInt();
     if (sessionId == null || sessionId <= 0) {
-      final table = await (_db.select(_db.localTables)
-            ..where((t) =>
-                t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
-          .getSingleOrNull();
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .getSingleOrNull();
       sessionId = table?.sessionServerId;
     }
     if (sessionId == null || sessionId <= 0) {
@@ -1097,9 +1133,9 @@ class SyncEngineV2 {
     final paymentLocalId = '${payload['payment_local_id'] ?? ''}';
     final now = DateTime.now();
     if (invoiceLocalId.isNotEmpty) {
-      final existing = await (_db.select(_db.localInvoices)
-            ..where((t) => t.localId.equals(invoiceLocalId)))
-          .getSingleOrNull();
+      final existing = await (_db.select(
+        _db.localInvoices,
+      )..where((t) => t.localId.equals(invoiceLocalId))).getSingleOrNull();
       final prev = existing == null
           ? <String, dynamic>{}
           : _decode(existing.payloadJson);
@@ -1108,9 +1144,9 @@ class SyncEngineV2 {
         if (invoice != null) ...invoice,
         'sync_status': 'synced',
       };
-      await (_db.update(_db.localInvoices)
-            ..where((t) => t.localId.equals(invoiceLocalId)))
-          .write(
+      await (_db.update(
+        _db.localInvoices,
+      )..where((t) => t.localId.equals(invoiceLocalId))).write(
         LocalInvoicesCompanion(
           serverId: Value((invoice?['id'] as num?)?.toInt()),
           invoiceNumber: Value(
@@ -1129,22 +1165,21 @@ class SyncEngineV2 {
     if (paymentLocalId.isNotEmpty) {
       await (_db.update(_db.localPayments)
             ..where((t) => t.localId.equals(paymentLocalId)))
-          .write(
-        const LocalPaymentsCompanion(syncStatus: Value('synced')),
-      );
+          .write(const LocalPaymentsCompanion(syncStatus: Value('synced')));
     }
     // Ensure table is available after successful close sync.
-    await (_db.update(_db.localTables)
-          ..where((t) =>
+    await (_db.update(_db.localTables)..where(
+          (t) =>
               t.localId.equals(row.entityId) &
-              t.workspaceId.equals(row.workspaceId)))
+              t.workspaceId.equals(row.workspaceId),
+        ))
         .write(
-      LocalTablesCompanion(
-        status: const Value('available'),
-        sessionServerId: const Value(null),
-        updatedAt: Value(now),
-      ),
-    );
+          LocalTablesCompanion(
+            status: const Value('available'),
+            sessionServerId: const Value(null),
+            updatedAt: Value(now),
+          ),
+        );
   }
 
   Future<void> _pushInvoice(SyncQueueItem row) async {
@@ -1153,11 +1188,13 @@ class SyncEngineV2 {
     final orderLocalId = '${payload['order_local_id'] ?? ''}';
     if ((orderServerId == null || orderServerId <= 0) &&
         orderLocalId.isNotEmpty) {
-      final order = await (_db.select(_db.localOrders)
-            ..where((t) =>
-                t.workspaceId.equals(row.workspaceId) &
-                t.localId.equals(orderLocalId)))
-          .getSingleOrNull();
+      final order =
+          await (_db.select(_db.localOrders)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(orderLocalId),
+              ))
+              .getSingleOrNull();
       orderServerId = order?.serverId;
     }
     if (orderServerId == null || orderServerId <= 0) {
@@ -1178,11 +1215,12 @@ class SyncEngineV2 {
       );
     }
     final invoiceLocalId = row.entityId;
-    final existing = await (_db.select(_db.localInvoices)
-          ..where((t) => t.localId.equals(invoiceLocalId)))
-        .getSingleOrNull();
-    final prev =
-        existing == null ? <String, dynamic>{} : _decode(existing.payloadJson);
+    final existing = await (_db.select(
+      _db.localInvoices,
+    )..where((t) => t.localId.equals(invoiceLocalId))).getSingleOrNull();
+    final prev = existing == null
+        ? <String, dynamic>{}
+        : _decode(existing.payloadJson);
     final merged = {
       ...prev,
       'id': data['invoice_id'],
@@ -1192,9 +1230,9 @@ class SyncEngineV2 {
       'sync_status': 'synced',
     };
     await _db.transaction(() async {
-      await (_db.update(_db.localInvoices)
-            ..where((t) => t.localId.equals(invoiceLocalId)))
-          .write(
+      await (_db.update(
+        _db.localInvoices,
+      )..where((t) => t.localId.equals(invoiceLocalId))).write(
         LocalInvoicesCompanion(
           serverId: Value((data['invoice_id'] as num?)?.toInt()),
           invoiceNumber: Value(data['invoice_number']?.toString()),
@@ -1209,9 +1247,7 @@ class SyncEngineV2 {
       );
       await (_db.update(_db.localPayments)
             ..where((t) => t.invoiceLocalId.equals(invoiceLocalId)))
-          .write(
-        const LocalPaymentsCompanion(syncStatus: Value('synced')),
-      );
+          .write(const LocalPaymentsCompanion(syncStatus: Value('synced')));
       await _queue.markSynced(row.id);
     });
   }
@@ -1259,8 +1295,9 @@ class SyncEngineV2 {
   }
 
   Future<void> _markOrderFailed(String localId, String error) async {
-    await (_db.update(_db.localOrders)..where((t) => t.localId.equals(localId)))
-        .write(
+    await (_db.update(
+      _db.localOrders,
+    )..where((t) => t.localId.equals(localId))).write(
       LocalOrdersCompanion(
         syncStatus: const Value('failed'),
         lastError: Value(error),
@@ -1270,8 +1307,9 @@ class SyncEngineV2 {
   }
 
   Future<void> _markOrderPending(String localId, String error) async {
-    await (_db.update(_db.localOrders)..where((t) => t.localId.equals(localId)))
-        .write(
+    await (_db.update(
+      _db.localOrders,
+    )..where((t) => t.localId.equals(localId))).write(
       LocalOrdersCompanion(
         syncStatus: const Value('pending'),
         lastError: Value(error),
@@ -1281,9 +1319,9 @@ class SyncEngineV2 {
   }
 
   Future<void> _markCustomerFailed(String localId, String error) async {
-    await (_db.update(_db.localCustomers)
-          ..where((t) => t.localId.equals(localId)))
-        .write(
+    await (_db.update(
+      _db.localCustomers,
+    )..where((t) => t.localId.equals(localId))).write(
       LocalCustomersCompanion(
         syncStatus: const Value('failed'),
         updatedAt: Value(DateTime.now()),
@@ -1292,9 +1330,9 @@ class SyncEngineV2 {
   }
 
   Future<void> _markCustomerPending(String localId, String error) async {
-    await (_db.update(_db.localCustomers)
-          ..where((t) => t.localId.equals(localId)))
-        .write(
+    await (_db.update(
+      _db.localCustomers,
+    )..where((t) => t.localId.equals(localId))).write(
       LocalCustomersCompanion(
         syncStatus: const Value('pending'),
         updatedAt: Value(DateTime.now()),
@@ -1370,17 +1408,20 @@ class SyncEngineV2 {
       throw StateError('SyncEngineV2 requires API or fetchChanges');
     }
     try {
-      return await api.post('/sync/pull', data: {
-        'device_id': deviceId ?? 'unknown',
-        'cursor': since,
-        'limit': limit,
-      });
+      return await api.post(
+        '/sync/pull',
+        data: {
+          'device_id': deviceId ?? 'unknown',
+          'cursor': since,
+          'limit': limit,
+        },
+      );
     } on ApiException catch (e) {
       if (e.statusCode == 404) {
-        return api.get('/sync/changes', query: {
-          'since': since,
-          'limit': limit,
-        });
+        return api.get(
+          '/sync/changes',
+          query: {'since': since, 'limit': limit},
+        );
       }
       rethrow;
     }
