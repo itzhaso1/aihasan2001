@@ -548,7 +548,11 @@ class PosSyncPushService
             'server_order_id' => $data['order_server_id'] ?? $data['server_order_id'] ?? null,
             'client_reference' => $data['order_local_id'] ?? $data['client_reference'] ?? null,
         ]);
-        $invoice = $this->orders->createInvoiceFromOrder($order, (int) $user->id);
+        $invoice = $this->orders->createInvoiceFromOrder(
+            $order,
+            (int) $user->id,
+            $this->orders->parseOfflineTimestamp($data['closed_at'] ?? null),
+        );
 
         $metadata = is_array($invoice->metadata) ? $invoice->metadata : [];
         $localNumber = trim((string) ($data['local_invoice_number'] ?? ''));

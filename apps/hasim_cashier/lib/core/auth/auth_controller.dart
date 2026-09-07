@@ -43,6 +43,11 @@ class AuthSession {
 
   String get userName => (user['name'] as String?) ?? '';
 
+  String get email {
+    final value = user['email'] ?? user['username'] ?? user['phone'];
+    return value?.toString().trim() ?? '';
+  }
+
   bool get isKitchenSession =>
       LocalAuthService.isKitchenRole(user['role']?.toString());
 
@@ -235,6 +240,8 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
   }
 
   final Ref _ref;
+  String? _pendingHasimPassword;
+  String? _pendingHasimLogin;
 
   Future<void> hydrateCloudLinkSession() => _hydrateCloudLinkSession();
 
@@ -447,6 +454,8 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
         );
       }
 
+      _pendingHasimPassword = password;
+      _pendingHasimLogin = emailOrPhone.trim();
       final setup = AuthSession(
         token: session.token,
         user: session.user,
@@ -464,6 +473,8 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
       }
       return;
     } catch (e, st) {
+      _pendingHasimPassword = null;
+      _pendingHasimLogin = null;
       if (state.valueOrNull?.isLocalMode != true) {
         await _clearCloudSetupSession();
       }
@@ -650,11 +661,42 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     await _finishCloudSetup();
   }
 
-  Future<void> abortCloudSetup() => _clearCloudSetupSession();
+  Future<void> abortCloudSetup() {
+    _pendingHasimPassword = null;
+    _pendingHasimLogin = null;
+    return _clearCloudSetupSession();
+  }
 
   Future<void> _finishCloudSetup() async {
     await _hydrateCloudLinkSession();
+    final unlocked = await _ensureUnlockUserFromHasim();
+    _pendingHasimPassword = null;
+    _pendingHasimLogin = null;
     await _clearCloudSetupSession();
+    if (unlocked != null) {
+      await _applyStandaloneUser(unlocked.user, unlocked.store);
+    }
+  }
+
+  Future<({LocalStore store, LocalUser user})?> _ensureUnlockUserFromHasim() async {
+    final password = _pendingHasimPassword;
+    final session = state.valueOrNull;
+    final email = (session != null && session.email.isNotEmpty)
+        ? session.email
+        : (_pendingHasimLogin ?? '');
+    if (password == null || email.trim().isEmpty) return null;
+    final display = session?.userName.trim() ?? '';
+    final storeName = '${session?.workspace?['name'] ?? ''}'.trim();
+    try {
+      return await _ref.read(localAuthServiceProvider).bootstrapUnlockUserFromHasim(
+            email: email,
+            displayName: display.isEmpty ? email : display,
+            password: password,
+            storeName: storeName.isEmpty ? 'حاسم' : storeName,
+          );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _clearCloudSetupSession() async {

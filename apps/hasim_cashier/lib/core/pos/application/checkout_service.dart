@@ -387,6 +387,7 @@ class CheckoutService {
         cmd: cmd,
         quote: quote,
         orderLocalId: orderId,
+        soldAt: now,
       );
       await _enqueueSaleInvoiceCreated(
         cmd: cmd,
@@ -394,6 +395,7 @@ class CheckoutService {
         orderLocalId: orderId,
         invoiceLocalId: invoiceId,
         invoiceNumber: invoiceNumber,
+        soldAt: now,
       );
 
       if (cmd.clearDraftChannel != null) {
@@ -445,7 +447,9 @@ class CheckoutService {
   bool _shouldEnqueueConnectedSale(CheckoutCommand cmd) {
     if (PosMode.isReservedStandaloneWorkspace(cmd.workspaceId)) return false;
     final type = cmd.orderType.trim().toLowerCase();
-    if (type != 'takeaway' && type != 'table') return false;
+    if (type != 'takeaway' && type != 'table' && type != 'delivery') {
+      return false;
+    }
     if (type == 'table' &&
         (cmd.tableServerId == null || cmd.tableServerId! <= 0) &&
         (cmd.tableLocalId == null || cmd.tableLocalId!.trim().isEmpty)) {
@@ -466,6 +470,7 @@ class CheckoutService {
     required CheckoutCommand cmd,
     required PriceBreakdown quote,
     required String orderLocalId,
+    required DateTime soldAt,
   }) async {
     if (!_shouldEnqueueConnectedSale(cmd)) return;
 
@@ -513,6 +518,7 @@ class CheckoutService {
         if (cmd.tableLocalId != null && cmd.tableLocalId!.trim().isNotEmpty)
           'table_local_id': cmd.tableLocalId!.trim(),
         'client_reference': cmd.clientReference,
+        'placed_at': soldAt.toUtc().toIso8601String(),
         'currency': currency,
         'subtotal_amount': subtotalAfterItemDiscount,
         'discount_amount': quote.orderDiscount,
@@ -549,6 +555,7 @@ class CheckoutService {
     required String orderLocalId,
     required String invoiceLocalId,
     required String invoiceNumber,
+    required DateTime soldAt,
   }) async {
     if (!_shouldEnqueueConnectedSale(cmd)) return;
 
@@ -576,6 +583,7 @@ class CheckoutService {
         'order_type': cmd.orderType.trim().toLowerCase(),
         'order_local_id': orderLocalId,
         'local_invoice_number': invoiceNumber,
+        'closed_at': soldAt.toUtc().toIso8601String(),
         'currency': currency,
         'subtotal_amount': subtotalAfterItemDiscount,
         'discount_amount': quote.orderDiscount,

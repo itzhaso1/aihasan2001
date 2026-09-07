@@ -562,17 +562,28 @@ void main() {
     expect(order.localId, 'tw-403');
   });
 
-  test(
-    'delivery checkout still does not enqueue order.created',
-    () async {
-      await sellTakeaway(
-        clientReference: 'delivery-out-of-scope',
-        orderType: 'delivery',
-      );
-      final queued = await db.select(db.syncQueueItems).get();
-      expect(queued, isEmpty);
-    },
-  );
+  test('delivery checkout enqueues order.created and invoice.created', () async {
+    final result = await sellTakeaway(
+      clientReference: 'delivery-in-scope',
+      orderType: 'delivery',
+    );
+    final queued = await db.select(db.syncQueueItems).get();
+    expect(queued, hasLength(2));
+    expect(
+      queued.map((row) => '${row.entityType}.${row.operation}').toSet(),
+      {'order.create', 'invoice.create'},
+    );
+    final orderOp = queued.singleWhere((row) => row.entityType == 'order');
+    final payload = jsonDecode(orderOp.payloadJson) as Map;
+    expect(payload['order_type'], 'delivery');
+    expect(payload['offline_sale'], isTrue);
+    expect(payload['placed_at'], isNotNull);
+    final invoiceOp = queued.singleWhere((row) => row.entityType == 'invoice');
+    final invoicePayload = jsonDecode(invoiceOp.payloadJson) as Map;
+    expect(invoicePayload['closed_at'], isNotNull);
+    expect(invoicePayload['order_type'], 'delivery');
+    expect(result.invoiceNumber, startsWith('INV-'));
+  });
 
   test('standalone workspace 900001 never enqueues takeaway sync', () async {
     final standShift = await shifts.open(

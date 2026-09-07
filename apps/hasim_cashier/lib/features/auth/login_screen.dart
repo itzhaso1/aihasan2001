@@ -25,7 +25,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   var _loading = true;
   var _busy = false;
-  var _cloudMode = false;
+  var _cloudMode = true;
   var _linked = false;
   String? _error;
 
@@ -50,18 +50,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final wantCloud =
           GoRouterState.of(context).uri.queryParameters['cloud'] == '1';
-      final link = await ref.read(cloudLinkStoreProvider).read();
       final store = await ref.read(localAuthServiceProvider).anyStore();
       if (!mounted) return;
-      if (store == null && !wantCloud) {
-        context.go('/standalone-setup');
-        return;
-      }
       setState(() {
         _loading = false;
-        _cloudMode = wantCloud;
-        _linked = link?.isLinked == true;
+        _cloudMode = store == null || wantCloud;
       });
+      try {
+        final link = await ref.read(cloudLinkStoreProvider).read();
+        if (!mounted) return;
+        setState(() => _linked = link?.isLinked == true);
+      } catch (_) {
+        // Secure storage can stall in widget tests; store presence is enough.
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -162,7 +163,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           const SizedBox(height: 4),
                           Text(
                             _cloudMode
-                                ? 'ربط الجهاز بالنظام السحابي'
+                                ? 'تسجيل الدخول بحساب حاسم'
                                 : (_linked
                                     ? 'كاشير حاسم — مربوط، والعمل المحلي متاح بدون إنترنت'
                                     : 'كاشير حاسم — أوفلاين بالكامل'),
@@ -181,14 +182,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       children: [
                         Text(
                           _cloudMode
-                              ? 'تسجيل الدخول إلى Laravel'
+                              ? 'حساب حاسم / Laravel'
                               : 'تشغيل محلي بدون إنترنت',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 4),
                         Text(
                           _cloudMode
-                              ? 'بعد نجاح الربط يبقى الدخول المحلي بـ PIN يعمل بدون إنترنت.'
+                              ? 'الهوية من حساب حاسم. بعد الربط يعمل الكاشير بدون إنترنت بنفس كلمة المرور.'
                               : 'الكاشير للمبيعات. المطبخ والتقارير محطات منفصلة من هذه الشاشة.',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
@@ -330,9 +331,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             child: Text(
                               _cloudMode
                                   ? 'العودة لتسجيل الدخول المحلي'
-                                  : 'ربط الجهاز بالنظام السحابي',
+                                  : 'ربط الجهاز بحساب حاسم',
                             ),
                           ),
+                          if (_cloudMode)
+                            TextButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => context.go('/standalone-setup'),
+                              child: const Text(
+                                'إعداد مستقل بدون حساب حاسم',
+                              ),
+                            ),
                         ],
                       ],
                     ),
