@@ -246,14 +246,10 @@ class PosSyncPushService
             $data['dining_table_id'] = $data['table_server_id'];
         }
         if (isset($data['items']) && is_array($data['items'])) {
-            $data['items'] = array_values(array_map(static function ($item): array {
-                $row = is_array($item) ? $item : [];
-
-                return [
-                    'pos_menu_item_id' => $row['pos_menu_item_id'] ?? null,
-                    'quantity' => $row['quantity'] ?? 1,
-                ];
-            }, $data['items']));
+            $data['items'] = array_values(array_map(
+                fn ($item): array => $this->mapOrderCreatedItem($item),
+                $data['items'],
+            ));
         }
 
         $order = $this->orders->createPosOrder($workspace, $data, $user);
@@ -625,6 +621,33 @@ class PosSyncPushService
                 'after_quantity' => $movement->after_quantity,
             ],
         ];
+    }
+
+    /**
+     * Pass through optional offline sale snapshot fields. Unknown item keys stay dropped.
+     *
+     * @return array<string, mixed>
+     */
+    private function mapOrderCreatedItem(mixed $item): array
+    {
+        $row = is_array($item) ? $item : [];
+        $mapped = [
+            'pos_menu_item_id' => $row['pos_menu_item_id'] ?? null,
+        ];
+
+        if (array_key_exists('quantity', $row)) {
+            $mapped['quantity'] = $row['quantity'];
+        } else {
+            $mapped['quantity'] = 1;
+        }
+
+        foreach (['unit_price', 'discount_amount', 'tax_amount', 'name', 'product_name'] as $key) {
+            if (array_key_exists($key, $row)) {
+                $mapped[$key] = $row[$key];
+            }
+        }
+
+        return $mapped;
     }
 
     /**
