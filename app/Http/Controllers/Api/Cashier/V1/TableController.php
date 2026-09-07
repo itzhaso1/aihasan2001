@@ -36,7 +36,7 @@ class TableController extends CashierController
         $this->authorizeCashier($request, $workspace, 'tables.manage');
         $this->ensurePos($workspace);
 
-        $tables = DiningTable::query()
+        $query = DiningTable::query()
             ->with([
                 'sessions' => fn ($query) => $query
                     ->where('status', 'open')
@@ -50,9 +50,26 @@ class TableController extends CashierController
                             ->latest('id'),
                     ]),
             ])
-            ->orderBy('name')
-            ->limit(100)
-            ->get();
+            ->orderBy('name');
+
+        $wantsPagination = $request->query->has('page') || $request->query->has('per_page');
+        if ($wantsPagination) {
+            $perPage = min(100, max(1, (int) $request->query('per_page', 100)));
+            $page = max(1, (int) $request->query('page', 1));
+            $tables = $query->paginate($perPage, ['*'], 'page', $page);
+
+            return $this->ok([
+                'tables' => $tables->getCollection()->map(fn (DiningTable $table) => $this->tablePayload($table, $workspace))->values(),
+                'generated_at' => now()->toIso8601String(),
+            ], meta: [
+                'current_page' => $tables->currentPage(),
+                'per_page' => $tables->perPage(),
+                'total' => $tables->total(),
+                'last_page' => $tables->lastPage(),
+            ]);
+        }
+
+        $tables = $query->limit(100)->get();
 
         return $this->ok([
             'tables' => $tables->map(fn (DiningTable $table) => $this->tablePayload($table, $workspace))->values(),
