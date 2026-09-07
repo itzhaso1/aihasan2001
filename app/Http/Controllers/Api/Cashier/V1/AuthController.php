@@ -175,7 +175,7 @@ class AuthController extends CashierController
         return $this->ok([
             'user' => new UserResource($user),
             'workspace' => $workspace ? new WorkspaceResource($workspace) : null,
-            'workspaces' => WorkspaceResource::collection($workspaces),
+            'workspaces' => $this->cashierWorkspacesPayload($workspaces),
             'permissions' => $workspace ? $this->permissionMap($user, $workspace) : [],
             'pos_enabled' => $workspace
                 ? $this->featureAccessService->workspaceHasFeature($workspace, 'pos')
@@ -208,10 +208,29 @@ class AuthController extends CashierController
             'expires_at' => optional($result['token']->accessToken->expires_at)?->toIso8601String(),
             'user' => new UserResource($result['user']),
             'workspace' => $workspace ? new WorkspaceResource($workspace) : null,
-            'workspaces' => WorkspaceResource::collection($result['workspaces']),
+            'workspaces' => $this->cashierWorkspacesPayload($result['workspaces']),
             'permissions' => $permissions,
             'entitlements' => $entitlements,
             'pos_enabled' => $posEnabled,
         ], message: $message);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Workspace>  $workspaces
+     * @return list<array<string, mixed>>
+     */
+    private function cashierWorkspacesPayload($workspaces): array
+    {
+        return $workspaces
+            ->map(function ($workspace): array {
+                return [
+                    'id' => $workspace->id,
+                    'name' => $workspace->name,
+                    'type' => $workspace->type,
+                    'pos_enabled' => $this->featureAccessService->workspaceHasFeature($workspace, 'pos'),
+                ];
+            })
+            ->values()
+            ->all();
     }
 }

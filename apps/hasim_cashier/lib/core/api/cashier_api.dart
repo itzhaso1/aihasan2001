@@ -2,14 +2,20 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../auth/cloud_link_store.dart';
 import '../config/app_config.dart';
 import '../network/cashier_link.dart';
+import 'cashier_network_policy.dart';
 import 'network_guard.dart';
 
 final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   return const FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
+});
+
+final cloudLinkStoreProvider = Provider<CloudLinkStore>((ref) {
+  return CloudLinkStore.secure(ref.watch(secureStorageProvider));
 });
 
 final authTokenProvider = StateProvider<String?>((ref) => null);
@@ -36,12 +42,13 @@ final dioProvider = Provider<Dio>((ref) {
         final token = ref.read(authTokenProvider);
         final workspaceId = ref.read(workspaceIdProvider);
         final deviceId = ref.read(deviceIdHeaderProvider);
-        // Hard offline: reject every outbound API call.
-        if (AppConfig.offlineOnly ||
-            (token != null &&
-                token.isNotEmpty &&
-                (token.startsWith('standalone:') ||
-                    token == 'local-offline'))) {
+        // Standalone POS never uses HTTP. offlineOnly still blocks sync /
+        // catalog / orders; Phase 1A cloud setup paths are allowed.
+        if (!CashierNetworkPolicy.allowRequest(
+          offlineOnly: AppConfig.offlineOnly,
+          token: token,
+          path: options.path,
+        )) {
           handler.reject(
             DioException(
               requestOptions: options,

@@ -3,7 +3,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/cashier_api.dart';
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/cloud_link_store.dart';
 import '../../core/pos/application/pos_providers.dart';
 import '../../core/pos/pos_errors.dart';
 import '../../core/theme/hasim_colors.dart';
@@ -24,6 +26,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   var _loading = true;
   var _busy = false;
+  var _cloudMode = false;
+  var _linked = false;
   String? _error;
 
   @override
@@ -45,13 +49,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
+      final wantCloud =
+          GoRouterState.of(context).uri.queryParameters['cloud'] == '1';
+      final link = await ref.read(cloudLinkStoreProvider).read();
       final store = await ref.read(localAuthServiceProvider).anyStore();
       if (!mounted) return;
-      if (store == null) {
+      if (store == null && !wantCloud) {
         context.go('/standalone-setup');
         return;
       }
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _cloudMode = wantCloud;
+        _linked = link?.isLinked == true;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -67,6 +78,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
+      if (_cloudMode) {
+        await ref.read(authControllerProvider.notifier).login(
+              _email.text.trim(),
+              _password.text,
+            );
+        if (!mounted) return;
+        final link = await ref.read(cloudLinkStoreProvider).read();
+        setState(() {
+          _linked = link?.isLinked == true;
+          if (_linked) _cloudMode = false;
+        });
+        return;
+      }
       await ref.read(authControllerProvider.notifier).loginStandalonePin(
             username: _email.text.trim(),
             pin: _password.text,
@@ -74,7 +98,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is PosException ? e.messageAr : e.toString();
+        _error = e is PosException
+            ? e.messageAr
+            : e is ApiException
+                ? e.message
+                : e.toString();
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -134,7 +162,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'كاشير حاسم — أوفلاين بالكامل',
+                            _cloudMode
+                                ? 'ربط الجهاز بالنظام السحابي'
+                                : (_linked
+                                    ? 'كاشير حاسم — مربوط، والعمل المحلي متاح بدون إنترنت'
+                                    : 'كاشير حاسم — أوفلاين بالكامل'),
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
@@ -149,12 +181,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          'تشغيل محلي بدون إنترنت',
+                          _cloudMode
+                              ? 'تسجيل الدخول إلى Laravel'
+                              : 'تشغيل محلي بدون إنترنت',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'الكاشير للمبيعات. المطبخ والتقارير محطات منفصلة من هذه الشاشة.',
+                          _cloudMode
+                              ? 'بعد نجاح الربط يبقى الدخول المحلي بـ PIN يعمل بدون إنترنت.'
+                              : 'الكاشير للمبيعات. المطبخ والتقارير محطات منفصلة من هذه الشاشة.',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         const SizedBox(height: 16),
@@ -199,8 +235,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             controller: _email,
                             keyboardType: TextInputType.emailAddress,
                             autofillHints: const [AutofillHints.email],
-                            decoration: const InputDecoration(
-                              labelText: 'الإيميل',
+                            decoration: InputDecoration(
+                              labelText: _cloudMode
+                                  ? 'البريد أو الجوال'
+                                  : 'الإيميل',
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -208,8 +246,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             controller: _password,
                             obscureText: true,
                             onSubmitted: (_) => _busy ? null : _submit(),
-                            decoration: const InputDecoration(
-                              labelText: 'كلمة المرور',
+                            decoration: InputDecoration(
+                              labelText: _cloudMode
+                                  ? 'كلمة مرور الحساب'
+                                  : 'كلمة المرور',
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -225,7 +265,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                               ),
                               onPressed: _busy ? null : _submit,
-                              icon: const Icon(Icons.storefront_outlined),
+                              icon: Icon(
+                                _cloudMode
+                                    ? Icons.cloud_sync_outlined
+                                    : Icons.storefront_outlined,
+                              ),
                               label: _busy
                                   ? const SizedBox(
                                       width: 18,
@@ -235,39 +279,59 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         color: Colors.white,
                                       ),
                                     )
-                                  : const Text('دخول الكاشير'),
+                                  : Text(
+                                      _cloudMode
+                                          ? 'ربط الجهاز'
+                                          : 'دخول الكاشير',
+                                    ),
                             ),
                           ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            height: 48,
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    HasimRadius.md,
+                          if (!_cloudMode) ...[
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: 48,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      HasimRadius.md,
+                                    ),
                                   ),
                                 ),
+                                onPressed: () => context.go('/kitchen'),
+                                icon: const Icon(Icons.soup_kitchen_outlined),
+                                label: const Text('دخول المطبخ'),
                               ),
-                              onPressed: () => context.go('/kitchen'),
-                              icon: const Icon(Icons.soup_kitchen_outlined),
-                              label: const Text('دخول المطبخ'),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            height: 48,
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    HasimRadius.md,
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: 48,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      HasimRadius.md,
+                                    ),
                                   ),
                                 ),
+                                onPressed: () => context.go('/reports'),
+                                icon: const Icon(Icons.bar_chart_outlined),
+                                label: const Text('دخول التقارير'),
                               ),
-                              onPressed: () => context.go('/reports'),
-                              icon: const Icon(Icons.bar_chart_outlined),
-                              label: const Text('دخول التقارير'),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: _busy
+                                ? null
+                                : () => setState(() {
+                                      _cloudMode = !_cloudMode;
+                                      _error = null;
+                                    }),
+                            child: Text(
+                              _cloudMode
+                                  ? 'العودة لتسجيل الدخول المحلي'
+                                  : 'ربط الجهاز بالنظام السحابي',
                             ),
                           ),
                         ],

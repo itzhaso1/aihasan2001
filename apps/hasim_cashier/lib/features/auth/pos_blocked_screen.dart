@@ -13,6 +13,7 @@ class PosBlockedScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(authControllerProvider).valueOrNull;
     return Scaffold(
       body: DecoratedBox(
         decoration: const BoxDecoration(
@@ -40,15 +41,19 @@ class PosBlockedScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'الكاشير المحلي غير جاهز',
+                  session?.isCloudSetup == true
+                      ? 'الكاشير غير متاح في هذه المساحة'
+                      : 'الكاشير المحلي غير جاهز',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'أعد إعداد المتجر المحلي أو ادخل بـ PIN. التطبيق يعمل أوفلاين بدون خادم.',
+                Text(
+                  session?.isCloudSetup == true
+                      ? 'الكاشير غير متاح في باقتك الحالية. لم يتم تسجيل الجهاز.'
+                      : 'أعد إعداد المتجر المحلي أو ادخل بـ PIN. التطبيق يعمل أوفلاين بدون خادم.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: HasimColors.muted),
+                  style: const TextStyle(color: HasimColors.muted),
                 ),
                 const SizedBox(height: 24),
                 HsPrimaryButton(

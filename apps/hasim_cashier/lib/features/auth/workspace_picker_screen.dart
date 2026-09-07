@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/cashier_api.dart';
 import '../../core/auth/auth_controller.dart';
-import '../../core/permissions/permissions_provider.dart';
+import '../../core/auth/cashier_cloud_link_service.dart';
 import '../../core/theme/hasim_colors.dart';
 import '../../core/widgets/hasim_widgets.dart';
 
@@ -33,33 +33,8 @@ class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
       _error = null;
     });
     try {
-      final session = ref.read(authControllerProvider).valueOrNull;
-      if (session != null && session.workspaces.isNotEmpty) {
-        setState(() {
-          _items = session.workspaces;
-          _loading = false;
-        });
-        return;
-      }
       final data = await ref.read(cashierApiProvider).get('/workspaces');
-      final list = <Map<String, dynamic>>[];
-      final raw = data['workspaces'];
-      if (raw is List) {
-        for (final item in raw) {
-          if (item is Map) {
-            final map = Map<String, dynamic>.from(item);
-            if (map['workspace'] is Map) {
-              final ws = Map<String, dynamic>.from(map['workspace'] as Map);
-              list.add({
-                ...ws,
-                'pos_enabled': map['pos_enabled'] == true,
-              });
-            } else {
-              list.add(map);
-            }
-          }
-        }
-      }
+      final list = CashierCloudLinkService.parseWorkspaceList(data);
       setState(() {
         _items = list;
         _loading = false;
@@ -73,85 +48,126 @@ class _WorkspacePickerScreenState extends ConsumerState<WorkspacePickerScreen> {
   }
 
   Future<void> _select(Map<String, dynamic> workspace) async {
-    await ref.read(authControllerProvider.notifier).selectWorkspace(workspace);
-    if (!mounted) return;
-    final session = ref.read(authControllerProvider).valueOrNull;
-    if (session != null && session.permissions.isNotEmpty) {
-      ref.read(cashierPermissionsProvider.notifier).state =
-          Map<String, dynamic>.from(session.permissions);
-    }
-    final posEnabled = session?.posEnabled ?? (workspace['pos_enabled'] != false);
+    final posEnabled = CashierCloudLinkService.isPosEnabled(workspace);
     if (!posEnabled) {
-      context.go('/pos-blocked');
-    } else {
-      context.go('/home');
+      setState(() {
+        _error = 'الكاشير غير متاح في باقتك الحالية';
+      });
+      return;
     }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authControllerProvider.notifier).selectWorkspace(workspace);
+      if (!mounted) return;
+      context.go('/login');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e is ApiException ? e.message : e.toString();
+      });
+    }
+  }
+
+  Future<void> _cancel() async {
+    await ref.read(authControllerProvider.notifier).abortCloudSetup();
+    if (!mounted) return;
+    context.go('/login');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: HasimColors.page,
-      appBar: AppBar(title: const Text('اختر مساحة العمل')),
+      appBar: AppBar(
+        title: const Text('اختر مساحة العمل'),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: _cancel,
+        ),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: HsEmpty(title: _error!))
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _items.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final ws = _items[index];
-                    final posEnabled = ws['pos_enabled'] != false;
-                    return Material(
-                      color: HasimColors.surface,
-                      borderRadius: BorderRadius.circular(14),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () => _select(ws),
-                        child: Ink(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: HasimColors.border),
+          : Column(
+              children: [
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: HsEmpty(title: _error!),
+                  ),
+                Expanded(
+                  child: _items.isEmpty
+                      ? Center(
+                          child: HsEmpty(
+                            title: _error ?? 'لا توجد مساحات عمل متاحة.',
                           ),
-                          padding: const EdgeInsets.all(14),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      (ws['name'] as String?) ?? 'Workspace',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                      ),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _items.length,
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final ws = _items[index];
+                            final posEnabled =
+                                CashierCloudLinkService.isPosEnabled(ws);
+                            return Material(
+                              color: HasimColors.surface,
+                              borderRadius: BorderRadius.circular(14),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () => _select(ws),
+                                child: Ink(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: HasimColors.border,
                                     ),
-                                    Text(
-                                      posEnabled
-                                          ? 'الكاشير متاح'
-                                          : 'الكاشير غير متاح في الباقة',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: posEnabled
-                                            ? HasimColors.ctaDark
-                                            : HasimColors.muted,
-                                        fontWeight: FontWeight.w600,
+                                  ),
+                                  padding: const EdgeInsets.all(14),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              (ws['name'] as String?) ??
+                                                  'Workspace',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                            Text(
+                                              posEnabled
+                                                  ? 'الكاشير متاح'
+                                                  : 'الكاشير غير متاح في الباقة',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: posEnabled
+                                                    ? HasimColors.ctaDark
+                                                    : HasimColors.muted,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                      const Icon(Icons.chevron_left),
+                                    ],
+                                  ),
                                 ),
                               ),
-                              const Icon(Icons.chevron_left),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      ),
-                    );
-                  },
                 ),
+              ],
+            ),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hasim_cashier/core/api/cashier_network_policy.dart';
 import 'package:hasim_cashier/core/config/app_config.dart';
 import 'package:hasim_cashier/core/pos/pos_mode.dart';
 
@@ -10,5 +11,13 @@ void main() {
       isTrue,
     );
     expect(PosMode.admitRestoredSession('any-cloud-token'), isFalse);
+    expect(
+      CashierNetworkPolicy.allowRequest(
+        offlineOnly: true,
+        token: 'standalone:1',
+        path: '/sync/push',
+      ),
+      isFalse,
+    );
   });
 }
