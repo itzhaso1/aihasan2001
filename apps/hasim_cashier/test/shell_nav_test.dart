@@ -587,6 +587,8 @@ void main() {
     expect(find.text('فتح المطبخ'), findsOneWidget);
     expect(find.text('افتتاح الكاش'), findsWidgets);
     expect(find.text('إغلاق الكاش'), findsOneWidget);
+    expect(find.text('مزامنة الآن'), findsWidgets);
+    expect(find.text('مزامنة السحابة'), findsOneWidget);
 
     await revealSettingsAction(tester, 'فتح التقارير');
     await tester.tap(find.text('فتح التقارير'));
@@ -634,5 +636,19 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('settings sync now explains missing cloud link', (tester) async {
+    await pumpShell(tester, size: const Size(1400, 900));
+    await tapNav(tester, 'الإعدادات');
+    expect(find.byType(SettingsPanel), findsOneWidget);
+    await revealSettingsAction(tester, 'مزامنة الآن');
+    expect(find.text('مزامنة السحابة'), findsOneWidget);
+    expect(find.widgetWithText(HsPrimaryButton, 'مزامنة الآن'), findsOneWidget);
+    expect(find.textContaining('غير مرتبط بالسحابة'), findsOneWidget);
+    await tester.tap(find.widgetWithText(HsPrimaryButton, 'مزامنة الآن'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('اربط الحساب السحابي'), findsOneWidget);
   });
 }

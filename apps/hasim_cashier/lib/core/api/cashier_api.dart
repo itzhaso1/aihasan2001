@@ -6,6 +6,7 @@ import '../auth/cloud_link_store.dart';
 import '../config/app_config.dart';
 import '../network/cashier_link.dart';
 import 'cashier_network_policy.dart';
+import 'cashier_request_auth.dart';
 import 'network_guard.dart';
 
 final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
@@ -21,6 +22,9 @@ final cloudLinkStoreProvider = Provider<CloudLinkStore>((ref) {
 final authTokenProvider = StateProvider<String?>((ref) => null);
 final workspaceIdProvider = StateProvider<int?>((ref) => null);
 final deviceIdHeaderProvider = StateProvider<String?>((ref) => null);
+
+/// In-memory Sanctum link. PIN `cashier_token` stays standalone after bind.
+final cloudLinkSessionProvider = StateProvider<CloudLinkSnapshot?>((ref) => null);
 
 final dioProvider = Provider<Dio>((ref) {
   final dio = Dio(
@@ -39,12 +43,25 @@ final dioProvider = Provider<Dio>((ref) {
     InterceptorsWrapper(
       onRequest: (options, handler) {
         NetworkGuard.recordAttempt();
-        final token = ref.read(authTokenProvider);
-        final workspaceId = ref.read(workspaceIdProvider);
-        final deviceId = ref.read(deviceIdHeaderProvider);
-        // Standalone POS never uses HTTP. offlineOnly still blocks invoices /
+        final cloud = CashierRequestAuth.activeLink(
+          ref.read(cloudLinkSessionProvider),
+        );
+        final token = CashierRequestAuth.bearerToken(
+          sessionToken: ref.read(authTokenProvider),
+          cloud: cloud,
+        );
+        final workspaceId = CashierRequestAuth.workspaceId(
+          sessionWorkspaceId: ref.read(workspaceIdProvider),
+          cloud: cloud,
+        );
+        final deviceId = CashierRequestAuth.deviceId(
+          sessionDeviceId: ref.read(deviceIdHeaderProvider),
+          cloud: cloud,
+        );
+        // Standalone PIN sessions may still push takeaway ops when a Sanctum
+        // cloud link is hydrated. offlineOnly still blocks invoices /
         // payments / `/orders` writes. Phase 1A setup, Phase 1B snapshot,
-        // and Phase 2B takeaway `/sync/push` are allowed with a Sanctum token.
+        // and Phase 2B takeaway `/sync/push` are allowed with that token.
         if (!CashierNetworkPolicy.allowRequest(
           offlineOnly: AppConfig.offlineOnly,
           token: token,
