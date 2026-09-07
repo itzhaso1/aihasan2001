@@ -565,6 +565,20 @@ class PosSyncPushService
 
         $order->refresh();
 
+        // Same cashier cash mechanism as closeSession: metadata.payment_method
+        // + payment_status. No Payment row and no gateway link.
+        if ($paymentMethod !== '') {
+            $orderMetadata = is_array($order->metadata) ? $order->metadata : [];
+            $orderMetadata['payment_method'] = $paymentMethod;
+            $order->update([
+                'metadata' => $orderMetadata,
+                'payment_status' => in_array($paymentMethod, ['cash', 'card', 'cashier', 'pay_now', 'transfer'], true)
+                    ? 'paid'
+                    : $order->payment_status,
+            ]);
+            $order->refresh();
+        }
+
         return [
             'entity_type' => 'invoice',
             'entity_id' => (int) $invoice->id,
@@ -578,6 +592,8 @@ class PosSyncPushService
                 'discount_amount' => (float) $invoice->discount_amount,
                 'tax_amount' => (float) $order->tax_amount,
                 'currency' => $invoice->currency,
+                'payment_method' => is_array($order->metadata) ? ($order->metadata['payment_method'] ?? null) : null,
+                'payment_status' => $order->payment_status,
             ],
         ];
     }
