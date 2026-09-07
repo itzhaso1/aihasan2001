@@ -34,9 +34,13 @@ class StorePosOrderRequest extends FormRequest
             ],
             'order_type' => ['nullable', 'string', 'in:table,takeaway,delivery'],
             'client_reference' => ['nullable', 'string', 'max:120'],
-            'currency' => ['nullable', 'string', 'size:3'],
+            'currency' => ['nullable', 'string', 'size:3', 'regex:/^[A-Za-z]{3}$/'],
+            'subtotal' => ['nullable', 'numeric', 'min:0'],
+            'subtotal_amount' => ['nullable', 'numeric', 'min:0'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'tax_amount' => ['nullable', 'numeric', 'min:0'],
+            'total_amount' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.pos_menu_item_id' => [
@@ -45,6 +49,11 @@ class StorePosOrderRequest extends FormRequest
                 Rule::exists('pos_menu_items', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
             ],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
+            'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.tax_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.name' => ['nullable', 'string', 'max:255'],
+            'items.*.product_name' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

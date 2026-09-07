@@ -58,6 +58,7 @@ class PosOrderService
             );
 
             $discountAmount = $this->resolveDiscountAmount($payload, (float) $items->sum('total_amount'));
+            $financials = $this->resolveOfflineSaleFinancials($workspace, $payload, $items, $discountAmount);
 
             $metadata = [
                 'channel' => 'cashier',
@@ -92,9 +93,12 @@ class PosOrderService
                     discountAmount: $discountAmount,
                     notes: $payload['notes'] ?? null,
                     metadata: $metadata,
-                    currency: $this->resolveOrderCurrency($items),
+                    currency: $financials['currency'],
                     orderType: $orderType,
                     clientReference: $this->normalizeClientReference($payload['client_reference'] ?? null),
+                    taxAmount: $financials['tax_amount'],
+                    totalAmount: $financials['total_amount'],
+                    subtotalAmount: $financials['subtotal'],
                 );
 
                 event(new \App\Events\OrderCreated($order));
@@ -1244,22 +1248,29 @@ class PosOrderService
             }
 
             $itemCurrency = (string) ($menuItem->currency ?: 'USD');
-            $quantity = max(1, (int) ($item['quantity'] ?? 1));
-            $unitPrice = (float) $menuItem->price;
-            $lineTotal = round($quantity * $unitPrice, 2);
+            $quantity = $this->resolvePosLineQuantity($item);
+            $unitPrice = $this->resolvePosLineUnitPrice($item, $menuItem);
+            $lineDiscount = $this->resolvePosLineDiscount($item, $quantity, $unitPrice);
+            $lineTotal = round(($quantity * $unitPrice) - $lineDiscount, 2);
+            $snapshotName = $this->resolvePosLineName($item);
             // Inventory sync only when PosMenuItem.product_id is set; otherwise skip.
             $productId = $menuItem->product_id ? (int) $menuItem->product_id : null;
-            $normalized->push([
+            $row = [
                 'pos_menu_item_id' => $menuItem->id,
                 'product_id' => $productId,
-                'name' => $menuItem->name,
+                'name' => $snapshotName ?? $menuItem->name,
                 'item_type' => $menuItem->item_type ?: ($menuItem->category?->name ?? 'عام'),
                 'size_label' => $menuItem->size_label,
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
+                'discount_amount' => $lineDiscount,
                 'total_amount' => $lineTotal,
                 'currency' => $itemCurrency,
-            ]);
+            ];
+            if ($this->snapshotValuePresent($item, 'tax_amount')) {
+                $row['tax_amount'] = $this->parseNonNegativeMoney($item['tax_amount'], 'items.tax_amount');
+            }
+            $normalized->push($row);
         }
 
         if ($normalized->isEmpty()) {
@@ -1435,11 +1446,19 @@ class PosOrderService
         bool $syncInventory = true,
         string $orderType = Order::ORDER_TYPE_TAKEAWAY,
         ?string $clientReference = null,
+        ?float $taxAmount = null,
+        ?float $totalAmount = null,
+        ?float $subtotalAmount = null,
     ): Order {
-        $subtotal = round((float) $items->sum('total_amount'), 2);
+        $subtotal = round($subtotalAmount ?? (float) $items->sum('total_amount'), 2);
         $discountAmount = max(0, round($discountAmount, 2));
-        $taxAmount = $this->calculateTaxAmount($workspace, $subtotal, $discountAmount);
-        $total = max(0, round($subtotal - $discountAmount + $taxAmount, 2));
+        $resolvedTax = $taxAmount !== null
+            ? round($taxAmount, 2)
+            : $this->calculateTaxAmount($workspace, $subtotal, $discountAmount);
+        $total = $totalAmount !== null
+            ? round($totalAmount, 2)
+            : max(0, round($subtotal - $discountAmount + $resolvedTax, 2));
+        $taxAmount = $resolvedTax;
 
         $order = Order::query()->create([
             'workspace_id' => $workspace->id,
@@ -1479,7 +1498,7 @@ class PosOrderService
                 'sku' => null,
                 'quantity' => $item['quantity'],
                 'unit_price' => $item['unit_price'],
-                'discount_amount' => 0,
+                'discount_amount' => round((float) ($item['discount_amount'] ?? 0), 2),
                 'total_amount' => $item['total_amount'],
             ]);
 
@@ -1721,11 +1740,20 @@ class PosOrderService
      */
     private function resolveDiscountAmount(array $payload, float $subtotal): float
     {
-        if (isset($payload['discount_percent']) && is_numeric($payload['discount_percent'])) {
-            return $this->percentToAmount((float) $payload['discount_percent'], $subtotal);
+        if ($this->snapshotValuePresent($payload, 'discount_percent')) {
+            $percent = $this->parseNumeric($payload['discount_percent'], 'discount_percent');
+            if ($percent < 0 || $percent > 100) {
+                throw new RuntimeException('قيمة الخصم غير صالحة.');
+            }
+
+            return $this->percentToAmount($percent, $subtotal);
         }
 
-        return max(0, round((float) ($payload['discount_amount'] ?? 0), 2));
+        if ($this->snapshotValuePresent($payload, 'discount_amount')) {
+            return $this->parseNonNegativeMoney($payload['discount_amount'], 'discount_amount');
+        }
+
+        return 0.0;
     }
 
     private function percentToAmount(float $percent, float $subtotal): float
@@ -1733,6 +1761,220 @@ class PosOrderService
         $percent = max(0, min(100, $percent));
 
         return max(0, round($subtotal * ($percent / 100), 2));
+    }
+
+    /**
+     * Honor optional offline sale snapshots when present; otherwise keep catalog/workspace math.
+     *
+     * @param  Collection<int, array<string, mixed>>  $items
+     * @return array{subtotal: float, tax_amount: float, total_amount: float, currency: string}
+     */
+    private function resolveOfflineSaleFinancials(
+        Workspace $workspace,
+        array $payload,
+        Collection $items,
+        float $discountAmount
+    ): array {
+        $computedSubtotal = round((float) $items->sum('total_amount'), 2);
+        $snapshotSubtotal = $this->optionalNonNegativeMoney($payload, 'subtotal_amount')
+            ?? $this->optionalNonNegativeMoney($payload, 'subtotal');
+
+        if ($snapshotSubtotal !== null && ! $this->moneyEquals($snapshotSubtotal, $computedSubtotal)) {
+            throw new RuntimeException('قيم الفاتورة المجمدة غير متسقة.');
+        }
+
+        $subtotal = $snapshotSubtotal ?? $computedSubtotal;
+        $itemTaxSum = $this->sumItemTaxSnapshots($items);
+        $snapshotTax = $this->optionalNonNegativeMoney($payload, 'tax_amount');
+
+        if ($snapshotTax !== null && $itemTaxSum !== null && ! $this->moneyEquals($snapshotTax, $itemTaxSum)) {
+            throw new RuntimeException('قيم الضريبة المجمدة غير متسقة.');
+        }
+
+        $snapshotTotal = $this->optionalNonNegativeMoney($payload, 'total_amount');
+
+        if ($snapshotTax !== null) {
+            $taxAmount = $snapshotTax;
+        } elseif ($itemTaxSum !== null) {
+            $taxAmount = $itemTaxSum;
+        } elseif ($snapshotTotal !== null) {
+            $derivedTax = round($snapshotTotal - $subtotal + $discountAmount, 2);
+            if ($derivedTax < 0) {
+                throw new RuntimeException('قيم الفاتورة المجمدة غير متسقة.');
+            }
+            $taxAmount = $derivedTax;
+        } else {
+            $taxAmount = $this->calculateTaxAmount($workspace, $subtotal, $discountAmount);
+        }
+
+        $computedTotal = round($subtotal - $discountAmount + $taxAmount, 2);
+        if ($snapshotTotal !== null && ! $this->moneyEquals($snapshotTotal, $computedTotal)) {
+            throw new RuntimeException('قيم الفاتورة المجمدة غير متسقة.');
+        }
+
+        return [
+            'subtotal' => $subtotal,
+            'tax_amount' => $taxAmount,
+            'total_amount' => $snapshotTotal ?? max(0, $computedTotal),
+            'currency' => $this->resolvePayloadCurrency($payload, $items),
+        ];
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $items
+     */
+    private function sumItemTaxSnapshots(Collection $items): ?float
+    {
+        $sum = 0.0;
+        $hasAny = false;
+
+        foreach ($items as $item) {
+            if (! array_key_exists('tax_amount', $item) || $item['tax_amount'] === null) {
+                continue;
+            }
+            $hasAny = true;
+            $sum += (float) $item['tax_amount'];
+        }
+
+        return $hasAny ? round($sum, 2) : null;
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $items
+     */
+    private function resolvePayloadCurrency(array $payload, Collection $items): string
+    {
+        if (! $this->snapshotValuePresent($payload, 'currency')) {
+            return $this->resolveOrderCurrency($items);
+        }
+
+        $currency = strtoupper(trim((string) $payload['currency']));
+        if (! preg_match('/^[A-Z]{3}$/', $currency)) {
+            throw new RuntimeException('رمز العملة غير صالح.');
+        }
+
+        return $currency;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function resolvePosLineQuantity(array $item): int
+    {
+        if (! array_key_exists('quantity', $item) || $item['quantity'] === null || $item['quantity'] === '') {
+            return 1;
+        }
+
+        if (! is_numeric($item['quantity'])) {
+            throw new RuntimeException('كمية أحد الأصناف غير صالحة.');
+        }
+
+        $quantity = (int) $item['quantity'];
+        if ($quantity < 1 || (float) $item['quantity'] != $quantity) {
+            throw new RuntimeException('كمية أحد الأصناف غير صالحة.');
+        }
+
+        return $quantity;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function resolvePosLineUnitPrice(array $item, PosMenuItem $menuItem): float
+    {
+        if (! $this->snapshotValuePresent($item, 'unit_price')) {
+            return (float) $menuItem->price;
+        }
+
+        return $this->parseNonNegativeMoney($item['unit_price'], 'items.unit_price');
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function resolvePosLineDiscount(array $item, int $quantity, float $unitPrice): float
+    {
+        if (! $this->snapshotValuePresent($item, 'discount_amount')) {
+            return 0.0;
+        }
+
+        $discount = $this->parseNonNegativeMoney($item['discount_amount'], 'items.discount_amount');
+        $lineGross = round($quantity * $unitPrice, 2);
+        if ($discount > $lineGross + 0.01) {
+            throw new RuntimeException('قيمة الخصم غير صالحة.');
+        }
+
+        return $discount;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function resolvePosLineName(array $item): ?string
+    {
+        $raw = null;
+        if ($this->snapshotValuePresent($item, 'name')) {
+            $raw = $item['name'];
+        } elseif ($this->snapshotValuePresent($item, 'product_name')) {
+            $raw = $item['product_name'];
+        }
+
+        if (! is_string($raw)) {
+            return null;
+        }
+
+        $name = trim($raw);
+
+        return $name !== '' ? mb_substr($name, 0, 255) : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function optionalNonNegativeMoney(array $payload, string $key): ?float
+    {
+        if (! $this->snapshotValuePresent($payload, $key)) {
+            return null;
+        }
+
+        return $this->parseNonNegativeMoney($payload[$key], $key);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function snapshotValuePresent(array $payload, string $key): bool
+    {
+        return array_key_exists($key, $payload) && $payload[$key] !== null && $payload[$key] !== '';
+    }
+
+    private function parseNonNegativeMoney(mixed $value, string $field): float
+    {
+        $amount = $this->parseNumeric($value, $field);
+        if ($amount < 0) {
+            throw new RuntimeException("قيمة {$field} غير صالحة.");
+        }
+
+        return round($amount, 2);
+    }
+
+    private function parseNumeric(mixed $value, string $field): float
+    {
+        if (! is_numeric($value)) {
+            throw new RuntimeException("قيمة {$field} غير صالحة.");
+        }
+
+        $amount = (float) $value;
+        if (is_nan($amount) || is_infinite($amount)) {
+            throw new RuntimeException("قيمة {$field} غير صالحة.");
+        }
+
+        return $amount;
+    }
+
+    private function moneyEquals(float $left, float $right): bool
+    {
+        return abs($left - $right) <= 0.01;
     }
 
     private function calculateTaxAmount(?Workspace $workspace, float $subtotal, float $discountAmount): float
