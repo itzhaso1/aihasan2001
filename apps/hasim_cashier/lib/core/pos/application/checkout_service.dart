@@ -9,6 +9,7 @@ import '../../repositories/sync_queue_repository.dart';
 import '../../repositories/tables_repository.dart';
 import '../domain/pricing_service.dart';
 import '../pos_errors.dart';
+import '../pos_mode.dart';
 import '../pos_permissions.dart';
 import 'document_numbers.dart';
 import 'draft_cart_store.dart';
@@ -228,7 +229,9 @@ class CheckoutService {
               posStatus: const Value('new'),
               paymentStatus: const Value('paid'),
               fulfillmentStatus: const Value('unfulfilled'),
-              syncStatus: Value(cmd.connected ? 'pending' : 'local'),
+              syncStatus: Value(
+                _shouldEnqueueTakeaway(cmd) ? 'pending' : 'local',
+              ),
               createdAt: now,
               updatedAt: now,
               completedAt: Value(now),
@@ -376,28 +379,11 @@ class CheckoutService {
         }
       }
 
-      if (cmd.connected) {
-        await _queue.enqueue(
-          workspaceId: cmd.workspaceId,
-          deviceId: cmd.deviceId,
-          entityType: 'order',
-          entityId: orderId,
-          operation: 'create',
-          payload: {
-            'client_reference': cmd.clientReference,
-            'order_type': cmd.orderType,
-            if (cmd.tableServerId != null) 'dining_table_id': cmd.tableServerId,
-            'items': [
-              for (final line in cmd.lines)
-                {
-                  'pos_menu_item_id': line.productServerId,
-                  'quantity': line.quantity,
-                },
-            ],
-          },
-          clientReference: cmd.clientReference,
-        );
-      }
+      await _enqueueTakeawayOrderCreated(
+        cmd: cmd,
+        quote: quote,
+        orderLocalId: orderId,
+      );
 
       if (cmd.clearDraftChannel != null) {
         await DraftCartStore(_db).clear(
@@ -445,6 +431,102 @@ class CheckoutService {
     });
   }
 
+  bool _shouldEnqueueTakeaway(CheckoutCommand cmd) {
+    if (PosMode.isReservedStandaloneWorkspace(cmd.workspaceId)) return false;
+    if (cmd.orderType != 'takeaway') return false;
+    if (cmd.clientReference.trim().isEmpty) return false;
+    if (cmd.lines.isEmpty) return false;
+    for (final line in cmd.lines) {
+      final serverId = line.productServerId;
+      if (serverId == null || serverId <= 0 || line.quantity < 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _enqueueTakeawayOrderCreated({
+    required CheckoutCommand cmd,
+    required PriceBreakdown quote,
+    required String orderLocalId,
+  }) async {
+    if (!_shouldEnqueueTakeaway(cmd)) return;
+
+    final existing = await _queue.findOpenOp(
+      workspaceId: cmd.workspaceId,
+      entityType: 'order',
+      entityId: orderLocalId,
+      operation: 'create',
+    );
+    if (existing != null) return;
+
+    int? customerServerId;
+    final customerLocalId = cmd.customerLocalId?.trim();
+    if (customerLocalId != null && customerLocalId.isNotEmpty) {
+      final customer =
+          await (_db.select(_db.localCustomers)..where(
+                (t) =>
+                    t.workspaceId.equals(cmd.workspaceId) &
+                    t.localId.equals(customerLocalId),
+              ))
+              .getSingleOrNull();
+      customerServerId = customer?.serverId;
+    }
+
+    final currency = await _storeCurrency(cmd.workspaceId);
+    final itemDiscountCents = Money.toCents(quote.itemDiscountTotal);
+    final subtotalAfterItemDiscount = Money.fromCents(
+      quote.subtotalCents - itemDiscountCents,
+    );
+
+    await _queue.enqueue(
+      workspaceId: cmd.workspaceId,
+      deviceId: cmd.deviceId,
+      entityType: 'order',
+      entityId: orderLocalId,
+      operation: 'create',
+      payload: {
+        'order_type': 'takeaway',
+        'client_reference': cmd.clientReference,
+        'currency': currency,
+        'subtotal_amount': subtotalAfterItemDiscount,
+        'discount_amount': quote.orderDiscount,
+        'tax_amount': quote.taxAmount,
+        'total_amount': quote.total,
+        if (cmd.notes != null && cmd.notes!.trim().isNotEmpty)
+          'notes': cmd.notes!.trim(),
+        if (customerServerId != null && customerServerId > 0)
+          'customer_id': customerServerId,
+        if (customerLocalId != null && customerLocalId.isNotEmpty)
+          'customer_local_id': customerLocalId,
+        'items': [
+          for (final line in quote.lineResults)
+            {
+              'pos_menu_item_id': line.line.productServerId,
+              'quantity': line.line.quantity,
+              'unit_price': Money.fromCents(line.line.unitPriceCents),
+              'discount_amount': Money.fromCents(
+                Money.toCents(line.line.itemDiscount),
+              ),
+              'tax_amount': Money.fromCents(line.taxCents),
+              'name': line.line.name,
+              'product_name': line.line.name,
+            },
+        ],
+      },
+      clientReference: cmd.clientReference,
+    );
+  }
+
+  Future<String> _storeCurrency(int workspaceId) async {
+    final store = await (_db.select(
+      _db.localStores,
+    )..where((t) => t.workspaceId.equals(workspaceId))).getSingleOrNull();
+    final currency = store?.currency.trim().toUpperCase() ?? '';
+    if (RegExp(r'^[A-Z]{3}$').hasMatch(currency)) return currency;
+    return 'SAR';
+  }
+
   Future<Map<String, dynamic>?> _tableSnapshot(CheckoutCommand cmd) async {
     final localId = cmd.tableLocalId?.trim();
     if (localId != null && localId.isNotEmpty) {
@@ -461,13 +543,13 @@ class CheckoutService {
     }
     final serverId = cmd.tableServerId;
     if (serverId == null || serverId <= 0) return null;
-    final byServer = await (_db.select(_db.localTables)
-          ..where(
-            (t) =>
-                t.workspaceId.equals(cmd.workspaceId) &
-                t.serverId.equals(serverId),
-          ))
-        .getSingleOrNull();
+    final byServer =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.workspaceId.equals(cmd.workspaceId) &
+                  t.serverId.equals(serverId),
+            ))
+            .getSingleOrNull();
     if (byServer == null) return null;
     return {
       'id': byServer.serverId ?? serverId,

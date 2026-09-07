@@ -14,8 +14,18 @@ void main() {
     expect(
       CashierNetworkPolicy.allowRequest(
         offlineOnly: true,
+        token: 'sanctum-token',
+        path: '/sync/push',
+        method: 'POST',
+      ),
+      isTrue,
+    );
+    expect(
+      CashierNetworkPolicy.allowRequest(
+        offlineOnly: true,
         token: 'standalone:1',
         path: '/sync/push',
+        method: 'POST',
       ),
       isFalse,
     );

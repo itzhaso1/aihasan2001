@@ -16,6 +16,7 @@ import '../../core/pos/application/checkout_service.dart';
 import '../../core/pos/application/pos_providers.dart';
 import '../../core/pos/pos_errors.dart';
 import '../../core/pos/pos_labels.dart';
+import '../../core/sync/pos_sync_coordinator.dart';
 import '../../core/printing/printer_service.dart';
 import '../../core/theme/hasim_colors.dart';
 import '../../core/theme/hasim_radius.dart';
@@ -426,6 +427,13 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
           );
 
       final occupiedTable = cart.channel == OrderChannel.table;
+      if (cart.channel == OrderChannel.takeaway) {
+        unawaited(
+          ref
+              .read(posSyncCoordinatorProvider)
+              .flushPendingOrders(workspaceId: workspaceId, deviceId: deviceId),
+        );
+      }
       ref.read(cartControllerProvider.notifier).clear();
       _checkoutClientRef = null;
       ref.read(invoicesRevisionProvider.notifier).state++;

@@ -1,10 +1,11 @@
 import '../pos/pos_mode.dart';
 
-/// Phase 1A+1B network gate.
+/// Phase 1A+1B+2B network gate.
 ///
-/// `offlineOnly` still blocks orders / invoices / payments / sync push.
+/// `offlineOnly` still blocks invoices / payments / `/orders` writes.
 /// First-connect may call auth, workspace, device registration, then the
 /// snapshot endpoints: bootstrap, catalog GET, tables GET, sync pull.
+/// Phase 2B additionally allows takeaway `POST /sync/push`.
 class CashierNetworkPolicy {
   const CashierNetworkPolicy._();
 
@@ -27,6 +28,7 @@ class CashierNetworkPolicy {
 
   static const snapshotPostPaths = <String>{
     '/sync/pull',
+    '/sync/push',
   };
 
   static String normalizePath(String path) {
