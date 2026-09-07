@@ -40,6 +40,37 @@ class CatalogAdminService {
     return id;
   }
 
+  Future<void> deleteCategory({
+    required int workspaceId,
+    required String localId,
+    Map<String, dynamic>? permissions,
+  }) async {
+    PosPermissions.require(permissions, PosPermissions.catalog);
+    final row = await (_db.select(_db.localCategories)..where(
+          (t) => t.localId.equals(localId) & t.workspaceId.equals(workspaceId),
+        ))
+        .getSingleOrNull();
+    if (row == null) {
+      throw const DatabaseFailure('التصنيف غير موجود محلياً.');
+    }
+    if (row.serverId != null && row.serverId! > 0) {
+      throw const PosException(
+        'CatalogOwnedByServer',
+        'هذا تصنيف سحابة. احذفه من لوحة Hasim، لا من الكاشير.',
+      );
+    }
+    await (_db.update(_db.localCategories)..where(
+          (t) => t.localId.equals(localId) & t.workspaceId.equals(workspaceId),
+        ))
+        .write(
+          LocalCategoriesCompanion(
+            isDeleted: const Value(true),
+            isActive: const Value(false),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+  }
+
   Future<String> createProduct({
     required int workspaceId,
     required String name,
@@ -165,6 +196,19 @@ class CatalogAdminService {
     Map<String, dynamic>? permissions,
   }) async {
     PosPermissions.require(permissions, PosPermissions.catalog);
+    final row = await (_db.select(_db.localProducts)..where(
+          (t) => t.localId.equals(localId) & t.workspaceId.equals(workspaceId),
+        ))
+        .getSingleOrNull();
+    if (row == null) {
+      throw const DatabaseFailure('الصنف غير موجود محلياً.');
+    }
+    if (row.serverId != null && row.serverId! > 0) {
+      throw const PosException(
+        'CatalogOwnedByServer',
+        'هذا صنف سحابة. احذفه من لوحة Hasim، لا من الكاشير.',
+      );
+    }
     await (_db.update(_db.localProducts)..where(
           (t) => t.localId.equals(localId) & t.workspaceId.equals(workspaceId),
         ))

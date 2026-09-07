@@ -7,6 +7,7 @@ import '../api/cashier_api.dart';
 import '../config/app_config.dart';
 import '../local_db/app_database.dart';
 import '../pos/domain/pricing_service.dart';
+import '../pos/pos_mode.dart';
 import '../pos/table_session_orders.dart';
 import '../local_db/local_ids.dart';
 import '../util/json_numbers.dart';
@@ -621,6 +622,30 @@ class TablesRepository {
         lastInvoice: invoicePayload,
       );
       await _closeOpenLocalSessions(localId, now);
+      if (activeOrders.length == 1) {
+        await (_db.update(_db.localInvoices)..where(
+              (t) => t.localId.equals(invoiceLocalId),
+            ))
+            .write(
+              LocalInvoicesCompanion(
+                orderLocalId: Value(activeOrders.first.localId),
+              ),
+            );
+      }
+      for (final order in activeOrders) {
+        await _enqueuePaidTableInvoice(
+          workspaceId: workspaceId,
+          deviceId: deviceId.trim(),
+          order: order,
+          invoiceLocalId: activeOrders.length == 1
+              ? invoiceLocalId
+              : '${invoiceLocalId}-${order.localId}',
+          invoiceNumber: activeOrders.length == 1
+              ? invoiceNumber
+              : invoiceNumber,
+          paymentMethod: method,
+        );
+      }
       await _queue.enqueue(
         workspaceId: workspaceId,
         deviceId: deviceId.trim(),
@@ -644,6 +669,104 @@ class TablesRepository {
       'invoice': invoicePayload,
       'table': await getTable(workspaceId, tableServerId),
     };
+  }
+
+  Future<void> _enqueuePaidTableInvoice({
+    required int workspaceId,
+    required String deviceId,
+    required LocalOrder order,
+    required String invoiceLocalId,
+    required String invoiceNumber,
+    required String paymentMethod,
+  }) async {
+    if (PosMode.isReservedStandaloneWorkspace(workspaceId)) return;
+    final items =
+        await (_db.select(_db.localOrderItems)..where(
+              (t) =>
+                  t.orderLocalId.equals(order.localId) &
+                  t.isRemoved.equals(false),
+            ))
+            .get();
+    if (items.isEmpty) return;
+    for (final item in items) {
+      final serverId = item.productServerId;
+      if (serverId == null || serverId <= 0 || item.quantity < 1) return;
+    }
+    final orderPayload = {
+      'order_type': 'table',
+      'offline_sale': true,
+      if (order.tableServerId != null) 'dining_table_id': order.tableServerId,
+      'client_reference': order.clientReference,
+      'currency': 'SAR',
+      'subtotal_amount': Money.fromCents(order.subtotal),
+      'discount_amount': Money.fromCents(order.discountAmount),
+      'tax_amount': Money.fromCents(order.taxAmount),
+      'total_amount': Money.fromCents(order.totalAmount),
+      'items': [
+        for (final item in items)
+          {
+            'pos_menu_item_id': item.productServerId,
+            'quantity': item.quantity,
+            'unit_price': Money.fromCents(item.unitPrice),
+            'tax_amount': Money.fromCents(item.taxAmount),
+            'name': item.name,
+            'product_name': item.name,
+          },
+      ],
+    };
+    if (order.serverId == null || order.serverId! <= 0) {
+      final existingOrder = await _queue.findOpenOp(
+        workspaceId: workspaceId,
+        entityType: 'order',
+        entityId: order.localId,
+        operation: 'create',
+      );
+      if (existingOrder == null) {
+        await _queue.enqueue(
+          workspaceId: workspaceId,
+          deviceId: deviceId,
+          entityType: 'order',
+          entityId: order.localId,
+          operation: 'create',
+          payload: orderPayload,
+          clientReference: order.clientReference,
+        );
+      } else {
+        await _queue.updateOpenPayload(
+          workspaceId: workspaceId,
+          entityType: 'order',
+          entityId: order.localId,
+          operation: 'create',
+          payload: orderPayload,
+        );
+      }
+    }
+    final existingInvoice = await _queue.findOpenOp(
+      workspaceId: workspaceId,
+      entityType: 'invoice',
+      entityId: invoiceLocalId,
+      operation: 'create',
+    );
+    if (existingInvoice != null) return;
+    await _queue.enqueue(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      entityType: 'invoice',
+      entityId: invoiceLocalId,
+      operation: 'create',
+      payload: {
+        'order_type': 'table',
+        'order_local_id': order.localId,
+        'local_invoice_number': invoiceNumber,
+        'currency': 'SAR',
+        'subtotal_amount': Money.fromCents(order.subtotal),
+        'discount_amount': Money.fromCents(order.discountAmount),
+        'tax_amount': Money.fromCents(order.taxAmount),
+        'total_amount': Money.fromCents(order.totalAmount),
+        'payment_method': paymentMethod,
+      },
+      clientReference: invoiceLocalId,
+    );
   }
 
   Future<void> _freeTableRow({

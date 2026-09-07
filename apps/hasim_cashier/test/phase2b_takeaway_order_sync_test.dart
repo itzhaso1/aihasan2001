@@ -563,33 +563,14 @@ void main() {
   });
 
   test(
-    'table and delivery checkout do not enqueue order.created in Phase 2B',
+    'delivery checkout still does not enqueue order.created',
     () async {
-      await db
-          .into(db.localTables)
-          .insert(
-            LocalTablesCompanion.insert(
-              localId: 't1',
-              workspaceId: workspaceId,
-              name: 'T1',
-              updatedAt: DateTime.now(),
-            ),
-          );
-      await sellTakeaway(
-        clientReference: 'table-out-of-scope',
-        orderType: 'table',
-        tableLocalId: 't1',
-      );
       await sellTakeaway(
         clientReference: 'delivery-out-of-scope',
         orderType: 'delivery',
       );
       final queued = await db.select(db.syncQueueItems).get();
       expect(queued, isEmpty);
-      final tableOrder = await (db.select(
-        db.localOrders,
-      )..where((t) => t.localId.equals('table-out-of-scope'))).getSingle();
-      expect(tableOrder.syncStatus, 'local');
     },
   );
 
@@ -712,7 +693,7 @@ void main() {
   });
 
   test(
-    'batch path does not send table orders even if they sit in the queue',
+    'batch path does not send unpaid table orders even if they sit in the queue',
     () async {
       await queue.enqueue(
         workspaceId: workspaceId,

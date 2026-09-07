@@ -430,24 +430,29 @@ void main() {
     expect(payload['server_invoice_number'], startsWith('CASH-'));
   });
 
-  test('table checkout still does not enqueue invoice.created', () async {
+  test('table checkout now enqueues order.created then invoice.created', () async {
     await db
         .into(db.localTables)
         .insert(
           LocalTablesCompanion.insert(
             localId: 't1',
             workspaceId: workspaceId,
+            serverId: const Value(4),
             name: 'T1',
             updatedAt: DateTime.now(),
           ),
         );
     await sellTakeaway(
-      clientReference: 'table-no-inv',
+      clientReference: 'table-now-inv',
       orderType: 'table',
       tableLocalId: 't1',
+      tableServerId: 4,
     );
     final queued = await db.select(db.syncQueueItems).get();
-    expect(queued, isEmpty);
+    expect(queued.map((r) => '${r.entityType}.${r.operation}'), [
+      'order.create',
+      'invoice.create',
+    ]);
   });
 
   test('invoice is not pushed until the local order has server_id', () async {

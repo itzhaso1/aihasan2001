@@ -9,6 +9,7 @@ import '../pos/domain/pricing_service.dart';
 import '../local_db/workspace_scope.dart';
 import '../repositories/sync_queue_repository.dart';
 import 'sync_pull_applier.dart';
+import 'sync_queue_classifier.dart';
 
 /// Sync Engine v2 — push SQLite sync_queue, then pull incremental changes.
 /// Primary POS sync path (Hive outbox is legacy migration only).
@@ -252,14 +253,21 @@ class SyncEngineV2 {
         final supported =
             row.entityType == 'order' ||
             row.entityType == 'customer' ||
-            row.entityType == 'table_session' ||
-            row.entityType == 'invoice';
+            row.entityType == 'invoice' ||
+            (row.entityType == 'table_session' && _hasRowInjectors);
         if (!supported) {
           kept++;
           continue;
         }
 
         // Close / takeaway invoice wait until dependent orders are pushed.
+        if (row.entityType == 'order' &&
+            row.operation == 'create' &&
+            !_hasRowInjectors &&
+            !await _saleCreateReady(row)) {
+          kept++;
+          continue;
+        }
         if (row.entityType == 'table_session' && row.operation == 'close') {
           final payload = _decode(row.payloadJson);
           final tableId = (payload['table_server_id'] as num?)?.toInt();
@@ -421,6 +429,7 @@ class SyncEngineV2 {
     var failed = 0;
     var kept = 0;
     var authRequired = false;
+    synced += await _reconcileAlreadyApplied(workspaceId);
 
     for (var round = 0; round < 6; round++) {
       final rows = await _queue.pendingForWorkspace(workspaceId);
@@ -572,41 +581,64 @@ class SyncEngineV2 {
     );
   }
 
+  Future<int> _reconcileAlreadyApplied(int workspaceId) async {
+    final classifier = SyncQueueClassifier(_db);
+    final items = await classifier.classifyWorkspace(workspaceId);
+    var marked = 0;
+    for (final item in items) {
+      if (item.bucket != SyncQueueBucket.alreadyApplied) continue;
+      await _queue.markSynced(item.row.id);
+      marked++;
+    }
+    return marked;
+  }
+
   Future<bool> _rowReadyForPush(SyncQueueItem row) async {
-    // Phase 2B/2C-1 batch: takeaway order.created, takeaway invoice.created,
-    // and parent customer.created. Table invoices stay off this path.
-    if (!_isPhase2BBatchOp(row)) return false;
+    // Phase 2D batch: paid takeaway/table order.created + invoice.created,
+    // and parent customer.created. Table sessions stay off this path.
+    if (!_isInvoiceContractBatchOp(row)) return false;
     if (row.entityType == 'order') {
-      return _takeawayCreateReady(row);
+      return _saleCreateReady(row);
     }
     if (row.entityType == 'invoice') {
-      return _takeawayInvoiceReady(row);
+      return _saleInvoiceReady(row);
     }
     return true;
   }
 
-  bool _isPhase2BBatchOp(SyncQueueItem row) {
+  bool _isInvoiceContractBatchOp(SyncQueueItem row) {
     if (row.entityType == 'customer' && row.operation == 'create') {
       return true;
     }
     if (row.entityType == 'order' && row.operation == 'create') {
-      final payload = _decode(row.payloadJson);
-      return '${payload['order_type'] ?? ''}'.trim().toLowerCase() ==
-          'takeaway';
+      return SyncQueueClassifier.saleTypes.contains(
+        SyncQueueClassifier.saleTypeOf(row),
+      );
     }
     if (row.entityType == 'invoice' && row.operation == 'create') {
-      final payload = _decode(row.payloadJson);
-      return '${payload['order_type'] ?? ''}'.trim().toLowerCase() ==
-          'takeaway';
+      final type = SyncQueueClassifier.saleTypeOf(row);
+      return type == null || SyncQueueClassifier.saleTypes.contains(type);
     }
     return false;
   }
 
-  Future<bool> _takeawayCreateReady(SyncQueueItem row) async {
+  Future<bool> _saleCreateReady(SyncQueueItem row) async {
     if (row.clientReference.trim().isEmpty) return false;
     final payload = await _pushData(row);
-    if ('${payload['order_type'] ?? ''}'.trim().toLowerCase() != 'takeaway') {
-      return false;
+    final type = '${payload['order_type'] ?? ''}'.trim().toLowerCase();
+    if (!SyncQueueClassifier.saleTypes.contains(type)) return false;
+    if (type == 'table') {
+      final order =
+          await (_db.select(_db.localOrders)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      if (order == null ||
+          order.paymentStatus.trim().toLowerCase() != 'paid') {
+        return false;
+      }
     }
     final items = payload['items'];
     if (items is! List || items.isEmpty) return false;
@@ -624,11 +656,9 @@ class SyncEngineV2 {
     return true;
   }
 
-  Future<bool> _takeawayInvoiceReady(SyncQueueItem row) async {
+  Future<bool> _saleInvoiceReady(SyncQueueItem row) async {
     final payload = _decode(row.payloadJson);
-    if ('${payload['order_type'] ?? ''}'.trim().toLowerCase() != 'takeaway') {
-      return false;
-    }
+    var type = '${payload['order_type'] ?? ''}'.trim().toLowerCase();
     final orderLocalId = '${payload['order_local_id'] ?? ''}'.trim();
     if (orderLocalId.isEmpty) return false;
     final order =
@@ -639,7 +669,8 @@ class SyncEngineV2 {
             ))
             .getSingleOrNull();
     if (order == null) return false;
-    if (order.orderType.trim().toLowerCase() != 'takeaway') return false;
+    if (type.isEmpty) type = order.orderType.trim().toLowerCase();
+    if (!SyncQueueClassifier.saleTypes.contains(type)) return false;
     return order.serverId != null && order.serverId! > 0;
   }
 
@@ -664,6 +695,17 @@ class SyncEngineV2 {
       return payload;
     }
     payload['client_reference'] = row.clientReference;
+    if (row.entityType == 'order' && row.operation == 'create') {
+      payload['offline_sale'] = true;
+      final tableId = _numericId(
+        payload['table_server_id'] ??
+            payload['dining_table_id'] ??
+            payload['table_id'],
+      );
+      if (tableId != null) {
+        payload['dining_table_id'] = tableId;
+      }
+    }
     if (row.entityType != 'order' || row.operation != 'create') {
       return payload;
     }
@@ -1388,6 +1430,16 @@ class SyncEngineV2 {
       throw StateError('SyncEngineV2 requires API or deleteOrder');
     }
     await api.delete('/orders/$serverOrderId');
+  }
+
+  int? _numericId(dynamic raw) {
+    if (raw is num) {
+      final value = raw.toInt();
+      return value > 0 ? value : null;
+    }
+    final parsed = int.tryParse('$raw');
+    if (parsed == null || parsed <= 0) return null;
+    return parsed;
   }
 
   Map<String, dynamic> _decode(String raw) {

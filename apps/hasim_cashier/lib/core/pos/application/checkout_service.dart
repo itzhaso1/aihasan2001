@@ -230,7 +230,7 @@ class CheckoutService {
               paymentStatus: const Value('paid'),
               fulfillmentStatus: const Value('unfulfilled'),
               syncStatus: Value(
-                _shouldEnqueueTakeaway(cmd) ? 'pending' : 'local',
+                _shouldEnqueueConnectedSale(cmd) ? 'pending' : 'local',
               ),
               createdAt: now,
               updatedAt: now,
@@ -326,7 +326,7 @@ class CheckoutService {
               totalAmount: Value(quote.totalCents),
               createdByUserId: Value(cmd.createdByUserId),
               syncStatus: Value(
-                _shouldEnqueueTakeaway(cmd)
+                _shouldEnqueueConnectedSale(cmd)
                     ? 'pending'
                     : (cmd.connected ? 'pending' : 'local'),
               ),
@@ -383,12 +383,12 @@ class CheckoutService {
         }
       }
 
-      await _enqueueTakeawayOrderCreated(
+      await _enqueueSaleOrderCreated(
         cmd: cmd,
         quote: quote,
         orderLocalId: orderId,
       );
-      await _enqueueTakeawayInvoiceCreated(
+      await _enqueueSaleInvoiceCreated(
         cmd: cmd,
         quote: quote,
         orderLocalId: orderId,
@@ -442,9 +442,15 @@ class CheckoutService {
     });
   }
 
-  bool _shouldEnqueueTakeaway(CheckoutCommand cmd) {
+  bool _shouldEnqueueConnectedSale(CheckoutCommand cmd) {
     if (PosMode.isReservedStandaloneWorkspace(cmd.workspaceId)) return false;
-    if (cmd.orderType != 'takeaway') return false;
+    final type = cmd.orderType.trim().toLowerCase();
+    if (type != 'takeaway' && type != 'table') return false;
+    if (type == 'table' &&
+        (cmd.tableServerId == null || cmd.tableServerId! <= 0) &&
+        (cmd.tableLocalId == null || cmd.tableLocalId!.trim().isEmpty)) {
+      return false;
+    }
     if (cmd.clientReference.trim().isEmpty) return false;
     if (cmd.lines.isEmpty) return false;
     for (final line in cmd.lines) {
@@ -456,12 +462,12 @@ class CheckoutService {
     return true;
   }
 
-  Future<void> _enqueueTakeawayOrderCreated({
+  Future<void> _enqueueSaleOrderCreated({
     required CheckoutCommand cmd,
     required PriceBreakdown quote,
     required String orderLocalId,
   }) async {
-    if (!_shouldEnqueueTakeaway(cmd)) return;
+    if (!_shouldEnqueueConnectedSale(cmd)) return;
 
     final existing = await _queue.findOpenOp(
       workspaceId: cmd.workspaceId,
@@ -489,6 +495,9 @@ class CheckoutService {
     final subtotalAfterItemDiscount = Money.fromCents(
       quote.subtotalCents - itemDiscountCents,
     );
+    final tableInfo = await _tableSnapshot(cmd);
+    final tableServerId =
+        cmd.tableServerId ?? (tableInfo?['id'] is int ? tableInfo!['id'] as int : null);
 
     await _queue.enqueue(
       workspaceId: cmd.workspaceId,
@@ -497,7 +506,12 @@ class CheckoutService {
       entityId: orderLocalId,
       operation: 'create',
       payload: {
-        'order_type': 'takeaway',
+        'order_type': cmd.orderType.trim().toLowerCase(),
+        'offline_sale': true,
+        if (tableServerId != null && tableServerId > 0)
+          'dining_table_id': tableServerId,
+        if (cmd.tableLocalId != null && cmd.tableLocalId!.trim().isNotEmpty)
+          'table_local_id': cmd.tableLocalId!.trim(),
         'client_reference': cmd.clientReference,
         'currency': currency,
         'subtotal_amount': subtotalAfterItemDiscount,
@@ -529,14 +543,14 @@ class CheckoutService {
     );
   }
 
-  Future<void> _enqueueTakeawayInvoiceCreated({
+  Future<void> _enqueueSaleInvoiceCreated({
     required CheckoutCommand cmd,
     required PriceBreakdown quote,
     required String orderLocalId,
     required String invoiceLocalId,
     required String invoiceNumber,
   }) async {
-    if (!_shouldEnqueueTakeaway(cmd)) return;
+    if (!_shouldEnqueueConnectedSale(cmd)) return;
 
     final existing = await _queue.findOpenOp(
       workspaceId: cmd.workspaceId,
@@ -559,7 +573,7 @@ class CheckoutService {
       entityId: invoiceLocalId,
       operation: 'create',
       payload: {
-        'order_type': 'takeaway',
+        'order_type': cmd.orderType.trim().toLowerCase(),
         'order_local_id': orderLocalId,
         'local_invoice_number': invoiceNumber,
         'currency': currency,

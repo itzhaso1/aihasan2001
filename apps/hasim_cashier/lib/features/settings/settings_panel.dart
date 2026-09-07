@@ -24,6 +24,7 @@ import '../../core/pos/pos_mode.dart';
 import '../../core/printing/printer_service.dart';
 import '../../core/realtime/pos_event_source.dart';
 import '../../core/sync/pos_sync_coordinator.dart';
+import '../../core/sync/sync_queue_classifier.dart';
 import '../../core/theme/hasim_colors.dart';
 import '../../core/theme/hasim_radius.dart';
 import '../../core/theme/hasim_spacing.dart';
@@ -47,6 +48,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
   var _syncing = false;
   var _pendingSync = 0;
   var _failedSync = 0;
+  var _unsupportedSync = 0;
+  var _waitingParentSync = 0;
   final _tax = TextEditingController(text: '0');
   final _currency = TextEditingController(text: 'SAR');
   PrinterProfile? _profile;
@@ -137,17 +140,26 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     );
     var pending = 0;
     var failed = 0;
+    var unsupported = 0;
+    var waitingParent = 0;
     if (workspaceId != null && workspaceId > 0) {
-      final counts = await ref
-          .read(syncQueueRepositoryProvider)
-          .counts(workspaceId);
-      pending = counts.waiting;
+      final counts = await SyncQueueClassifier(
+        ref.read(appDatabaseProvider),
+      ).counts(workspaceId);
+      pending = counts.invoicePending;
       failed = counts.failed;
+      unsupported = counts.unsupported +
+          counts.standalone +
+          counts.blocked +
+          counts.alreadyApplied;
+      waitingParent = counts.waitingParent;
     }
     if (!mounted) return;
     setState(() {
       _pendingSync = pending;
       _failedSync = failed;
+      _unsupportedSync = unsupported;
+      _waitingParentSync = waitingParent;
     });
   }
 
@@ -223,7 +235,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         return;
       }
       _showSyncMessage(
-        'لا توجد طلبات سفري بانتظار المزامنة. الطاولات والتوصيل تبقى محلية.',
+        'لا توجد فواتير سفري أو طاولات بانتظار المزامنة. التوصيل يبقى محلياً.',
       );
     } catch (e) {
       _showSyncMessage(
@@ -912,7 +924,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       iconBackground: HasimColors.brandSoft,
       iconColor: HasimColors.brandDark,
       title: 'مزامنة السحابة',
-      subtitle: 'إرسال طلبات السفري النقدية من هذا الجهاز إلى Laravel.',
+      subtitle:
+          'إرسال فواتير السفري والطاولات النقدية إلى حساب Hasim. الهوية من السحابة.',
       highlight: true,
       children: [
         _infoBanner(
@@ -928,7 +941,12 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           style: const TextStyle(fontSize: 12, color: HasimColors.muted),
         ),
         Text(
-          'في الانتظار: $_pendingSync · فشل: $_failedSync',
+          'فواتير بانتظار الدفع: $_pendingSync'
+          '${_waitingParentSync > 0 ? ' · منها $_waitingParentSync تنتظر الطلب' : ''}',
+          style: const TextStyle(fontSize: 12, color: HasimColors.muted),
+        ),
+        Text(
+          'فشل دائم: $_failedSync · عمليات جلسة/أخرى خارج العقد: $_unsupportedSync',
           style: const TextStyle(fontSize: 12, color: HasimColors.muted),
         ),
         if (linked && localWorkspace)
