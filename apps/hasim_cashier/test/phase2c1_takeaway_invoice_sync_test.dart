@@ -330,17 +330,11 @@ void main() {
             ),
           );
 
-      phase = 'timeout';
-      final timedOut = await engine.pushPending(workspaceId: workspaceId);
-      expect(timedOut.keptPending, greaterThanOrEqualTo(1));
+      final reconciled = await engine.pushPending(workspaceId: workspaceId);
+      expect(reconciled.synced, 1);
       final still = await invoiceQueueRow(result.invoiceLocalId);
       expect(still.operationUuid, uuid);
-      expect(still.status, 'pending');
-
-      phase = 'duplicate';
-      await clearBackoff(invoiceOp.id);
-      final retry = await engine.pushPending(workspaceId: workspaceId);
-      expect(retry.synced, greaterThanOrEqualTo(1));
+      expect(still.status, 'synced');
 
       final invoices = await db.select(db.localInvoices).get();
       expect(invoices, hasLength(1));

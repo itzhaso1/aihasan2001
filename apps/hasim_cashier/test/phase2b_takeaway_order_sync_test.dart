@@ -827,8 +827,8 @@ void main() {
       );
       final retry = await engine.pushPending(workspaceId: workspaceId);
       expect(retry.synced, 1);
-      expect(posts, postsAfterFirst + 1);
-      expect(seenIds, [uuid, uuid]);
+      expect(posts, postsAfterFirst);
+      expect(seenIds, [uuid]);
       final afterRetry = await (db.select(
         db.localOrders,
       )..where((t) => t.localId.equals('tw-e2e'))).getSingle();

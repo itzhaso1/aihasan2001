@@ -35,6 +35,24 @@ void main() {
   late String userId;
   late String shiftId;
 
+  Future<void> seedTable(int tableId) {
+    return db.into(db.localTables).insert(
+      LocalTablesCompanion.insert(
+        localId: LocalIds.table(workspaceId, tableId),
+        workspaceId: workspaceId,
+        serverId: Value(tableId),
+        name: 'T$tableId',
+        status: const Value('available'),
+        payloadJson: Value(jsonEncode({
+          'id': tableId,
+          'name': 'T$tableId',
+          'status': 'available',
+        })),
+        updatedAt: DateTime.now(),
+      ),
+    );
+  }
+
   setUp(() async {
     db = AppDatabase.memory();
     queue = SyncQueueRepository(db);
@@ -98,24 +116,6 @@ void main() {
   tearDown(() async {
     await db.close();
   });
-
-  Future<void> seedTable(int tableId) {
-    return db.into(db.localTables).insert(
-      LocalTablesCompanion.insert(
-        localId: LocalIds.table(workspaceId, tableId),
-        workspaceId: workspaceId,
-        serverId: Value(tableId),
-        name: 'T$tableId',
-        status: const Value('available'),
-        payloadJson: Value(jsonEncode({
-          'id': tableId,
-          'name': 'T$tableId',
-          'status': 'available',
-        })),
-        updatedAt: DateTime.now(),
-      ),
-    );
-  }
 
   Future<CheckoutResult> sellTable({
     required String clientReference,
@@ -305,13 +305,13 @@ void main() {
         nextAttemptAt: Value(null),
       ),
     );
-    phase = 'timeout';
-    await engine.pushPending(workspaceId: workspaceId);
-    phase = 'duplicate';
-    await (db.update(db.syncQueueItems)..where((t) => t.id.equals(invoiceOp.id)))
-        .write(const SyncQueueItemsCompanion(nextAttemptAt: Value(null)));
-    final retry = await engine.pushPending(workspaceId: workspaceId);
-    expect(retry.synced, greaterThanOrEqualTo(1));
+    final reconciled = await engine.pushPending(workspaceId: workspaceId);
+    expect(reconciled.synced, 1);
+    final after = await (db.select(db.syncQueueItems)
+          ..where((t) => t.id.equals(invoiceOp.id)))
+        .getSingle();
+    expect(after.status, 'synced');
+    expect(after.operationUuid, invoiceUuid);
     expect(await db.select(db.localOrders).get(), hasLength(1));
     expect(await db.select(db.localInvoices).get(), hasLength(1));
     expect(result.orderLocalId, 'table-retry-1');

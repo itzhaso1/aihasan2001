@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:drift/drift.dart';
+
 import '../local_db/app_database.dart';
 import '../pos/pos_mode.dart';
 import '../repositories/sync_queue_repository.dart';
