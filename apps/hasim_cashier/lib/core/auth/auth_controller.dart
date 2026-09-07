@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../api/cashier_api.dart';
 import '../config/app_config.dart';
 import '../local_db/app_database.dart';
+import '../local_db/local_db_providers.dart';
 import '../offline/offline_store.dart';
 import '../permissions/permissions_provider.dart';
 import '../permissions/staff_permissions.dart';
@@ -11,6 +12,8 @@ import '../pos/application/local_auth_service.dart';
 import '../pos/application/pos_providers.dart';
 import '../pos/pos_errors.dart';
 import '../pos/pos_mode.dart';
+import 'cashier_cloud_link_service.dart';
+import 'cloud_link_store.dart';
 
 const _tokenKey = 'cashier_token';
 const _workspaceKey = 'cashier_workspace_id';
@@ -25,6 +28,7 @@ class AuthSession {
     this.posEnabled = false,
     this.entitlements,
     this.isLocalMode = false,
+    this.isCloudSetup = false,
   });
 
   final String token;
@@ -35,6 +39,7 @@ class AuthSession {
   final bool posEnabled;
   final Map<String, dynamic>? entitlements;
   final bool isLocalMode;
+  final bool isCloudSetup;
 
   String get userName => (user['name'] as String?) ?? '';
 
@@ -88,15 +93,26 @@ class AuthRepository {
     Map<String, dynamic> data,
   ) async {
     final token = data['token'] as String? ?? '';
-    await _storage.write(key: _tokenKey, value: token);
+    // Sanctum lives in the cloud-link keys. cashier_token stays the local PIN
+    // session and must not be overwritten by Laravel login.
+    await _storage.write(key: CloudLinkStore.tokenKey, value: token);
 
     final workspace = data['workspace'] is Map
         ? Map<String, dynamic>.from(data['workspace'] as Map)
         : null;
     if (workspace?['id'] != null) {
       await _storage.write(
-        key: _workspaceKey,
+        key: CloudLinkStore.workspaceKey,
         value: workspace!['id'].toString(),
+      );
+    }
+    final user = data['user'] is Map
+        ? Map<String, dynamic>.from(data['user'] as Map)
+        : null;
+    if (user?['id'] != null) {
+      await _storage.write(
+        key: CloudLinkStore.userKey,
+        value: user!['id'].toString(),
       );
     }
 
@@ -198,6 +214,7 @@ class AuthRepository {
     }
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _workspaceKey);
+    // Cloud link keys survive local PIN logout so restart-offline still works.
   }
 
   Future<void> persistWorkspace(int workspaceId) async {
@@ -386,21 +403,56 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
   };
 
   Future<void> login(String emailOrPhone, String password) async {
-    if (AppConfig.offlineOnly) {
-      throw ApiException(
-        'التطبيق أوفلاين بالكامل — استخدم الإيميل وكلمة المرور المحلية.',
-      );
-    }
-    // Keep previous session visible during login attempt — avoid splash remount loop.
     try {
       final session = await _ref
           .read(authRepositoryProvider)
           .login(emailOrPhone: emailOrPhone, password: password);
-      await _applySession(session);
+      _ref.read(authTokenProvider.notifier).state = session.token;
+      final deviceId = await _ref
+          .read(deviceIdentityProvider)
+          .getOrCreateDeviceId();
+      _ref.read(deviceIdHeaderProvider.notifier).state = deviceId;
+      final loginWorkspaceId = _asInt(session.workspace?['id']);
+      if (loginWorkspaceId != null) {
+        _ref.read(workspaceIdProvider.notifier).state = loginWorkspaceId;
+      }
+
+      var workspaces = session.workspaces;
+      workspaces = await _ref.read(cashierCloudLinkServiceProvider).loadWorkspaces();
+      if (workspaces.isEmpty) {
+        workspaces = session.workspaces;
+      }
+
+      final posWorkspaces = CashierCloudLinkService.posEnabledWorkspaces(
+        workspaces,
+      );
+      if (posWorkspaces.isEmpty) {
+        await _clearCloudSetupSession();
+        throw ApiException(
+          'الكاشير غير متاح في باقتك الحالية',
+          statusCode: 403,
+        );
+      }
+
+      final setup = AuthSession(
+        token: session.token,
+        user: session.user,
+        workspace: session.workspace,
+        workspaces: workspaces,
+        permissions: session.permissions,
+        posEnabled: session.posEnabled,
+        entitlements: session.entitlements,
+        isCloudSetup: true,
+      );
+      state = AsyncValue.data(setup);
+
+      if (workspaces.length == 1 && posWorkspaces.length == 1) {
+        await selectWorkspace(posWorkspaces.first);
+      }
+      return;
     } catch (e, st) {
-      // Preserve logged-out state; surface error via thrown ApiException.
-      if (state.valueOrNull == null) {
-        state = AsyncValue.data(null);
+      if (state.valueOrNull?.isLocalMode != true) {
+        await _clearCloudSetupSession();
       }
       Error.throwWithStackTrace(e, st);
     }
@@ -475,6 +527,13 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     // Offline-only: never enable Laravel connected mode.
     _ref.read(posConnectedModeProvider.notifier).state =
         AppConfig.offlineOnly ? false : store.connectedMode == true;
+    final link = await _ref.read(cloudLinkStoreProvider).read();
+    if (link?.isLinked == true) {
+      await auth.updateStore(
+        storeId: store.localId as String,
+        connectedMode: true,
+      );
+    }
     final session = AuthSession(
       token: token,
       user: {
@@ -536,77 +595,63 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
   }
 
   Future<void> selectWorkspace(Map<String, dynamic> workspace) async {
-    if (AppConfig.offlineOnly) {
-      throw ApiException('اختيار مساحة العمل السحابية غير متاح أوفلاين.');
-    }
-    final rawId = workspace['id'];
-    final id = rawId is int ? rawId : int.tryParse('$rawId');
-    if (id == null) return;
-
-    // Persist header workspace immediately so subsequent calls are scoped.
-    _ref.read(workspaceIdProvider.notifier).state = id;
-    await _ref.read(authRepositoryProvider).persistWorkspace(id);
-
-    Map<String, dynamic> permissions = const {};
-    Map<String, dynamic>? entitlements;
-    var posEnabled = workspace['pos_enabled'] == true;
-    Map<String, dynamic> resolvedWorkspace = Map<String, dynamic>.from(
-      workspace,
-    );
-
-    try {
-      final switched = await _ref
-          .read(cashierApiProvider)
-          .post(
-            '/workspaces/switch',
-            data: {
-              'workspace_id': id,
-              'device_name': 'كاشير حاسم',
-              'device_type': 'cashier',
-            },
-          );
-      if (switched['workspace'] is Map) {
-        resolvedWorkspace = Map<String, dynamic>.from(
-          switched['workspace'] as Map,
-        );
-      }
-      if (switched['permissions'] is Map) {
-        permissions = Map<String, dynamic>.from(switched['permissions'] as Map);
-      }
-      if (switched['entitlements'] is Map) {
-        entitlements = Map<String, dynamic>.from(
-          switched['entitlements'] as Map,
-        );
-      }
-      if (switched.containsKey('pos_enabled')) {
-        posEnabled = switched['pos_enabled'] == true;
-      }
-    } catch (_) {
-      // Fall back to local selection; bootstrap will refresh permissions.
-      final current = state.valueOrNull;
-      permissions = current?.permissions ?? const {};
-      entitlements = current?.entitlements;
-      posEnabled =
-          workspace['pos_enabled'] == true || (current?.posEnabled ?? false);
-    }
-
     final current = state.valueOrNull;
-    if (current != null) {
-      state = AsyncValue.data(
-        AuthSession(
-          token: current.token,
-          user: current.user,
-          workspace: resolvedWorkspace,
-          workspaces: current.workspaces,
-          permissions: permissions.isNotEmpty
-              ? permissions
-              : current.permissions,
-          posEnabled: posEnabled,
-          entitlements: entitlements ?? current.entitlements,
-          isLocalMode: current.isLocalMode,
-        ),
+    if (current == null || current.token.isEmpty) {
+      throw ApiException('سجّل الدخول أولاً.', statusCode: 401);
+    }
+    if (PosMode.isStandaloneToken(current.token) || current.isLocalMode) {
+      throw ApiException('الوضع المحلي لا يتصل بـ Laravel.');
+    }
+
+    final id = CashierCloudLinkService.requireId(
+      workspace['id'],
+      'مساحة العمل غير متاحة.',
+    );
+    if (!CashierCloudLinkService.isPosEnabled(workspace)) {
+      throw ApiException(
+        'الكاشير غير متاح في باقتك الحالية',
+        statusCode: 403,
       );
     }
+
+    _ref.read(workspaceIdProvider.notifier).state = id;
+    final deviceId = await _ref
+        .read(deviceIdentityProvider)
+        .getOrCreateDeviceId();
+    _ref.read(deviceIdHeaderProvider.notifier).state = deviceId;
+
+    await _ref
+        .read(cashierCloudLinkServiceProvider)
+        .bindWorkspace(
+          workspace: workspace,
+          token: current.token,
+          user: current.user,
+        );
+    await _finishCloudSetup();
+  }
+
+  Future<void> abortCloudSetup() => _clearCloudSetupSession();
+
+  Future<void> _finishCloudSetup() async {
+    await _clearCloudSetupSession();
+  }
+
+  Future<void> _clearCloudSetupSession() async {
+    _ref.read(authTokenProvider.notifier).state = null;
+    final store = await _ref.read(localAuthServiceProvider).anyStore();
+    if (store != null) {
+      _ref.read(workspaceIdProvider.notifier).state = store.workspaceId;
+      _ref.read(currentStoreIdProvider.notifier).state = store.localId;
+      _ref.read(posConnectedModeProvider.notifier).state = false;
+    }
+    if (state.valueOrNull?.isLocalMode != true) {
+      state = const AsyncValue.data(null);
+    }
+  }
+
+  int? _asInt(Object? raw) {
+    if (raw is int) return raw;
+    return int.tryParse('$raw');
   }
 
   /// Keep session permissions aligned with `/bootstrap` (source of truth).

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/auth/auth_controller.dart';
 import '../../core/pos/pos_errors.dart';
@@ -73,6 +74,14 @@ class _StandaloneSetupScreenState extends ConsumerState<StandaloneSetupScreen> {
               const Text(
                 'يعمل الكاشير بالكامل بدون إنترنت وبدون Laravel.',
                 style: TextStyle(color: HasimColors.muted),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => context.go('/login?cloud=1'),
+                  child: const Text('ربط الجهاز بالنظام السحابي'),
+                ),
               ),
               const SizedBox(height: 16),
               HsCard(

@@ -10,6 +10,7 @@ import '../features/auth/login_screen.dart';
 import '../features/auth/pin_login_screen.dart';
 import '../features/auth/pos_blocked_screen.dart';
 import '../features/auth/standalone_setup_screen.dart';
+import '../features/auth/workspace_picker_screen.dart';
 import '../features/home/shell_screen.dart';
 import '../features/kitchen/kitchen_station_screen.dart';
 import '../features/reports/reports_station_screen.dart';
@@ -32,20 +33,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final blocked = state.matchedLocation == '/pos-blocked';
       final kitchen = state.matchedLocation == '/kitchen';
       final reports = state.matchedLocation == '/reports';
-
-      // Offline-only: cloud auth routes are dead ends.
-      if (AppConfig.offlineOnly) {
-        final cloud = state.matchedLocation == '/forgot-password' ||
-            state.matchedLocation == '/reset-password' ||
-            state.matchedLocation == '/workspaces';
-        if (cloud) return '/login';
-      }
+      final workspacesRoute = state.matchedLocation == '/workspaces';
 
       if (auth.isLoading) {
         return splash ? null : '/splash';
       }
 
       final session = auth.valueOrNull;
+      if (session?.isCloudSetup == true) {
+        if (workspacesRoute || blocked) return null;
+        return '/workspaces';
+      }
+
+      // Offline-only: cloud auth routes are dead ends except during setup.
+      if (AppConfig.offlineOnly) {
+        final cloud = state.matchedLocation == '/forgot-password' ||
+            state.matchedLocation == '/reset-password' ||
+            workspacesRoute;
+        if (cloud) return '/login';
+      }
+
       if (session == null) {
         if (loggingIn || pin || setup || kitchen || reports) return null;
         return '/login';
@@ -66,7 +73,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final needsPick =
           session.workspace == null && session.workspaces.length > 1;
       if (needsPick) {
-        return state.matchedLocation == '/workspaces' ? null : '/workspaces';
+        return workspacesRoute ? null : '/workspaces';
       }
 
       if (loggingIn || splash || pin || setup) {
@@ -81,6 +88,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/standalone-setup',
         builder: (_, __) => const StandaloneSetupScreen(),
+      ),
+      GoRoute(
+        path: '/workspaces',
+        builder: (_, __) => const WorkspacePickerScreen(),
       ),
       GoRoute(
         path: '/pos-blocked',

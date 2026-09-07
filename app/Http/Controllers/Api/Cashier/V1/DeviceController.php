@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Cashier\V1;
 use App\Http\Controllers\Api\Cashier\CashierController;
 use App\Http\Controllers\Api\Cashier\Concerns\AuthorizesCashier;
 use App\Http\Controllers\Api\Cashier\Concerns\ResolvesCashierWorkspace;
+use App\Services\Feature\FeatureAccessService;
 use App\Services\Pos\PosDeviceRegistry;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
@@ -19,12 +20,20 @@ class DeviceController extends CashierController
     public function __construct(
         private readonly WorkspaceContext $workspaceContext,
         private readonly PosDeviceRegistry $devices,
+        private readonly FeatureAccessService $featureAccessService,
     ) {}
 
     public function register(Request $request): JsonResponse
     {
         $workspace = $this->requireWorkspace($this->workspaceContext);
         $user = $this->authorizeCashier($request, $workspace);
+
+        if (! $this->featureAccessService->workspaceHasFeature($workspace, 'pos')) {
+            return $this->fail('الكاشير غير متاح في باقتك الحالية', 403, meta: [
+                'pos_enabled' => false,
+                'plans_url' => url('/workspace/billing'),
+            ]);
+        }
 
         $data = $request->validate([
             'device_id' => ['required', 'string', 'max:64'],

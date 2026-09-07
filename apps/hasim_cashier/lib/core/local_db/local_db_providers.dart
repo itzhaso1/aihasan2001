@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/cashier_api.dart';
+import '../auth/cashier_cloud_link_service.dart';
 import '../device/device_identity.dart';
 import '../device/device_registration_service.dart';
 import '../local_db/app_database.dart';
 import '../local_db/initial_sync_service.dart';
 import '../local_db/workspace_scope.dart';
+import '../pos/application/local_auth_service.dart';
 import '../repositories/catalog_repository.dart';
 import '../repositories/customers_repository.dart';
 import '../repositories/local_finance_repository.dart';
@@ -31,6 +33,17 @@ final deviceIdProvider = FutureProvider<String>((ref) async {
 
 final deviceRegistrationServiceProvider = Provider<DeviceRegistrationService>((ref) {
   return DeviceRegistrationService(ref.watch(cashierApiProvider));
+});
+
+final cashierCloudLinkServiceProvider = Provider<CashierCloudLinkService>((ref) {
+  return CashierCloudLinkService(
+    api: ref.watch(cashierApiProvider),
+    store: ref.watch(cloudLinkStoreProvider),
+    devices: ref.watch(deviceRegistrationServiceProvider),
+    db: ref.watch(appDatabaseProvider),
+    localAuth: LocalAuthService(ref.watch(appDatabaseProvider)),
+    deviceId: () => ref.read(deviceIdentityProvider).getOrCreateDeviceId(),
+  );
 });
 
 final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
