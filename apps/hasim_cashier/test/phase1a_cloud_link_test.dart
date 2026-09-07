@@ -97,8 +97,9 @@ void main() {
         offlineOnly: true,
         token: 'sanctum-token',
         path: '/sync/push',
+        method: 'POST',
       ),
-      isFalse,
+      isTrue,
     );
     expect(
       CashierNetworkPolicy.allowRequest(

@@ -42,9 +42,9 @@ final dioProvider = Provider<Dio>((ref) {
         final token = ref.read(authTokenProvider);
         final workspaceId = ref.read(workspaceIdProvider);
         final deviceId = ref.read(deviceIdHeaderProvider);
-        // Standalone POS never uses HTTP. offlineOnly still blocks orders /
-        // invoices / payments / sync push. Phase 1A setup + Phase 1B snapshot
-        // paths are allowed while a Sanctum token is in memory.
+        // Standalone POS never uses HTTP. offlineOnly still blocks invoices /
+        // payments / `/orders` writes. Phase 1A setup, Phase 1B snapshot,
+        // and Phase 2B takeaway `/sync/push` are allowed with a Sanctum token.
         if (!CashierNetworkPolicy.allowRequest(
           offlineOnly: AppConfig.offlineOnly,
           token: token,

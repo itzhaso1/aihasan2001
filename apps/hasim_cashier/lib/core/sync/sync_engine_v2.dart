@@ -446,15 +446,15 @@ class SyncEngineV2 {
         );
         sentAny = true;
         final deviceId = chunk.first.deviceId;
-        final operations = [
-          for (final row in chunk)
-            {
-              'id': _operationUuid(row),
-              'type': _operationType(row),
-              'created_at': row.createdAt.toUtc().toIso8601String(),
-              'data': _decode(row.payloadJson),
-            },
-        ];
+        final operations = <Map<String, dynamic>>[];
+        for (final row in chunk) {
+          operations.add({
+            'id': _operationUuid(row),
+            'type': _operationType(row),
+            'created_at': row.createdAt.toUtc().toIso8601String(),
+            'data': await _pushData(row),
+          });
+        }
         for (final row in chunk) {
           await _queue.markSyncing(row.id);
         }
@@ -519,6 +519,16 @@ class SyncEngineV2 {
             kept += chunk.length;
             break;
           }
+          if (e.statusCode == 403) {
+            for (final row in chunk) {
+              await _queue.markFailed(row.id, e.message, retryable: false);
+              if (row.entityType == 'order') {
+                await _markOrderFailed(row.entityId, e.message);
+              }
+            }
+            failed += chunk.length;
+            break;
+          }
           for (final row in chunk) {
             await _queue.markFailed(row.id, e.message, retryable: true);
           }
@@ -547,35 +557,68 @@ class SyncEngineV2 {
   }
 
   Future<bool> _rowReadyForPush(SyncQueueItem row) async {
-    final supported = row.entityType == 'order' ||
-        row.entityType == 'customer' ||
-        row.entityType == 'table_session' ||
-        row.entityType == 'invoice' ||
-        row.entityType == 'stock' ||
-        row.entityType == 'stock_movement';
-    if (!supported) return false;
-    if (row.entityType == 'table_session' && row.operation == 'close') {
-      final payload = _decode(row.payloadJson);
-      final tableId = (payload['table_server_id'] as num?)?.toInt();
-      if (tableId != null &&
-          await _hasUnsyncedOrdersForTable(row.workspaceId, tableId)) {
-        return false;
-      }
-    }
-    if (row.entityType == 'table_session' &&
-        _isSessionAction(row.operation) &&
-        !await _sessionActionReady(row)) {
-      return false;
-    }
-    if (row.entityType == 'invoice' && row.operation == 'create') {
-      final payload = _decode(row.payloadJson);
-      final orderLocalId = '${payload['order_local_id'] ?? ''}';
-      if (orderLocalId.isNotEmpty &&
-          await _orderNeedsServerId(row.workspaceId, orderLocalId)) {
-        return false;
-      }
+    // Phase 2B batch push: takeaway order.created + parent customer.created only.
+    if (!_isPhase2BBatchOp(row)) return false;
+    if (row.entityType == 'order') {
+      return _takeawayCreateReady(row);
     }
     return true;
+  }
+
+  bool _isPhase2BBatchOp(SyncQueueItem row) {
+    if (row.entityType == 'customer' && row.operation == 'create') {
+      return true;
+    }
+    if (row.entityType == 'order' && row.operation == 'create') {
+      final payload = _decode(row.payloadJson);
+      return '${payload['order_type'] ?? ''}'.trim().toLowerCase() == 'takeaway';
+    }
+    return false;
+  }
+
+  Future<bool> _takeawayCreateReady(SyncQueueItem row) async {
+    if (row.clientReference.trim().isEmpty) return false;
+    final payload = await _pushData(row);
+    if ('${payload['order_type'] ?? ''}'.trim().toLowerCase() != 'takeaway') {
+      return false;
+    }
+    final items = payload['items'];
+    if (items is! List || items.isEmpty) return false;
+    for (final item in items) {
+      if (item is! Map) return false;
+      final menuId = (item['pos_menu_item_id'] as num?)?.toInt() ?? 0;
+      final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+      if (menuId <= 0 || qty < 1) return false;
+    }
+    final customerLocal = '${payload['customer_local_id'] ?? ''}'.trim();
+    final customerId = (payload['customer_id'] as num?)?.toInt() ?? 0;
+    if (customerLocal.isNotEmpty && customerId <= 0) {
+      return false;
+    }
+    return true;
+  }
+
+  Future<Map<String, dynamic>> _pushData(SyncQueueItem row) async {
+    final payload = _decode(row.payloadJson);
+    payload['client_reference'] = row.clientReference;
+    if (row.entityType != 'order' || row.operation != 'create') {
+      return payload;
+    }
+    final customerId = (payload['customer_id'] as num?)?.toInt() ?? 0;
+    if (customerId > 0) return payload;
+    final customerLocal = '${payload['customer_local_id'] ?? ''}'.trim();
+    if (customerLocal.isEmpty) return payload;
+    final customer = await (_db.select(_db.localCustomers)
+          ..where(
+            (t) =>
+                t.workspaceId.equals(row.workspaceId) &
+                t.localId.equals(customerLocal),
+          ))
+        .getSingleOrNull();
+    if (customer?.serverId != null && customer!.serverId! > 0) {
+      payload['customer_id'] = customer.serverId;
+    }
+    return payload;
   }
 
   Future<void> _applyAcceptedAck(
@@ -782,6 +825,7 @@ class SyncEngineV2 {
     final serverId = data['id'] is num
         ? asIntOr(data['id'])
         : int.tryParse('${data['id']}');
+    final orderNumber = '${data['order_number'] ?? ''}'.trim();
     await _db.transaction(() async {
       await (_db.update(_db.localOrders)
             ..where((t) =>
@@ -790,6 +834,9 @@ class SyncEngineV2 {
           .write(
         LocalOrdersCompanion(
           serverId: Value(serverId),
+          orderNumber: orderNumber.isEmpty
+              ? const Value.absent()
+              : Value(orderNumber),
           syncStatus: const Value('synced'),
           lastError: const Value(null),
           syncedAt: Value(DateTime.now()),

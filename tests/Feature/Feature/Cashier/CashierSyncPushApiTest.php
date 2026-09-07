@@ -17,6 +17,23 @@ class CashierSyncPushApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_unauthenticated_push_returns_401(): void
+    {
+        $this->postJson('/api/cashier/v1/sync/push', [
+            'device_id' => 'POS-001',
+            'operations' => [
+                [
+                    'id' => 'op-unauth-1',
+                    'type' => 'order.created',
+                    'data' => ['order_type' => 'takeaway', 'items' => []],
+                ],
+            ],
+        ])->assertStatus(401);
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(0, PosSyncOperation::withoutGlobalScopes()->count());
+    }
+
     public function test_unregistered_device_cannot_push(): void
     {
         $this->seed(FoundationSeeder::class);

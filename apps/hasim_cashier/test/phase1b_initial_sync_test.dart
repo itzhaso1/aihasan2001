@@ -386,7 +386,12 @@ void main() {
           ..where((t) => t.localId.equals('cloud-sale')))
         .getSingle();
     expect(cloudOrder.workspaceId, 10);
-    expect(cloudOrder.syncStatus, 'local');
+    expect(cloudOrder.syncStatus, 'pending');
+    final queued = await db.select(db.syncQueueItems).get();
+    expect(queued, hasLength(1));
+    expect(queued.single.entityType, 'order');
+    expect(queued.single.operation, 'create');
+    expect(queued.single.clientReference, 'cloud-sale');
   });
 
   test('401 403 422 errors stay visible', () async {
