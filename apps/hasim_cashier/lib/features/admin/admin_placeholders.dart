@@ -401,15 +401,59 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
     );
     if (ok != true) return;
     try {
-      await ref
-          .read(cashierApiProvider)
-          .delete('/catalog/categories/${category['id']}');
-      await _load();
+      final session = ref.read(authControllerProvider).valueOrNull;
+      final workspaceId = ref.read(workspaceIdProvider);
+      final localId = '${category['local_id'] ?? ''}';
+      final serverId = asInt(category['server_id']);
+      if (serverId != null && serverId > 0) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'هذا تصنيف سحابة. احذفه من لوحة Hasim، لا من الكاشير.',
+            ),
+          ),
+        );
+        return;
+      }
+      if (workspaceId != null && localId.isNotEmpty) {
+        await ref.read(catalogAdminServiceProvider).deleteCategory(
+              workspaceId: workspaceId,
+              localId: localId,
+              permissions: session?.permissions ?? _perms,
+            );
+        await _load();
+        return;
+      }
+      if (asInt(category['id']) != null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'هذا تصنيف سحابة. احذفه من لوحة Hasim، لا من الكاشير.',
+            ),
+          ),
+        );
+        return;
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'تعذر تحديد ملكية التصنيف. التصنيفات المحلية تُحذف هنا، وتصنيفات السحابة من لوحة Hasim.',
+          ),
+        ),
+      );
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
     }
   }
 

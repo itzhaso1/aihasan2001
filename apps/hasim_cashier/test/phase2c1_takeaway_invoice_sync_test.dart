@@ -330,17 +330,11 @@ void main() {
             ),
           );
 
-      phase = 'timeout';
-      final timedOut = await engine.pushPending(workspaceId: workspaceId);
-      expect(timedOut.keptPending, greaterThanOrEqualTo(1));
+      final reconciled = await engine.pushPending(workspaceId: workspaceId);
+      expect(reconciled.synced, 1);
       final still = await invoiceQueueRow(result.invoiceLocalId);
       expect(still.operationUuid, uuid);
-      expect(still.status, 'pending');
-
-      phase = 'duplicate';
-      await clearBackoff(invoiceOp.id);
-      final retry = await engine.pushPending(workspaceId: workspaceId);
-      expect(retry.synced, greaterThanOrEqualTo(1));
+      expect(still.status, 'synced');
 
       final invoices = await db.select(db.localInvoices).get();
       expect(invoices, hasLength(1));
@@ -430,24 +424,29 @@ void main() {
     expect(payload['server_invoice_number'], startsWith('CASH-'));
   });
 
-  test('table checkout still does not enqueue invoice.created', () async {
+  test('table checkout now enqueues order.created then invoice.created', () async {
     await db
         .into(db.localTables)
         .insert(
           LocalTablesCompanion.insert(
             localId: 't1',
             workspaceId: workspaceId,
+            serverId: const Value(4),
             name: 'T1',
             updatedAt: DateTime.now(),
           ),
         );
     await sellTakeaway(
-      clientReference: 'table-no-inv',
+      clientReference: 'table-now-inv',
       orderType: 'table',
       tableLocalId: 't1',
+      tableServerId: 4,
     );
     final queued = await db.select(db.syncQueueItems).get();
-    expect(queued, isEmpty);
+    expect(queued.map((r) => '${r.entityType}.${r.operation}'), [
+      'order.create',
+      'invoice.create',
+    ]);
   });
 
   test('invoice is not pushed until the local order has server_id', () async {

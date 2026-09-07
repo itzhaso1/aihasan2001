@@ -28,6 +28,7 @@ class CatalogRepository {
           ..._safeMap(row.payloadJson),
           'id': row.serverId ?? row.localId,
           'local_id': row.localId,
+          'server_id': row.serverId,
           'name': row.name,
           'sku': row.sku,
           'barcode': row.barcode,
@@ -61,6 +62,7 @@ class CatalogRepository {
         {
           'id': row.serverId ?? row.localId,
           'local_id': row.localId,
+          'server_id': row.serverId,
           'name': row.name,
           'sort_order': row.sortOrder,
           'is_active': row.isActive,

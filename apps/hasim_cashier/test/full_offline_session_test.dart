@@ -168,6 +168,17 @@ void main() {
           },
         };
       },
+      postInvoice: (orderServerId, key) async {
+        calls.add('invoice:$key');
+        expect(orderServerId, 501);
+        return {
+          'invoice_id': 55,
+          'id': 55,
+          'invoice_number': 'CASH-00000055',
+          'total_amount': 8,
+          'currency': 'SAR',
+        };
+      },
     );
 
     final result = await engine.pushPending(workspaceId: 1);

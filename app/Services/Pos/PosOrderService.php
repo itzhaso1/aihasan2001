@@ -44,9 +44,14 @@ class PosOrderService
             $orderType = $this->resolveOrderType($payload, isset($payload['dining_table_id']));
             $diningTableId = in_array($orderType, [Order::ORDER_TYPE_TAKEAWAY, Order::ORDER_TYPE_DELIVERY], true)
                 ? null
-                : ($payload['dining_table_id'] ?? null);
+                : ($payload['dining_table_id'] ?? $payload['table_server_id'] ?? null);
+            $offlineSale = $this->isOfflineCashierSale($payload);
 
-            [$table, $session] = $this->resolveTableAndSession($workspace->id, $diningTableId);
+            if ($offlineSale) {
+                [$table, $session] = $this->resolveTableWithoutOpeningSession($workspace->id, $diningTableId);
+            } else {
+                [$table, $session] = $this->resolveTableAndSession($workspace->id, $diningTableId);
+            }
             if ($table) {
                 $orderType = Order::ORDER_TYPE_TABLE;
             }
@@ -67,8 +72,11 @@ class PosOrderService
                 'payment_method' => 'cashier',
                 'order_type' => $orderType,
             ];
+            if ($offlineSale) {
+                $metadata['offline_sale'] = true;
+            }
 
-            if ($table && $session) {
+            if ($table && $session && ! $offlineSale) {
                 $order = $this->mergeOrCreateSessionOrder(
                     workspace: $workspace,
                     table: $table,
@@ -1301,6 +1309,41 @@ class PosOrderService
         $session = $this->ensureOpenSession($table);
 
         return [$table, $session];
+    }
+
+    /**
+     * Offline cashier invoices must not open or merge a live table session.
+     * The sale already has a local invoice; attach dining_table_id only.
+     *
+     * @return array{0: ?DiningTable, 1: null}
+     */
+    private function resolveTableWithoutOpeningSession(int $workspaceId, mixed $diningTableId): array
+    {
+        if (empty($diningTableId)) {
+            return [null, null];
+        }
+
+        $table = DiningTable::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceId)
+            ->whereKey((int) $diningTableId)
+            ->first();
+        if (! $table) {
+            throw new RuntimeException('الطاولة المحددة غير صالحة.');
+        }
+
+        return [$table, null];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function isOfflineCashierSale(array $payload): bool
+    {
+        if (array_key_exists('offline_sale', $payload)) {
+            return filter_var($payload['offline_sale'], FILTER_VALIDATE_BOOLEAN);
+        }
+
+        return false;
     }
 
     /**
