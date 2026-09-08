@@ -29,6 +29,7 @@ class AuthSession {
     this.entitlements,
     this.isLocalMode = false,
     this.isCloudSetup = false,
+    this.needsLocalUnlockPin = false,
   });
 
   final String token;
@@ -40,6 +41,7 @@ class AuthSession {
   final Map<String, dynamic>? entitlements;
   final bool isLocalMode;
   final bool isCloudSetup;
+  final bool needsLocalUnlockPin;
 
   String get userName => (user['name'] as String?) ?? '';
 
@@ -427,51 +429,9 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
       final session = await _ref
           .read(authRepositoryProvider)
           .login(emailOrPhone: emailOrPhone, password: password);
-      _ref.read(authTokenProvider.notifier).state = session.token;
-      final deviceId = await _ref
-          .read(deviceIdentityProvider)
-          .getOrCreateDeviceId();
-      _ref.read(deviceIdHeaderProvider.notifier).state = deviceId;
-      final loginWorkspaceId = _asInt(session.workspace?['id']);
-      if (loginWorkspaceId != null) {
-        _ref.read(workspaceIdProvider.notifier).state = loginWorkspaceId;
-      }
-
-      var workspaces = session.workspaces;
-      workspaces = await _ref.read(cashierCloudLinkServiceProvider).loadWorkspaces();
-      if (workspaces.isEmpty) {
-        workspaces = session.workspaces;
-      }
-
-      final posWorkspaces = CashierCloudLinkService.posEnabledWorkspaces(
-        workspaces,
-      );
-      if (posWorkspaces.isEmpty) {
-        await _clearCloudSetupSession();
-        throw ApiException(
-          'الكاشير غير متاح في باقتك الحالية',
-          statusCode: 403,
-        );
-      }
-
       _pendingHasimPassword = password;
       _pendingHasimLogin = emailOrPhone.trim();
-      final setup = AuthSession(
-        token: session.token,
-        user: session.user,
-        workspace: session.workspace,
-        workspaces: workspaces,
-        permissions: session.permissions,
-        posEnabled: session.posEnabled,
-        entitlements: session.entitlements,
-        isCloudSetup: true,
-      );
-      state = AsyncValue.data(setup);
-
-      if (workspaces.length == 1 && posWorkspaces.length == 1) {
-        await selectWorkspace(posWorkspaces.first);
-      }
-      return;
+      await _beginCloudSetup(session);
     } catch (e, st) {
       _pendingHasimPassword = null;
       _pendingHasimLogin = null;
@@ -486,21 +446,65 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     required String provider,
     required String accessToken,
   }) async {
-    if (AppConfig.offlineOnly) {
-      throw ApiException(
-        'التطبيق أوفلاين بالكامل — استخدم الإيميل وكلمة المرور المحلية.',
-      );
-    }
     try {
       final session = await _ref
           .read(authRepositoryProvider)
           .socialLogin(provider: provider, accessToken: accessToken);
-      await _applySession(session);
+      _pendingHasimPassword = null;
+      _pendingHasimLogin = session.email;
+      await _beginCloudSetup(session);
     } catch (e, st) {
-      if (state.valueOrNull == null) {
-        state = AsyncValue.data(null);
+      _pendingHasimPassword = null;
+      _pendingHasimLogin = null;
+      if (state.valueOrNull?.isLocalMode != true) {
+        await _clearCloudSetupSession();
       }
       Error.throwWithStackTrace(e, st);
+    }
+  }
+
+  Future<void> _beginCloudSetup(AuthSession session) async {
+    _ref.read(authTokenProvider.notifier).state = session.token;
+    final deviceId = await _ref
+        .read(deviceIdentityProvider)
+        .getOrCreateDeviceId();
+    _ref.read(deviceIdHeaderProvider.notifier).state = deviceId;
+    final loginWorkspaceId = _asInt(session.workspace?['id']);
+    if (loginWorkspaceId != null) {
+      _ref.read(workspaceIdProvider.notifier).state = loginWorkspaceId;
+    }
+
+    var workspaces = session.workspaces;
+    workspaces = await _ref.read(cashierCloudLinkServiceProvider).loadWorkspaces();
+    if (workspaces.isEmpty) {
+      workspaces = session.workspaces;
+    }
+
+    final posWorkspaces = CashierCloudLinkService.posEnabledWorkspaces(
+      workspaces,
+    );
+    if (posWorkspaces.isEmpty) {
+      await _clearCloudSetupSession();
+      throw ApiException(
+        'الكاشير غير متاح في باقتك الحالية',
+        statusCode: 403,
+      );
+    }
+
+    final setup = AuthSession(
+      token: session.token,
+      user: session.user,
+      workspace: session.workspace,
+      workspaces: workspaces,
+      permissions: session.permissions,
+      posEnabled: session.posEnabled,
+      entitlements: session.entitlements,
+      isCloudSetup: true,
+    );
+    state = AsyncValue.data(setup);
+
+    if (workspaces.length == 1 && posWorkspaces.length == 1) {
+      await selectWorkspace(posWorkspaces.first);
     }
   }
 
@@ -551,12 +555,20 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     // Offline-only: never enable Laravel connected mode.
     _ref.read(posConnectedModeProvider.notifier).state =
         AppConfig.offlineOnly ? false : store.connectedMode == true;
-    final link = await _ref.read(cloudLinkStoreProvider).read();
+    var link = await _ref.read(cloudLinkStoreProvider).read();
     if (link?.isLinked == true) {
       await auth.updateStore(
         storeId: store.localId as String,
         connectedMode: true,
       );
+      try {
+        await _ref
+            .read(cashierCloudLinkServiceProvider)
+            .ensureCatalogSnapshot(link!);
+        link = await _ref.read(cloudLinkStoreProvider).read();
+      } catch (_) {
+        // PIN login still works offline; Settings can retry the snapshot.
+      }
     }
     await _hydrateCloudLinkSession();
     final catalogWorkspaceId = await CashierCloudLinkService.catalogWorkspaceId(
@@ -669,13 +681,78 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
 
   Future<void> _finishCloudSetup() async {
     await _hydrateCloudLinkSession();
-    final unlocked = await _ensureUnlockUserFromHasim();
+    var unlocked = await _ensureUnlockUserFromHasim();
+    unlocked ??= await _existingUnlockUserForHasimEmail();
+    if (unlocked != null) {
+      _pendingHasimPassword = null;
+      _pendingHasimLogin = null;
+      await _clearCloudSetupSession();
+      await _applyStandaloneUser(unlocked.user, unlocked.store);
+      return;
+    }
+
+    final current = state.valueOrNull;
+    final email = (current != null && current.email.isNotEmpty)
+        ? current.email
+        : (_pendingHasimLogin ?? '');
+    if (current != null && current.token.isNotEmpty && email.trim().isNotEmpty) {
+      state = AsyncValue.data(
+        AuthSession(
+          token: current.token,
+          user: current.user,
+          workspace: current.workspace,
+          workspaces: current.workspaces,
+          permissions: current.permissions,
+          posEnabled: current.posEnabled,
+          entitlements: current.entitlements,
+          isCloudSetup: true,
+          needsLocalUnlockPin: true,
+        ),
+      );
+      return;
+    }
+
     _pendingHasimPassword = null;
     _pendingHasimLogin = null;
     await _clearCloudSetupSession();
-    if (unlocked != null) {
-      await _applyStandaloneUser(unlocked.user, unlocked.store);
+  }
+
+  Future<void> completeLocalUnlockPin(String pin) async {
+    final current = state.valueOrNull;
+    if (current == null ||
+        !current.isCloudSetup ||
+        !current.needsLocalUnlockPin) {
+      throw ApiException('سجّل الدخول بحساب حاسم أولاً.', statusCode: 401);
     }
+    if (pin.trim().length < 4) {
+      throw ApiException('كلمة المرور المحلية يجب أن تكون 4 أحرف على الأقل.');
+    }
+    _pendingHasimPassword = pin.trim();
+    if ((_pendingHasimLogin ?? '').trim().isEmpty) {
+      _pendingHasimLogin = current.email;
+    }
+    final unlocked = await _ensureUnlockUserFromHasim();
+    if (unlocked == null) {
+      throw ApiException('تعذر إنشاء مستخدم الفتح المحلي.');
+    }
+    _pendingHasimPassword = null;
+    _pendingHasimLogin = null;
+    await _clearCloudSetupSession();
+    await _applyStandaloneUser(unlocked.user, unlocked.store);
+  }
+
+  Future<({LocalStore store, LocalUser user})?> _existingUnlockUserForHasimEmail() async {
+    final session = state.valueOrNull;
+    final email = (session != null && session.email.isNotEmpty)
+        ? session.email
+        : (_pendingHasimLogin ?? '');
+    if (email.trim().isEmpty) return null;
+    final auth = _ref.read(localAuthServiceProvider);
+    final store = await auth.anyStore();
+    if (store == null) return null;
+    final user = await auth.findUserByEmail(store.workspaceId, email);
+    if (user == null) return null;
+    return (store: store, user: user);
   }
 
   Future<({LocalStore store, LocalUser user})?> _ensureUnlockUserFromHasim() async {

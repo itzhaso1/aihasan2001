@@ -64,6 +64,8 @@ void main() {
     expect(find.text('setup-screen'), findsNothing);
     expect(find.text('حساب حاسم / Laravel'), findsOneWidget);
     expect(find.text('ربط الجهاز'), findsOneWidget);
+    expect(find.text('الدخول عبر Google'), findsOneWidget);
+    expect(find.byKey(const ValueKey('hasim-smart-logo')), findsOneWidget);
     expect(find.text('إعداد مستقل بدون حساب حاسم'), findsOneWidget);
 
     await tester.tap(find.text('إعداد مستقل بدون حساب حاسم'));

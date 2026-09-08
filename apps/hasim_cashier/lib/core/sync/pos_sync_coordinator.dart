@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/cashier_api.dart';
 import '../api/cashier_request_auth.dart';
 import '../auth/auth_controller.dart';
+import '../config/app_config.dart';
 import '../local_db/local_db_providers.dart';
 import '../offline/pending_order.dart';
 import '../offline/sync_engine.dart';
@@ -29,8 +30,11 @@ class PosSyncCoordinator {
     if (!allowNetwork) {
       return const SyncFlushResult();
     }
-    // Drain any pre-Phase-6 Hive leftovers once; SQLite is SoT for POS sync.
-    final hive = await _hive.flushPendingOrders(workspaceId: workspaceId);
+    // Hive leftover drain posts `/orders`, which offlineOnly forbids.
+    // SQLite SyncEngineV2 /sync/push is the only POS envelope.
+    final hive = AppConfig.offlineOnly
+        ? const SyncFlushResult()
+        : await _hive.flushPendingOrders(workspaceId: workspaceId);
     if (workspaceId == null || workspaceId <= 0) {
       return hive;
     }
@@ -53,7 +57,9 @@ class PosSyncCoordinator {
     String? deviceId,
   }) async {
     if (!allowNetwork) return false;
-    final hiveOk = await _hive.retryOne(localId, workspaceId: workspaceId);
+    final hiveOk = AppConfig.offlineOnly
+        ? false
+        : await _hive.retryOne(localId, workspaceId: workspaceId);
     if (workspaceId == null || workspaceId <= 0) return hiveOk;
     final sqlite = await _sqlite.syncBidirectional(
       workspaceId: workspaceId,

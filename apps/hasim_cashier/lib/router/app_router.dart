@@ -6,6 +6,8 @@ import '../core/auth/auth_controller.dart';
 import '../core/config/app_config.dart';
 import '../core/theme/hasim_colors.dart';
 import '../core/theme/hasim_theme.dart';
+import '../core/widgets/hasim_brand_logo.dart';
+import '../features/auth/local_unlock_pin_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/pin_login_screen.dart';
 import '../features/auth/pos_blocked_screen.dart';
@@ -34,6 +36,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final kitchen = state.matchedLocation == '/kitchen';
       final reports = state.matchedLocation == '/reports';
       final workspacesRoute = state.matchedLocation == '/workspaces';
+      final localPin = state.matchedLocation == '/local-unlock-pin';
 
       if (auth.isLoading) {
         return splash ? null : '/splash';
@@ -41,6 +44,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       final session = auth.valueOrNull;
       if (session?.isCloudSetup == true) {
+        if (session!.needsLocalUnlockPin) {
+          return localPin ? null : '/local-unlock-pin';
+        }
         if (workspacesRoute || blocked) return null;
         return '/workspaces';
       }
@@ -54,12 +60,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (session == null) {
-        if (loggingIn || pin || setup || kitchen || reports) return null;
+        if (loggingIn || pin || setup || kitchen || reports || localPin) {
+          return null;
+        }
         return '/login';
       }
 
       if (AppConfig.offlineOnly) {
-        if (loggingIn || splash || pin || setup || blocked) {
+        if (loggingIn || splash || pin || setup || blocked || localPin) {
           return session.landingRoute;
         }
         if (state.matchedLocation == '/home' &&
@@ -84,6 +92,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/splash', builder: (_, __) => const _Splash()),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(
+        path: '/local-unlock-pin',
+        builder: (_, __) => const LocalUnlockPinScreen(),
+      ),
       GoRoute(path: '/pin', builder: (_, __) => const PinLoginScreen()),
       GoRoute(
         path: '/standalone-setup',
@@ -136,37 +148,13 @@ class _Splash extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 88,
-                height: 88,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: HasimColors.border),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x1406C2A4),
-                      blurRadius: 24,
-                      offset: Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: const Text(
-                  'ح',
-                  style: TextStyle(
-                    fontSize: 42,
-                    fontWeight: FontWeight.w900,
-                    color: HasimColors.brand,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
+              const HasimBrandLogo(width: 220),
+              const SizedBox(height: 12),
               const Text(
                 'كاشير حاسم',
                 style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
                   color: HasimColors.ink,
                 ),
               ),

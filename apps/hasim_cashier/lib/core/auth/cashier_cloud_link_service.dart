@@ -108,9 +108,8 @@ class CashierCloudLinkService {
       posEnabled: true,
       deviceRegistered: true,
     );
-    await _store.save(snapshot);
-    await _persistLocalDevice(snapshot);
-    await _markExistingStoreConnected();
+    // Snapshot first. Saving the link before a failed catalog download left
+    // the device "linked" on 900001 so sales never entered the push queue.
     final initialSync = _initialSync;
     if (initialSync != null) {
       await initialSync.run(
@@ -118,7 +117,25 @@ class CashierCloudLinkService {
         deviceId: snapshot.deviceId,
       );
     }
+    await _store.save(snapshot);
+    await _persistLocalDevice(snapshot);
+    await _markExistingStoreConnected();
     return snapshot;
+  }
+
+  /// Re-run the catalog snapshot when a previous bind saved a link without it.
+  Future<bool> ensureCatalogSnapshot(CloudLinkSnapshot link) async {
+    final workspaceId = link.workspaceId;
+    if (workspaceId == null ||
+        workspaceId <= 0 ||
+        PosMode.isReservedStandaloneWorkspace(workspaceId)) {
+      return false;
+    }
+    if (await _db.hasInitialSync(workspaceId)) return true;
+    final initialSync = _initialSync;
+    if (initialSync == null) return false;
+    await initialSync.run(workspaceId, deviceId: link.deviceId);
+    return _db.hasInitialSync(workspaceId);
   }
 
   /// PIN sessions stay on the local store; catalog/tables read the Laravel

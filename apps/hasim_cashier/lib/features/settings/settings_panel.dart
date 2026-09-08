@@ -9,6 +9,7 @@ import '../../core/api/cashier_api.dart';
 import '../../core/api/cashier_request_auth.dart';
 import '../../core/audio/menu_sound_service.dart';
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/cashier_cloud_link_service.dart';
 import '../../core/auth/cloud_link_store.dart';
 import '../../core/config/app_config.dart';
 import '../../core/local_db/app_database.dart';
@@ -23,12 +24,15 @@ import '../../core/pos/pos_errors.dart';
 import '../../core/pos/pos_mode.dart';
 import '../../core/printing/printer_service.dart';
 import '../../core/realtime/pos_event_source.dart';
+import '../../core/repositories/sync_queue_repository.dart';
 import '../../core/sync/pos_sync_coordinator.dart';
+import '../../core/sync/sync_now_copy.dart';
 import '../../core/sync/sync_queue_classifier.dart';
 import '../../core/theme/hasim_colors.dart';
 import '../../core/theme/hasim_radius.dart';
 import '../../core/theme/hasim_spacing.dart';
 import '../../core/util/json_numbers.dart';
+import '../../core/widgets/hasim_top_notice.dart';
 import '../../core/widgets/hasim_widgets.dart';
 import '../cart/cart_controller.dart';
 
@@ -50,6 +54,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
   var _failedSync = 0;
   var _unsupportedSync = 0;
   var _waitingParentSync = 0;
+  String? _failedHint;
   final _tax = TextEditingController(text: '0');
   final _currency = TextEditingController(text: 'SAR');
   PrinterProfile? _profile;
@@ -142,10 +147,10 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     var failed = 0;
     var unsupported = 0;
     var waitingParent = 0;
+    String? failedHint;
     if (workspaceId != null && workspaceId > 0) {
-      final counts = await SyncQueueClassifier(
-        ref.read(appDatabaseProvider),
-      ).counts(workspaceId);
+      final classifier = SyncQueueClassifier(ref.read(appDatabaseProvider));
+      final counts = await classifier.counts(workspaceId);
       pending = counts.scopedPending;
       failed = counts.failed;
       unsupported = counts.unsupported +
@@ -153,6 +158,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           counts.blocked +
           counts.alreadyApplied;
       waitingParent = counts.waitingParent;
+      failedHint = await classifier.firstFailedHint(workspaceId);
     }
     if (!mounted) return;
     setState(() {
@@ -160,19 +166,21 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       _failedSync = failed;
       _unsupportedSync = unsupported;
       _waitingParentSync = waitingParent;
+      _failedHint = failedHint;
     });
   }
 
   void _showSyncMessage(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    showHasimTopNotice(context, text);
   }
 
   Future<void> _syncNow() async {
     if (_syncing) return;
     setState(() => _syncing = true);
     try {
-      final cloud = CashierRequestAuth.activeLink(
+      await ref.read(authControllerProvider.notifier).hydrateCloudLinkSession();
+      var cloud = CashierRequestAuth.activeLink(
         ref.read(cloudLinkSessionProvider),
       );
       final sessionToken = ref.read(authControllerProvider).valueOrNull?.token;
@@ -181,6 +189,36 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           'اربط الحساب السحابي أولاً من شاشة الدخول (وضع السحابة)، ثم ادخل بالـ PIN. تشغيل Laravel وحده لا يكفي.',
         );
         return;
+      }
+      if (cloud != null) {
+        try {
+          await ref
+              .read(cashierCloudLinkServiceProvider)
+              .ensureCatalogSnapshot(cloud);
+          await ref
+              .read(authControllerProvider.notifier)
+              .hydrateCloudLinkSession();
+          cloud = CashierRequestAuth.activeLink(
+            ref.read(cloudLinkSessionProvider),
+          );
+          final store = await ref.read(localAuthServiceProvider).anyStore();
+          final catalogId = await CashierCloudLinkService.catalogWorkspaceId(
+            localStoreWorkspaceId:
+                store?.workspaceId ?? PosMode.standaloneWorkspaceId,
+            link: cloud,
+            db: ref.read(appDatabaseProvider),
+          );
+          if (!PosMode.isReservedStandaloneWorkspace(catalogId)) {
+            ref.read(workspaceIdProvider.notifier).state = catalogId;
+          }
+        } catch (e) {
+          _showSyncMessage(
+            e is ApiException
+                ? 'تعذر تحميل كتالوج السحابة: ${e.message}'
+                : 'تعذر تحميل كتالوج السحابة. تحقق من Laravel على ${AppConfig.apiBase}.',
+          );
+          return;
+        }
       }
       final coordinator = ref.read(posSyncCoordinatorProvider);
       if (!coordinator.allowNetwork) {
@@ -209,6 +247,9 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         );
         return;
       }
+      await SyncQueueRepository(
+        ref.read(appDatabaseProvider),
+      ).clearPendingBackoff(workspaceId);
       final result = await coordinator.flushPendingOrders(
         workspaceId: workspaceId,
         deviceId: deviceId,
@@ -218,24 +259,26 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         _showSyncMessage('الخادم رفض التوكن. أعد ربط السحابة من شاشة الدخول.');
         return;
       }
-      if (result.failed > 0) {
-        _showSyncMessage(
-          'فشلت ${result.failed} عملية · نجحت ${result.synced} · في الانتظار ${result.keptPending}.',
-        );
-        return;
-      }
-      if (result.synced > 0) {
-        _showSyncMessage('تمت مزامنة ${result.synced} عملية.');
-        return;
-      }
-      if (result.keptPending > 0) {
-        _showSyncMessage(
-          'ما زال ${result.keptPending} في الانتظار. تحقق من اتصال Laravel على ${AppConfig.apiBase}.',
-        );
-        return;
-      }
+      final classifier = SyncQueueClassifier(ref.read(appDatabaseProvider));
+      final counts = await classifier.counts(workspaceId);
+      final leftovers = counts.unsupported +
+          counts.standalone +
+          counts.blocked +
+          counts.alreadyApplied;
+      final lastError = await classifier.firstReadyLastError(workspaceId) ??
+          await classifier.firstFailedHint(workspaceId);
       _showSyncMessage(
-        'لا توجد فواتير أو تغييرات منيو/طاولات بانتظار المزامنة.',
+        SyncNowCopy.afterFlush(
+          synced: result.synced,
+          failed: result.failed,
+          failedQueued: counts.failed,
+          ready: counts.ready,
+          waitingParent: counts.waitingParent,
+          leftovers: leftovers,
+          authRequired: false,
+          apiBase: AppConfig.apiBase,
+          lastError: lastError,
+        ),
       );
     } catch (e) {
       _showSyncMessage(
@@ -244,6 +287,31 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     } finally {
       if (mounted) setState(() => _syncing = false);
     }
+  }
+
+  Future<void> _retryFailedThenSync() async {
+    if (_syncing) return;
+    final cloud = CashierRequestAuth.activeLink(
+      ref.read(cloudLinkSessionProvider),
+    );
+    final workspaceId = CashierRequestAuth.workspaceId(
+      sessionWorkspaceId: ref.read(workspaceIdProvider),
+      cloud: cloud,
+    );
+    if (workspaceId == null || workspaceId <= 0) {
+      _showSyncMessage('لا توجد مساحة عمل للمزامنة.');
+      return;
+    }
+    final n = await ref
+        .read(syncQueueRepositoryProvider)
+        .requeueInContractFailed(workspaceId);
+    if (n == 0) {
+      _showSyncMessage(
+        'لا يوجد فشل فواتير/منيو/طاولات لإعادة المحاولة. الرقم $_failedSync غالباً جلسات خارج العقد وتبقى محلية.',
+      );
+      return;
+    }
+    await _syncNow();
   }
 
   Future<void> _refreshOpenShift() async {
@@ -261,7 +329,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
   }
 
   Future<void> _refreshUsers() async {
-    final workspaceId = ref.read(workspaceIdProvider);
+    final workspaceId =
+        await ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
     if (workspaceId == null || workspaceId <= 0) return;
     try {
       final users = await ref
@@ -668,7 +737,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       );
       return;
     }
-    final workspaceId = ref.read(workspaceIdProvider);
+    final workspaceId =
+        await ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
     if (workspaceId == null || workspaceId <= 0) return;
     final name = TextEditingController();
     final username = TextEditingController();
@@ -949,6 +1019,13 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           'فشل دائم: $_failedSync · عمليات جلسة/أخرى خارج العقد: $_unsupportedSync',
           style: const TextStyle(fontSize: 12, color: HasimColors.muted),
         ),
+        if (_failedHint != null && _failedHint!.trim().isNotEmpty)
+          _infoBanner(
+            icon: Icons.error_outline,
+            text: 'سبب الفشل: $_failedHint',
+            background: Colors.white,
+            foreground: HasimColors.warning,
+          ),
         if (linked && localWorkspace)
           _infoBanner(
             icon: Icons.info_outline,
@@ -963,6 +1040,12 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           loading: _syncing,
           onPressed: _syncing ? null : _syncNow,
         ),
+        if (_failedSync > 0)
+          HsOutlineButton(
+            label: 'إعادة محاولة الفاشل',
+            icon: Icons.replay,
+            onPressed: _syncing ? null : _retryFailedThenSync,
+          ),
       ],
     );
   }

@@ -48,6 +48,12 @@ class LocalAuthService {
     return (_db.select(_db.localStores)..limit(1)).getSingleOrNull();
   }
 
+  /// PIN users live on the local store partition (900001), not the Laravel id.
+  Future<int?> localUnlockWorkspaceId() async {
+    final store = await anyStore();
+    return store?.workspaceId;
+  }
+
   Future<LocalUser?> findUserByEmail(int workspaceId, String email) async {
     final normalized = email.trim().toLowerCase();
     if (normalized.isEmpty) return null;

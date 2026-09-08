@@ -88,4 +88,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 ], 422);
             }
         });
+
+        $exceptions->render(function (\Laravel\Socialite\Two\InvalidStateException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'تعذر إكمال تسجيل الدخول عبر Google. أعد المحاولة.',
+                ], 401);
+            }
+
+            return redirect()
+                ->route('login')
+                ->withErrors([
+                    'email' => 'تعذر إكمال تسجيل الدخول عبر Google. أعد المحاولة.',
+                ]);
+        });
     })->create();

@@ -277,6 +277,51 @@ class SyncQueueRepository {
       );
     }
   }
+
+  /// Settings → مزامنة الآن retries immediately instead of waiting backoff.
+  Future<int> clearPendingBackoff(int workspaceId) {
+    return (_db.update(_db.syncQueueItems)
+          ..where(
+            (t) =>
+                t.workspaceId.equals(workspaceId) &
+                t.status.isIn(['pending', 'syncing']),
+          ))
+        .write(
+          SyncQueueItemsCompanion(
+            nextAttemptAt: const Value(null),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+  }
+
+  static bool isInContract(SyncQueueItem row) {
+    if (row.entityType == 'customer' && row.operation == 'create') return true;
+    if (row.entityType == 'order' && row.operation == 'create') return true;
+    if (row.entityType == 'invoice' && row.operation == 'create') return true;
+    if (row.entityType == 'category' || row.entityType == 'product') {
+      return row.operation == 'create' ||
+          row.operation == 'update' ||
+          row.operation == 'delete';
+    }
+    if (row.entityType == 'table') {
+      return row.operation == 'create' ||
+          row.operation == 'update' ||
+          row.operation == 'delete';
+    }
+    return false;
+  }
+
+  Future<int> requeueInContractFailed(int workspaceId) async {
+    final rows = await pendingForWorkspace(workspaceId);
+    var n = 0;
+    for (final row in rows) {
+      if (row.status != 'failed') continue;
+      if (!isInContract(row)) continue;
+      await requeueFailed(row.id);
+      n++;
+    }
+    return n;
+  }
 }
 
 class SyncQueueCounts {

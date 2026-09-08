@@ -264,4 +264,58 @@ void main() {
     expect(counts.unsupported, 1);
     expect(counts.scopedPending, 2);
   });
+
+  test('takeaway waiting for a local customer is waitingParent, not Laravel-down',
+      () async {
+    await insertOrder(localId: 'tw-cust');
+    await insertQueue(
+      entityType: 'order',
+      entityId: 'tw-cust',
+      operation: 'create',
+      status: 'pending',
+      payload: {
+        'order_type': 'takeaway',
+        'customer_local_id': 'cust-1',
+        'items': [
+          {'pos_menu_item_id': 9, 'quantity': 1},
+        ],
+      },
+    );
+    final item =
+        (await SyncQueueClassifier(db).classifyWorkspace(workspaceId)).single;
+    expect(item.bucket, SyncQueueBucket.waitingParent);
+    expect(item.reason, contains('العميل'));
+  });
+
+  test('invoice waiting on a failed order names the parent error', () async {
+    await insertOrder(localId: 'tw-fail');
+    await insertInvoice(localId: 'inv-fail', orderLocalId: 'tw-fail');
+    await insertQueue(
+      entityType: 'order',
+      entityId: 'tw-fail',
+      operation: 'create',
+      status: 'failed',
+      lastError: 'صنف غير موجود على Laravel',
+      payload: {
+        'order_type': 'takeaway',
+        'items': [
+          {'pos_menu_item_id': 9, 'quantity': 1},
+        ],
+      },
+    );
+    await insertQueue(
+      entityType: 'invoice',
+      entityId: 'inv-fail',
+      operation: 'create',
+      status: 'pending',
+      payload: {
+        'order_type': 'takeaway',
+        'order_local_id': 'tw-fail',
+      },
+    );
+    final items = await SyncQueueClassifier(db).classifyWorkspace(workspaceId);
+    final invoice = items.firstWhere((i) => i.row.entityType == 'invoice');
+    expect(invoice.bucket, SyncQueueBucket.waitingParent);
+    expect(invoice.reason, contains('صنف غير موجود'));
+  });
 }
