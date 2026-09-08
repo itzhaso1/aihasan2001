@@ -751,6 +751,8 @@ class _PosChrome extends ConsumerWidget {
     );
     final items = <(_PosSection, String, IconData)>[
       (_PosSection.cashier, 'الكاشير', Icons.point_of_sale_outlined),
+      if (CashierPermissions.canViewTables(perms))
+        (_PosSection.tables, 'الطاولات', Icons.table_restaurant_outlined),
       (_PosSection.menu, 'طلبات المنيو', Icons.restaurant_menu_outlined),
       (_PosSection.orders, 'الطلبات', Icons.receipt_long_outlined),
       if (CashierPermissions.canViewInvoices(perms))

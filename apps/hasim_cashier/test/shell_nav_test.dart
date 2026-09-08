@@ -269,6 +269,7 @@ void main() {
 
     expect(find.byType(HsNavPill), findsWidgets);
     expect(find.text('الكاشير'), findsOneWidget);
+    expect(find.text('الطاولات'), findsOneWidget);
     expect(find.text('الفواتير'), findsOneWidget);
     expect(find.text('إدارة المستخدمين'), findsOneWidget);
     expect(find.text('التصنيفات'), findsWidgets);
@@ -276,7 +277,6 @@ void main() {
     expect(find.text('الإعدادات'), findsOneWidget);
     expect(find.text('المطبخ'), findsNothing);
     expect(find.text('العملاء'), findsNothing);
-    expect(find.text('الطاولات'), findsNothing);
 
     await tapNav(tester, 'الفواتير');
     expect(find.byType(InvoicesList), findsOneWidget);
