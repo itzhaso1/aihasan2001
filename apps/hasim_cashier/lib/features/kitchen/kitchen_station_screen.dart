@@ -21,8 +21,11 @@ class KitchenStationScreen extends ConsumerWidget {
       }),
     );
     final canUsePos = ref.watch(
+      authControllerProvider.select((s) => s.valueOrNull?.canUsePos == true),
+    );
+    final canViewReports = ref.watch(
       authControllerProvider.select(
-        (s) => s.valueOrNull?.canUsePos == true,
+        (s) => s.valueOrNull?.canViewReports == true,
       ),
     );
 
@@ -48,15 +51,13 @@ class KitchenStationScreen extends ConsumerWidget {
           ],
         ),
         actions: [
-          HsTextAction(
-            label: 'التقارير',
-            onTap: () => context.go('/reports'),
-          ),
-          if (canUsePos)
+          if (canViewReports)
             HsTextAction(
-              label: 'الكاشير',
-              onTap: () => context.go('/home'),
+              label: 'التقارير',
+              onTap: () => context.go('/reports'),
             ),
+          if (canUsePos)
+            HsTextAction(label: 'الكاشير', onTap: () => context.go('/home')),
           HsTextAction(
             label: 'خروج',
             icon: Icons.logout,

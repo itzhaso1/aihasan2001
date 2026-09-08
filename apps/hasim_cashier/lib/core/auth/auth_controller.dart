@@ -241,6 +241,10 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     _bootstrap();
   }
 
+  /// Test helper: skip restore so widget tests can pin a session.
+  AuthController.ready(this._ref, AuthSession? session)
+    : super(AsyncValue.data(session));
+
   final Ref _ref;
   String? _pendingHasimPassword;
   String? _pendingHasimLogin;
@@ -475,7 +479,9 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     }
 
     var workspaces = session.workspaces;
-    workspaces = await _ref.read(cashierCloudLinkServiceProvider).loadWorkspaces();
+    workspaces = await _ref
+        .read(cashierCloudLinkServiceProvider)
+        .loadWorkspaces();
     if (workspaces.isEmpty) {
       workspaces = session.workspaces;
     }
@@ -485,10 +491,7 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     );
     if (posWorkspaces.isEmpty) {
       await _clearCloudSetupSession();
-      throw ApiException(
-        'الكاشير غير متاح في باقتك الحالية',
-        statusCode: 403,
-      );
+      throw ApiException('الكاشير غير متاح في باقتك الحالية', statusCode: 403);
     }
 
     final setup = AuthSession(
@@ -506,24 +509,6 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     if (workspaces.length == 1 && posWorkspaces.length == 1) {
       await selectWorkspace(posWorkspaces.first);
     }
-  }
-
-  Future<void> bootstrapStandaloneStore({
-    required String storeName,
-    required String adminName,
-    required String username,
-    required String pin,
-    double taxRate = 0,
-  }) async {
-    final auth = _ref.read(localAuthServiceProvider);
-    final created = await auth.bootstrapStore(
-      storeName: storeName,
-      adminName: adminName,
-      username: username,
-      pin: pin,
-      taxRate: taxRate,
-    );
-    await _applyStandaloneUser(created.user, created.store);
   }
 
   Future<void> loginStandalonePin({
@@ -553,8 +538,9 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
         user.localId as String;
     _ref.read(currentStoreIdProvider.notifier).state = store.localId as String;
     // Offline-only: never enable Laravel connected mode.
-    _ref.read(posConnectedModeProvider.notifier).state =
-        AppConfig.offlineOnly ? false : store.connectedMode == true;
+    _ref.read(posConnectedModeProvider.notifier).state = AppConfig.offlineOnly
+        ? false
+        : store.connectedMode == true;
     var link = await _ref.read(cloudLinkStoreProvider).read();
     if (link?.isLinked == true) {
       await auth.updateStore(
@@ -613,7 +599,9 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
 
   Future<String> forgotPassword(String email) {
     if (AppConfig.offlineOnly) {
-      throw ApiException('إعادة تعيين كلمة المرور غير متاحة في الوضع الأوفلاين.');
+      throw ApiException(
+        'إعادة تعيين كلمة المرور غير متاحة في الوضع الأوفلاين.',
+      );
     }
     return _ref.read(authRepositoryProvider).forgotPassword(email);
   }
@@ -625,7 +613,9 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     required String passwordConfirmation,
   }) {
     if (AppConfig.offlineOnly) {
-      throw ApiException('إعادة تعيين كلمة المرور غير متاحة في الوضع الأوفلاين.');
+      throw ApiException(
+        'إعادة تعيين كلمة المرور غير متاحة في الوضع الأوفلاين.',
+      );
     }
     return _ref
         .read(authRepositoryProvider)
@@ -651,10 +641,7 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
       'مساحة العمل غير متاحة.',
     );
     if (!CashierCloudLinkService.isPosEnabled(workspace)) {
-      throw ApiException(
-        'الكاشير غير متاح في باقتك الحالية',
-        statusCode: 403,
-      );
+      throw ApiException('الكاشير غير متاح في باقتك الحالية', statusCode: 403);
     }
 
     _ref.read(workspaceIdProvider.notifier).state = id;
@@ -695,7 +682,9 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     final email = (current != null && current.email.isNotEmpty)
         ? current.email
         : (_pendingHasimLogin ?? '');
-    if (current != null && current.token.isNotEmpty && email.trim().isNotEmpty) {
+    if (current != null &&
+        current.token.isNotEmpty &&
+        email.trim().isNotEmpty) {
       state = AsyncValue.data(
         AuthSession(
           token: current.token,
@@ -741,7 +730,8 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     await _applyStandaloneUser(unlocked.user, unlocked.store);
   }
 
-  Future<({LocalStore store, LocalUser user})?> _existingUnlockUserForHasimEmail() async {
+  Future<({LocalStore store, LocalUser user})?>
+  _existingUnlockUserForHasimEmail() async {
     final session = state.valueOrNull;
     final email = (session != null && session.email.isNotEmpty)
         ? session.email
@@ -755,7 +745,8 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     return (store: store, user: user);
   }
 
-  Future<({LocalStore store, LocalUser user})?> _ensureUnlockUserFromHasim() async {
+  Future<({LocalStore store, LocalUser user})?>
+  _ensureUnlockUserFromHasim() async {
     final password = _pendingHasimPassword;
     final session = state.valueOrNull;
     final email = (session != null && session.email.isNotEmpty)
@@ -765,7 +756,9 @@ class AuthController extends StateNotifier<AsyncValue<AuthSession?>> {
     final display = session?.userName.trim() ?? '';
     final storeName = '${session?.workspace?['name'] ?? ''}'.trim();
     try {
-      return await _ref.read(localAuthServiceProvider).bootstrapUnlockUserFromHasim(
+      return await _ref
+          .read(localAuthServiceProvider)
+          .bootstrapUnlockUserFromHasim(
             email: email,
             displayName: display.isEmpty ? email : display,
             password: password,

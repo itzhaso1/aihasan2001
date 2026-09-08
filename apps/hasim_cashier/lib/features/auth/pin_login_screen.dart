@@ -78,9 +78,7 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
                       controller: _username,
                       keyboardType: TextInputType.emailAddress,
                       autofillHints: const [AutofillHints.email],
-                      decoration: const InputDecoration(
-                        labelText: 'الإيميل',
-                      ),
+                      decoration: const InputDecoration(labelText: 'الإيميل'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -115,12 +113,6 @@ class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
                               )
                             : const Text('دخول'),
                       ),
-                    ),
-                    TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => context.push('/standalone-setup'),
-                      child: const Text('إعداد متجر جديد على هذا الجهاز'),
                     ),
                   ],
                 ),

@@ -11,7 +11,6 @@ import '../features/auth/local_unlock_pin_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/pin_login_screen.dart';
 import '../features/auth/pos_blocked_screen.dart';
-import '../features/auth/standalone_setup_screen.dart';
 import '../features/auth/workspace_picker_screen.dart';
 import '../features/home/shell_screen.dart';
 import '../features/kitchen/kitchen_station_screen.dart';
@@ -38,6 +37,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final workspacesRoute = state.matchedLocation == '/workspaces';
       final localPin = state.matchedLocation == '/local-unlock-pin';
 
+      if (setup) return loggingIn ? null : '/login';
+
       if (auth.isLoading) {
         return splash ? null : '/splash';
       }
@@ -53,26 +54,30 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Offline-only: cloud auth routes are dead ends except during setup.
       if (AppConfig.offlineOnly) {
-        final cloud = state.matchedLocation == '/forgot-password' ||
+        final cloud =
+            state.matchedLocation == '/forgot-password' ||
             state.matchedLocation == '/reset-password' ||
             workspacesRoute;
         if (cloud) return '/login';
       }
 
       if (session == null) {
-        if (loggingIn || pin || setup || kitchen || reports || localPin) {
+        if (loggingIn || pin || kitchen || reports || localPin) {
           return null;
         }
         return '/login';
       }
 
       if (AppConfig.offlineOnly) {
-        if (loggingIn || splash || pin || setup || blocked || localPin) {
+        if (loggingIn || splash || pin || blocked || localPin) {
           return session.landingRoute;
         }
         if (state.matchedLocation == '/home' &&
             !session.canUsePos &&
             session.landingRoute != '/home') {
+          return session.landingRoute;
+        }
+        if (reports && !session.canViewReports) {
           return session.landingRoute;
         }
         return null;
@@ -84,8 +89,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return workspacesRoute ? null : '/workspaces';
       }
 
-      if (loggingIn || splash || pin || setup) {
+      if (loggingIn || splash || pin) {
         return '/home';
+      }
+      if (reports && !session.canViewReports) {
+        return session.landingRoute;
       }
       return null;
     },
@@ -97,10 +105,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const LocalUnlockPinScreen(),
       ),
       GoRoute(path: '/pin', builder: (_, __) => const PinLoginScreen()),
-      GoRoute(
-        path: '/standalone-setup',
-        builder: (_, __) => const StandaloneSetupScreen(),
-      ),
+      GoRoute(path: '/standalone-setup', redirect: (_, __) => '/login'),
       GoRoute(
         path: '/workspaces',
         builder: (_, __) => const WorkspacePickerScreen(),

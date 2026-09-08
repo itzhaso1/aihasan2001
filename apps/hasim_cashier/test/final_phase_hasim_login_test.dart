@@ -66,11 +66,9 @@ void main() {
     expect(find.text('ربط الجهاز'), findsOneWidget);
     expect(find.text('الدخول عبر Google'), findsOneWidget);
     expect(find.byKey(const ValueKey('hasim-smart-logo')), findsOneWidget);
-    expect(find.text('إعداد مستقل بدون حساب حاسم'), findsOneWidget);
-
-    await tester.tap(find.text('إعداد مستقل بدون حساب حاسم'));
-    await tester.pumpAndSettle();
-    expect(find.text('setup-screen'), findsOneWidget);
+    expect(find.text('إعداد مستقل بدون حساب حاسم'), findsNothing);
+    expect(find.text('العودة لتسجيل الدخول المحلي'), findsNothing);
+    expect(find.text('دخول الكاشير'), findsNothing);
   });
 
   test('Hasim bind creates a local unlock user without a third identity table', () async {
