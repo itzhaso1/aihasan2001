@@ -371,7 +371,9 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
             );
             return;
           }
-          await ref.read(catalogAdminServiceProvider).updateCategory(
+          await ref
+              .read(catalogAdminServiceProvider)
+              .updateCategory(
                 workspaceId: workspaceId,
                 localId: localId,
                 name: payload['name'] as String,
@@ -424,7 +426,9 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
       final workspaceId = ref.read(workspaceIdProvider);
       final localId = '${category['local_id'] ?? ''}';
       if (workspaceId != null && localId.isNotEmpty) {
-        await ref.read(catalogAdminServiceProvider).deleteCategory(
+        await ref
+            .read(catalogAdminServiceProvider)
+            .deleteCategory(
               workspaceId: workspaceId,
               localId: localId,
               permissions: session?.permissions ?? _perms,
@@ -434,9 +438,7 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تعذر تحديد التصنيف المحلي للحذف.'),
-        ),
+        const SnackBar(content: Text('تعذر تحديد التصنيف المحلي للحذف.')),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -445,9 +447,7 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
       ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
@@ -477,23 +477,14 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'إدارة الأصناف',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-                ),
-              ),
-            ],
+          HsPageHeader(
+            icon: Icons.category_outlined,
+            title: 'التصنيفات',
+            subtitle: canManage
+                ? 'إدارة التصنيفات والمنتجات المعروضة في الكاشير.'
+                : 'عرض فقط — تحتاج صلاحية menu.manage للتعديل.',
           ),
-          if (!canManage) ...[
-            const SizedBox(height: 8),
-            const Text(
-              'عرض فقط — تحتاج صلاحية menu.manage للتعديل.',
-              style: TextStyle(fontSize: 12, color: HasimColors.muted),
-            ),
-          ] else ...[
+          if (canManage) ...[
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,

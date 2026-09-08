@@ -36,9 +36,10 @@ abstract final class HasimTheme {
         titleTextStyle: text.titleMedium,
       ),
       cardTheme: CardThemeData(
-        color: HasimColors.surface,
+        color: HasimColors.card,
         elevation: 0,
         margin: EdgeInsets.zero,
+        shadowColor: const Color(0x140F172A),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(HasimRadius.lg),
           side: const BorderSide(color: HasimColors.border),
@@ -47,8 +48,11 @@ abstract final class HasimTheme {
       dividerColor: HasimColors.border,
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: HasimColors.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        fillColor: HasimColors.surfaceSoft,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(HasimRadius.md),
           borderSide: const BorderSide(color: HasimColors.border),
@@ -68,7 +72,7 @@ abstract final class HasimTheme {
           backgroundColor: HasimColors.cta,
           foregroundColor: Colors.white,
           disabledBackgroundColor: HasimColors.cta.withValues(alpha: 0.45),
-          minimumSize: const Size.fromHeight(44),
+          minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(HasimRadius.sm),
           ),
@@ -79,7 +83,7 @@ abstract final class HasimTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: HasimColors.ctaDark,
           side: const BorderSide(color: HasimColors.cta),
-          minimumSize: const Size.fromHeight(44),
+          minimumSize: const Size.fromHeight(48),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(HasimRadius.sm),
           ),

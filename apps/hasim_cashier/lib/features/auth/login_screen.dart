@@ -165,14 +165,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [HasimColors.brandSoft, Color(0xFFF8FAFC), Colors.white],
-          ),
-        ),
+      body: ColoredBox(
+        color: HasimColors.page,
         child: SafeArea(
           child: Center(
             child: ConstrainedBox(

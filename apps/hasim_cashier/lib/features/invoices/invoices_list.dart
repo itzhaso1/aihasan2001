@@ -415,18 +415,11 @@ class _InvoicesListState extends ConsumerState<InvoicesList> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'فواتير الكاشير',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 2),
-          const Text(
-            'هذه فواتير مكتملة (مدفوعة). اضغط على الفاتورة لفتحها وطباعتها — ليس من الإعدادات.',
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12, color: HasimColors.muted),
+          HsPageHeader(
+            icon: Icons.description_outlined,
+            title: 'فواتير الكاشير',
+            subtitle:
+                'هذه فواتير مكتملة (مدفوعة). اضغط على الفاتورة لفتحها وطباعتها — ليس من الإعدادات.',
           ),
           const SizedBox(height: 10),
           Wrap(

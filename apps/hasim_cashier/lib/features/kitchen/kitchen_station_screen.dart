@@ -30,7 +30,7 @@ class KitchenStationScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: HasimColors.page,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         title: Column(
