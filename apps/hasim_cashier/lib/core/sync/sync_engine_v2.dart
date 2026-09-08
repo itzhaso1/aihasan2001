@@ -130,6 +130,18 @@ class SyncEngineV2 {
         cursor: pull.cursor,
         pullFailed: pull.pullFailed,
       );
+    } on ApiException catch (e) {
+      // Keep pending local ops + existing cursor intact.
+      return SyncEngineV2Result(
+        synced: push.synced,
+        failed: push.failed,
+        keptPending: push.keptPending,
+        authRequired: push.authRequired || e.isUnauthorized,
+        skippedInFlight: push.skippedInFlight,
+        pullFailed: true,
+        networkError: e.isNetwork || e.isUnavailable,
+        pullError: e.message,
+      );
     } catch (e) {
       // Keep pending local ops + existing cursor intact.
       return SyncEngineV2Result(
@@ -1820,6 +1832,7 @@ class SyncEngineV2Result {
     this.pulled = 0,
     this.cursor,
     this.pullFailed = false,
+    this.networkError = false,
     this.pullError,
   });
 
@@ -1831,5 +1844,6 @@ class SyncEngineV2Result {
   final int pulled;
   final int? cursor;
   final bool pullFailed;
+  final bool networkError;
   final String? pullError;
 }

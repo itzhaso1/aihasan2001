@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import 'core/config/app_config.dart';
 import 'core/offline/offline_store.dart';
+import 'core/sync/auto_sync_host.dart';
 import 'core/theme/hasim_theme.dart';
 import 'router/app_router.dart';
 
@@ -35,8 +36,10 @@ class HasimCashierApp extends ConsumerWidget {
       // POS terminal: skip the accessibility tree. Flutter 3.35 debug builds
       // can cascade `!semantics.parentDataDirty` around modal/dropdown routes.
       // Always keep a sized fallback — never SizedBox.shrink().
-      builder: (context, child) => ExcludeSemantics(
-        child: child ?? const SizedBox.expand(),
+      builder: (context, child) => AutoSyncHost(
+        child: ExcludeSemantics(
+          child: child ?? const SizedBox.expand(),
+        ),
       ),
       routerConfig: router,
     );

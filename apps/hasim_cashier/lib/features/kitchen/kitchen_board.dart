@@ -7,6 +7,8 @@ import '../../core/api/cashier_api.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/pos/application/pos_providers.dart';
 import '../../core/pos/pos_labels.dart';
+import '../../core/sync/auto_sync_controller.dart';
+import '../../core/sync/kitchen_sync_copy.dart';
 import '../../core/theme/hasim_colors.dart';
 import '../../core/theme/hasim_radius.dart';
 import '../../core/util/json_numbers.dart';
@@ -22,8 +24,10 @@ class KitchenBoard extends ConsumerStatefulWidget {
 
 class _KitchenBoardState extends ConsumerState<KitchenBoard> {
   StreamSubscription<List<Map<String, dynamic>>>? _sub;
+  Timer? _statusClock;
   List<Map<String, dynamic>> _orders = const [];
   var _loading = true;
+  var _manualBusy = false;
   String? _error;
   int? _workspaceId;
 
@@ -47,8 +51,52 @@ class _KitchenBoardState extends ConsumerState<KitchenBoard> {
 
   @override
   void dispose() {
+    _statusClock?.cancel();
     _sub?.cancel();
     super.dispose();
+  }
+
+  void _syncStatusClock(DateTime? lastSuccessAt) {
+    if (lastSuccessAt == null) {
+      _statusClock?.cancel();
+      _statusClock = null;
+      return;
+    }
+    if (_statusClock != null) return;
+    _statusClock = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _syncNow() async {
+    if (_manualBusy) return;
+    setState(() => _manualBusy = true);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(content: Text(KitchenSyncCopy.syncing)),
+      );
+    try {
+      final result = await ref
+          .read(autoSyncStatusProvider.notifier)
+          .runCycle(manual: true);
+      if (!mounted) return;
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(result.kitchenMessage)),
+        );
+    } catch (_) {
+      if (!mounted) return;
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text(KitchenSyncCopy.offline)),
+        );
+    } finally {
+      if (mounted) setState(() => _manualBusy = false);
+    }
   }
 
   Future<void> _bind() async {
@@ -120,11 +168,14 @@ class _KitchenBoardState extends ConsumerState<KitchenBoard> {
 
   @override
   Widget build(BuildContext context) {
+    final syncStatus = ref.watch(autoSyncStatusProvider);
+    _syncStatusClock(syncStatus.lastSuccessAt);
+
+    final Widget body;
     if (_loading && _orders.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null && _orders.isEmpty) {
-      return Padding(
+      body = const Center(child: CircularProgressIndicator());
+    } else if (_error != null && _orders.isEmpty) {
+      body = Padding(
         padding: const EdgeInsets.all(16),
         child: HsEmpty(
           title: 'تعذر تحميل المطبخ',
@@ -133,63 +184,97 @@ class _KitchenBoardState extends ConsumerState<KitchenBoard> {
           onAction: _bind,
         ),
       );
+    } else if (_orders.isEmpty) {
+      body = const Padding(
+        padding: EdgeInsets.all(16),
+        child: HsEmpty(title: 'لا توجد طلبات تجهيز حالياً.'),
+      );
+    } else {
+      body = RefreshIndicator(
+        onRefresh: _bind,
+        child: ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: (_orders.length / 2).ceil(),
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          itemBuilder: (context, row) {
+            final left = _orders[row * 2];
+            final rightIndex = row * 2 + 1;
+            final hasRight = rightIndex < _orders.length;
+            return IntrinsicHeight(
+              child: Row(
+                key: ValueKey('kitchen-row-$row'),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: _ticketCard(left)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: hasRight
+                        ? _ticketCard(_orders[rightIndex])
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'طلبات التجهيز',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
               ),
-              SizedBox(height: 4),
-              Text(
+              const SizedBox(height: 4),
+              const Text(
                 'الطاولات والطلبات الخارجية والتوصيل تظهر هنا للشيف فقط.',
                 style: TextStyle(fontSize: 12, color: HasimColors.muted),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: HsBadge(
+                        label: syncStatus.label(DateTime.now()),
+                        background: syncStatus.syncing
+                            ? HasimColors.brandSoft
+                            : (!syncStatus.eligible || !syncStatus.online)
+                                ? HasimColors.warningSoft
+                                : HasimColors.ctaSoft,
+                        foreground: syncStatus.syncing
+                            ? HasimColors.brandDark
+                            : (!syncStatus.eligible || !syncStatus.online)
+                                ? HasimColors.warning
+                                : HasimColors.cta,
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 40,
+                    child: HsPrimaryButton(
+                      key: const ValueKey('kitchen-sync-now'),
+                      label: KitchenSyncCopy.button,
+                      loading: _manualBusy,
+                      onPressed: _manualBusy
+                          ? null
+                          : () => unawaited(_syncNow()),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
-        Expanded(
-          child: _orders.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: HsEmpty(title: 'لا توجد طلبات تجهيز حالياً.'),
-                )
-              : RefreshIndicator(
-                  onRefresh: _bind,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: (_orders.length / 2).ceil(),
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, row) {
-                      final left = _orders[row * 2];
-                      final rightIndex = row * 2 + 1;
-                      final hasRight = rightIndex < _orders.length;
-                      return IntrinsicHeight(
-                        child: Row(
-                          key: ValueKey('kitchen-row-$row'),
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(child: _ticketCard(left)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: hasRight
-                                  ? _ticketCard(_orders[rightIndex])
-                                  : const SizedBox.shrink(),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-        ),
+        Expanded(child: body),
       ],
     );
   }

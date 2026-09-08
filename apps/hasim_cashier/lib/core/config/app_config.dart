@@ -41,4 +41,11 @@ class AppConfig {
   static const menuPollSeconds = 5;
   static const tablesPollSeconds = 5;
   static const kitchenPollSeconds = 8;
+
+  /// Background push+pull interval while the app is foregrounded and the
+  /// workspace is cloud-linked. Polling only — not WebSocket.
+  static const autoSyncSeconds = 5;
+
+  /// Widget tests can disable the periodic timer so [pumpAndSettle] does not hang.
+  static bool autoSyncEnabled = true;
 }

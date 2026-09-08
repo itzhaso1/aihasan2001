@@ -143,6 +143,8 @@ void main() {
     expect(AppConfig.menuPollSeconds >= 5, isTrue);
     expect(AppConfig.tablesPollSeconds >= 5, isTrue);
     expect(AppConfig.kitchenPollSeconds >= 5, isTrue);
+    expect(AppConfig.autoSyncSeconds, 5);
+    expect(AppConfig.autoSyncSeconds >= 5, isTrue);
   });
 
   test('hourly sales prefer sales_total over total_sales', () {
