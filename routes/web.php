@@ -215,10 +215,14 @@ Route::middleware(['guest'])->group(function (): void {
     Route::get('/auth/{provider}/redirect', [SocialLoginController::class, 'redirect'])
         ->whereIn('provider', ['google', 'facebook'])
         ->name('social.redirect');
-    Route::get('/auth/{provider}/callback', [SocialLoginController::class, 'callback'])
-        ->whereIn('provider', ['google', 'facebook'])
-        ->name('social.callback');
 });
+
+// Cashier desktop Google login reuses this callback with state=ticket.
+// Keep it outside `guest` so a website session in the same browser cannot
+// swallow the OAuth code before the cashier ticket is marked ready.
+Route::get('/auth/{provider}/callback', [SocialLoginController::class, 'callback'])
+    ->whereIn('provider', ['google', 'facebook'])
+    ->name('social.callback');
 
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/dashboard', fn () => redirect()->route('workspace.subscriptions.index'))->name('dashboard');

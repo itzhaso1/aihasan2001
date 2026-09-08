@@ -11,6 +11,8 @@ class CashierNetworkPolicy {
   static const cloudSetupPaths = <String>{
     '/auth/login',
     '/auth/social',
+    '/auth/google/start',
+    '/auth/google/status',
     '/auth/logout',
     '/auth/me',
     '/workspaces',

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\AuthIdentity;
 use App\Models\User;
+use App\Services\Cashier\CashierGoogleBrowserLogin;
 use App\Services\Workspace\WorkspaceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -15,6 +16,7 @@ class SocialLoginController extends Controller
 {
     public function __construct(
         private readonly WorkspaceService $workspaceService,
+        private readonly CashierGoogleBrowserLogin $cashierGoogleBrowserLogin,
     ) {}
 
     public function redirect(string $provider)
@@ -27,6 +29,15 @@ class SocialLoginController extends Controller
     public function callback(string $provider)
     {
         abort_unless(in_array($provider, ['google', 'facebook'], true), 404);
+
+        $state = trim((string) request()->query('state', ''));
+        if ($provider === 'google' && $this->cashierGoogleBrowserLogin->isCashierTicket($state)) {
+            return $this->cashierGoogleBrowserLogin->complete($provider, $state);
+        }
+
+        if (Auth::check()) {
+            return redirect()->route('workspace.choose');
+        }
 
         $socialUser = Socialite::driver($provider)->user();
 

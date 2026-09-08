@@ -29,6 +29,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   var _busy = false;
   var _cloudMode = true;
   var _linked = false;
+  var _googleWaiting = false;
   String? _error;
 
   @override
@@ -114,10 +115,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _google() async {
     setState(() {
       _busy = true;
+      _googleWaiting = true;
       _error = null;
     });
     try {
-      final accessToken = await GoogleAccessTokenClient().obtainAccessToken();
+      final accessToken = await GoogleAccessTokenClient(
+            ref.read(cashierApiProvider),
+          ).obtainAccessToken();
       await ref.read(authControllerProvider.notifier).socialLogin(
             provider: 'google',
             accessToken: accessToken,
@@ -138,7 +142,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 : e.toString();
       });
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _googleWaiting = false;
+        });
+      }
     }
   }
 
@@ -321,9 +330,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                                 onPressed: _busy ? null : _google,
                                 icon: const Icon(Icons.g_mobiledata_rounded),
-                                label: const Text('الدخول عبر Google'),
+                                label: Text(
+                                  _googleWaiting
+                                      ? 'بانتظار Google…'
+                                      : 'الدخول عبر Google',
+                                ),
                               ),
                             ),
+                            if (_googleWaiting) ...[
+                              const SizedBox(height: 10),
+                              Text(
+                                'افتح نافذة المتصفح وأكمل حساب Google، ثم ارجع إلى الكاشير. لا تغلق التطبيق. بعد النجاح قد تُطلب كلمة مرور محلية للجهاز.',
+                                style: Theme.of(context).textTheme.bodySmall,
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ],
                           if (!_cloudMode) ...[
                             const SizedBox(height: 10),

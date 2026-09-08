@@ -25,6 +25,7 @@ import '../../core/pos/pos_mode.dart';
 import '../../core/printing/printer_service.dart';
 import '../../core/realtime/pos_event_source.dart';
 import '../../core/sync/pos_sync_coordinator.dart';
+import '../../core/sync/sync_now_copy.dart';
 import '../../core/sync/sync_queue_classifier.dart';
 import '../../core/theme/hasim_colors.dart';
 import '../../core/theme/hasim_radius.dart';
@@ -250,24 +251,22 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         _showSyncMessage('الخادم رفض التوكن. أعد ربط السحابة من شاشة الدخول.');
         return;
       }
-      if (result.failed > 0) {
-        _showSyncMessage(
-          'فشلت ${result.failed} عملية · نجحت ${result.synced} · في الانتظار ${result.keptPending}.',
-        );
-        return;
-      }
-      if (result.synced > 0) {
-        _showSyncMessage('تمت مزامنة ${result.synced} عملية.');
-        return;
-      }
-      if (result.keptPending > 0) {
-        _showSyncMessage(
-          'ما زال ${result.keptPending} في الانتظار. تحقق من اتصال Laravel على ${AppConfig.apiBase}.',
-        );
-        return;
-      }
+      final counts = await SyncQueueClassifier(
+        ref.read(appDatabaseProvider),
+      ).counts(workspaceId);
+      final leftovers = counts.unsupported +
+          counts.standalone +
+          counts.blocked +
+          counts.alreadyApplied;
       _showSyncMessage(
-        'لا توجد فواتير أو تغييرات منيو/طاولات بانتظار المزامنة.',
+        SyncNowCopy.afterFlush(
+          synced: result.synced,
+          failed: result.failed,
+          scopedPending: counts.scopedPending,
+          leftovers: leftovers,
+          authRequired: false,
+          apiBase: AppConfig.apiBase,
+        ),
       );
     } catch (e) {
       _showSyncMessage(

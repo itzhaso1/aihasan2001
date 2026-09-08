@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/cashier_api.dart';
 import '../config/app_config.dart';
@@ -7,7 +8,14 @@ import 'google_desktop_oauth.dart'
     if (dart.library.html) 'google_desktop_oauth_unsupported.dart';
 
 /// Obtains a Google access token for Laravel `POST /auth/social`.
+///
+/// Desktop POS uses Laravel `.env` Google OAuth (browser + ticket poll).
+/// Mobile still tries the Google plugin first.
 class GoogleAccessTokenClient {
+  GoogleAccessTokenClient(this._api);
+
+  final CashierApiClient _api;
+
   Future<String> obtainAccessToken() async {
     Object? pluginError;
     if (_pluginSupported) {
@@ -16,13 +24,24 @@ class GoogleAccessTokenClient {
       } catch (e) {
         pluginError = e;
         if (!_isDesktop) {
-          throw _mapPluginError(e);
+          try {
+            return await _laravelBrowserSignIn();
+          } catch (_) {
+            throw _mapPluginError(pluginError);
+          }
         }
       }
     }
     try {
-      return await GoogleDesktopOauth.signIn();
+      return await _laravelBrowserSignIn();
     } catch (e) {
+      if (e is ApiException && _looksLikeMissingGoogle(e.message)) {
+        try {
+          return await GoogleDesktopOauth.signIn();
+        } catch (_) {
+          throw e;
+        }
+      }
       if (e is ApiException) rethrow;
       throw _mapPluginError(pluginError ?? e);
     }
@@ -40,6 +59,60 @@ class GoogleAccessTokenClient {
     return defaultTargetPlatform == TargetPlatform.windows ||
         defaultTargetPlatform == TargetPlatform.linux ||
         defaultTargetPlatform == TargetPlatform.macOS;
+  }
+
+  Future<String> _laravelBrowserSignIn() async {
+    final started = await _api.post('/auth/google/start');
+    final ticket = '${started['ticket'] ?? ''}'.trim();
+    final authUrl = '${started['auth_url'] ?? ''}'.trim();
+    if (ticket.isEmpty || authUrl.isEmpty) {
+      throw ApiException('يحتاج إعداد Google');
+    }
+    final uri = Uri.tryParse(authUrl);
+    if (uri == null) {
+      throw ApiException('تعذر فتح متصفح Google.');
+    }
+    var launched = false;
+    try {
+      launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      launched = false;
+    }
+    if (!launched) {
+      try {
+        launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+      } catch (_) {
+        launched = false;
+      }
+    }
+    if (!launched) {
+      throw ApiException('تعذر فتح متصفح Google.');
+    }
+
+    final deadline = DateTime.now().add(const Duration(minutes: 3));
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      final data = await _api.get(
+        '/auth/google/status',
+        query: {'ticket': ticket},
+      );
+      final status = '${data['status'] ?? ''}'.trim();
+      if (status == 'pending') continue;
+      if (status == 'failed') {
+        throw ApiException(
+          '${data['error'] ?? 'فشل تسجيل الدخول عبر Google.'}',
+        );
+      }
+      if (status == 'ready') {
+        final token = '${data['access_token'] ?? ''}'.trim();
+        if (token.isEmpty) {
+          throw ApiException('لم يرجع Google رمز الدخول.');
+        }
+        return token;
+      }
+      throw ApiException('${data['error'] ?? 'انتهت جلسة Google. أعد المحاولة.'}');
+    }
+    throw ApiException('انتهت مهلة تسجيل الدخول عبر Google.');
   }
 
   Future<String> _pluginSignIn() async {
@@ -60,6 +133,15 @@ class GoogleAccessTokenClient {
       throw ApiException('يحتاج إعداد Google');
     }
     return token;
+  }
+
+  bool _looksLikeMissingGoogle(String message) {
+    final msg = message.toLowerCase();
+    return msg.contains('google') &&
+        (msg.contains('env') ||
+            msg.contains('.env') ||
+            msg.contains('إعداد') ||
+            msg.contains('client'));
   }
 
   ApiException _mapPluginError(Object error) {
