@@ -28,6 +28,7 @@ use Throwable;
  * Batch POS push — idempotent by (workspace_id, operation_uuid).
  *
  * Allowed cashier contract:
+ *   kitchen orders (paid or unpaid) → POS then Laravel then kitchen pull
  *   invoices / reporting snapshots → POS then Laravel
  *   menu (categories / products / prices) → Flutter then Laravel
  *   table master data (create / rename / delete) → Flutter then Laravel
@@ -939,7 +940,7 @@ class PosSyncPushService
             $mapped['quantity'] = 1;
         }
 
-        foreach (['unit_price', 'discount_amount', 'tax_amount', 'name', 'product_name'] as $key) {
+        foreach (['unit_price', 'discount_amount', 'tax_amount', 'name', 'product_name', 'notes'] as $key) {
             if (array_key_exists($key, $row)) {
                 $mapped[$key] = $row[$key];
             }

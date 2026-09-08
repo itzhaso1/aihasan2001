@@ -86,6 +86,16 @@ class OrdersRepository {
       items: normalized,
     );
     apiPayload['table_local_id'] = resolvedLocalId;
+    if (sessionLocalId != null && sessionLocalId.trim().isNotEmpty) {
+      apiPayload['session_local_id'] = sessionLocalId.trim();
+    }
+    final tableName = table?.name.trim() ?? '';
+    if (tableName.isNotEmpty) {
+      apiPayload['table_name'] = tableName;
+    }
+    apiPayload['pos_status'] = 'new';
+    apiPayload['payment_status'] = 'unpaid';
+    apiPayload['offline_sale'] = true;
 
     await _db.transaction(() async {
       await _db
@@ -218,6 +228,9 @@ class OrdersRepository {
       items: normalized,
       customerId: customerServerId,
     );
+    apiPayload['pos_status'] = 'new';
+    apiPayload['payment_status'] = 'unpaid';
+    apiPayload['offline_sale'] = true;
 
     await _db.transaction(() async {
       await _db
@@ -935,6 +948,11 @@ class OrdersRepository {
           {
             'pos_menu_item_id': item['pos_menu_item_id'],
             'quantity': item['quantity'],
+            'name': item['name'] ?? item['product_name'] ?? 'صنف',
+            'product_name': item['product_name'] ?? item['name'] ?? 'صنف',
+            if (item['notes'] != null &&
+                '${item['notes']}'.trim().isNotEmpty)
+              'notes': '${item['notes']}'.trim(),
           },
       ],
     };

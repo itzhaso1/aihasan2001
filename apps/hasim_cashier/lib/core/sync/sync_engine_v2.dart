@@ -616,7 +616,8 @@ class SyncEngineV2 {
   }
 
   Future<bool> _rowReadyForPush(SyncQueueItem row) async {
-    // Scoped batch: invoices + menu + table master. Table sessions stay off.
+    // Scoped batch: kitchen/sale orders + invoices + menu + table master.
+    // Table live sessions stay off.
     if (!_isScopedBatchOp(row)) return false;
     if (row.entityType == 'order') {
       return _saleCreateReady(row);
@@ -669,19 +670,6 @@ class SyncEngineV2 {
     final payload = await _pushData(row);
     final type = '${payload['order_type'] ?? ''}'.trim().toLowerCase();
     if (!SyncQueueClassifier.saleTypes.contains(type)) return false;
-    if (type == 'table') {
-      final order =
-          await (_db.select(_db.localOrders)..where(
-                (t) =>
-                    t.workspaceId.equals(row.workspaceId) &
-                    t.localId.equals(row.entityId),
-              ))
-              .getSingleOrNull();
-      if (order == null ||
-          order.paymentStatus.trim().toLowerCase() != 'paid') {
-        return false;
-      }
-    }
     final items = payload['items'];
     if (items is! List || items.isEmpty) return false;
     for (final item in items) {

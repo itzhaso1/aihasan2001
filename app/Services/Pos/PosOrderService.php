@@ -76,6 +76,33 @@ class PosOrderService
             if ($offlineSale) {
                 $metadata['offline_sale'] = true;
             }
+            $sessionLocalId = trim((string) ($payload['session_local_id'] ?? ''));
+            if ($sessionLocalId !== '') {
+                $metadata['cashier_session_local_id'] = $sessionLocalId;
+            }
+            $tableName = trim((string) ($payload['table_name'] ?? ''));
+            if ($tableName !== '') {
+                $metadata['table_name'] = $tableName;
+            }
+            $kitchenItemNotes = [];
+            foreach ($payload['items'] ?? [] as $rawItem) {
+                if (! is_array($rawItem)) {
+                    continue;
+                }
+                $itemNote = trim((string) ($rawItem['notes'] ?? ''));
+                if ($itemNote === '') {
+                    continue;
+                }
+                $kitchenItemNotes[] = [
+                    'pos_menu_item_id' => isset($rawItem['pos_menu_item_id'])
+                        ? (int) $rawItem['pos_menu_item_id']
+                        : null,
+                    'notes' => mb_substr($itemNote, 0, 500),
+                ];
+            }
+            if ($kitchenItemNotes !== []) {
+                $metadata['kitchen_item_notes'] = $kitchenItemNotes;
+            }
 
             if ($table && $session && ! $offlineSale) {
                 $order = $this->mergeOrCreateSessionOrder(

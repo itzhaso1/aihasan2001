@@ -517,6 +517,10 @@ class CheckoutService {
           'dining_table_id': tableServerId,
         if (cmd.tableLocalId != null && cmd.tableLocalId!.trim().isNotEmpty)
           'table_local_id': cmd.tableLocalId!.trim(),
+        if (cmd.sessionLocalId != null && cmd.sessionLocalId!.trim().isNotEmpty)
+          'session_local_id': cmd.sessionLocalId!.trim(),
+        if ('${tableInfo?['name'] ?? ''}'.trim().isNotEmpty)
+          'table_name': '${tableInfo!['name']}'.trim(),
         'client_reference': cmd.clientReference,
         'placed_at': soldAt.toUtc().toIso8601String(),
         'currency': currency,
