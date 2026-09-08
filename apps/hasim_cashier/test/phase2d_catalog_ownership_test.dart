@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hasim_cashier/core/local_db/app_database.dart';
 import 'package:hasim_cashier/core/pos/application/catalog_admin_service.dart';
 import 'package:hasim_cashier/core/pos/application/local_auth_service.dart';
-import 'package:hasim_cashier/core/pos/pos_errors.dart';
 import 'package:hasim_cashier/core/repositories/catalog_repository.dart';
 
 void main() {
@@ -46,7 +45,7 @@ void main() {
     expect(row.serverId, isNull);
   });
 
-  test('server-owned category refuses delete without calling Laravel', () async {
+  test('server-owned category can be deleted from Flutter cashier', () async {
     const localId = 'cat-server';
     await db.into(db.localCategories).insert(
       LocalCategoriesCompanion.insert(
@@ -57,27 +56,20 @@ void main() {
         updatedAt: DateTime.now(),
       ),
     );
-    expect(
-      () => catalog.deleteCategory(
-        workspaceId: workspaceId,
-        localId: localId,
-        permissions: perms,
-      ),
-      throwsA(
-        isA<PosException>().having(
-          (e) => e.code,
-          'code',
-          'CatalogOwnedByServer',
-        ),
-      ),
+    await catalog.deleteCategory(
+      workspaceId: workspaceId,
+      localId: localId,
+      permissions: perms,
     );
-    final still = await repo.categories(workspaceId);
-    expect(still, hasLength(1));
-    expect(still.single['server_id'], 44);
-    expect(still.single['local_id'], localId);
+    expect(await repo.categories(workspaceId), isEmpty);
+    final row = await (db.select(db.localCategories)
+          ..where((t) => t.localId.equals(localId)))
+        .getSingle();
+    expect(row.isDeleted, isTrue);
+    expect(row.serverId, 44);
   });
 
-  test('server-owned product refuses delete without a catalog DELETE API', () async {
+  test('server-owned product can be deleted from Flutter cashier', () async {
     const localId = 'prod-server';
     await db.into(db.localProducts).insert(
       LocalProductsCompanion.insert(
@@ -89,20 +81,11 @@ void main() {
         updatedAt: DateTime.now(),
       ),
     );
-    expect(
-      () => catalog.deleteProduct(
-        workspaceId: workspaceId,
-        localId: localId,
-        permissions: perms,
-      ),
-      throwsA(
-        isA<PosException>().having(
-          (e) => e.code,
-          'code',
-          'CatalogOwnedByServer',
-        ),
-      ),
+    await catalog.deleteProduct(
+      workspaceId: workspaceId,
+      localId: localId,
+      permissions: perms,
     );
-    expect(await repo.products(workspaceId), hasLength(1));
+    expect(await repo.products(workspaceId), isEmpty);
   });
 }

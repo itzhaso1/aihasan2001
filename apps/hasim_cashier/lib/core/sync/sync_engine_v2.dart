@@ -412,6 +412,16 @@ class SyncEngineV2 {
     }
     if (row.entityType == 'customer') return 'customer.created';
     if (row.entityType == 'invoice') return 'invoice.created';
+    if (row.entityType == 'category' ||
+        row.entityType == 'product' ||
+        row.entityType == 'table') {
+      return switch (row.operation) {
+        'create' => '${row.entityType}.created',
+        'update' => '${row.entityType}.updated',
+        'delete' => '${row.entityType}.deleted',
+        _ => '${row.entityType}.${row.operation}',
+      };
+    }
     if (row.entityType == 'table_session') {
       return 'table_session.${row.operation}';
     }
@@ -594,19 +604,27 @@ class SyncEngineV2 {
   }
 
   Future<bool> _rowReadyForPush(SyncQueueItem row) async {
-    // Phase 2D batch: paid takeaway/table order.created + invoice.created,
-    // and parent customer.created. Table sessions stay off this path.
-    if (!_isInvoiceContractBatchOp(row)) return false;
+    // Scoped batch: invoices + menu + table master. Table sessions stay off.
+    if (!_isScopedBatchOp(row)) return false;
     if (row.entityType == 'order') {
       return _saleCreateReady(row);
     }
     if (row.entityType == 'invoice') {
       return _saleInvoiceReady(row);
     }
+    if (row.entityType == 'product') {
+      return _productReady(row);
+    }
+    if (row.entityType == 'category' && row.operation != 'create') {
+      return _catalogHasServerId('category', row);
+    }
+    if (row.entityType == 'table' && row.operation != 'create') {
+      return _tableMasterReady(row);
+    }
     return true;
   }
 
-  bool _isInvoiceContractBatchOp(SyncQueueItem row) {
+  bool _isScopedBatchOp(SyncQueueItem row) {
     if (row.entityType == 'customer' && row.operation == 'create') {
       return true;
     }
@@ -618,6 +636,18 @@ class SyncEngineV2 {
     if (row.entityType == 'invoice' && row.operation == 'create') {
       final type = SyncQueueClassifier.saleTypeOf(row);
       return type == null || SyncQueueClassifier.saleTypes.contains(type);
+    }
+    if (SyncQueueClassifier.menuTypes.contains(row.entityType) &&
+        (row.operation == 'create' ||
+            row.operation == 'update' ||
+            row.operation == 'delete')) {
+      return true;
+    }
+    if (row.entityType == SyncQueueClassifier.tableMasterType &&
+        (row.operation == 'create' ||
+            row.operation == 'update' ||
+            row.operation == 'delete')) {
+      return true;
     }
     return false;
   }
@@ -653,6 +683,21 @@ class SyncEngineV2 {
     if (customerLocal.isNotEmpty && customerId <= 0) {
       return false;
     }
+    if (type == 'table') {
+      final tableLocal = '${payload['table_local_id'] ?? ''}'.trim();
+      if (tableLocal.isNotEmpty) {
+        final table =
+            await (_db.select(_db.localTables)..where(
+                  (t) =>
+                      t.workspaceId.equals(row.workspaceId) &
+                      t.localId.equals(tableLocal),
+                ))
+                .getSingleOrNull();
+        if (table == null || table.serverId == null || table.serverId! <= 0) {
+          return false;
+        }
+      }
+    }
     return true;
   }
 
@@ -674,13 +719,79 @@ class SyncEngineV2 {
     return order.serverId != null && order.serverId! > 0;
   }
 
+  Future<bool> _productReady(SyncQueueItem row) async {
+    if (row.operation != 'create' &&
+        !await _catalogHasServerId('product', row)) {
+      return false;
+    }
+    final payload = _decode(row.payloadJson);
+    final product =
+        await (_db.select(_db.localProducts)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.localId.equals(row.entityId),
+            ))
+            .getSingleOrNull();
+    final categoryLocal =
+        '${payload['category_local_id'] ?? product?.categoryLocalId ?? ''}'
+            .trim();
+    if (categoryLocal.isEmpty) return true;
+    final category =
+        await (_db.select(_db.localCategories)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.localId.equals(categoryLocal),
+            ))
+            .getSingleOrNull();
+    return category?.serverId != null && category!.serverId! > 0;
+  }
+
+  Future<bool> _catalogHasServerId(String entityType, SyncQueueItem row) async {
+    if (entityType == 'category') {
+      final category =
+          await (_db.select(_db.localCategories)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      return category?.serverId != null && category!.serverId! > 0;
+    }
+    if (entityType == 'product') {
+      final product =
+          await (_db.select(_db.localProducts)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      return product?.serverId != null && product!.serverId! > 0;
+    }
+    return false;
+  }
+
+  Future<bool> _tableMasterReady(SyncQueueItem row) async {
+    final payload = _decode(row.payloadJson);
+    final table =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.localId.equals(row.entityId),
+            ))
+            .getSingleOrNull();
+    final serverId = table?.serverId ??
+        (payload['server_id'] as num?)?.toInt() ??
+        (payload['table_server_id'] as num?)?.toInt();
+    return serverId != null && serverId > 0;
+  }
+
   Future<Map<String, dynamic>> _pushData(SyncQueueItem row) async {
     final payload = _decode(row.payloadJson);
     if (row.entityType == 'invoice') {
       final orderLocalId = '${payload['order_local_id'] ?? ''}'.trim();
       if (orderLocalId.isNotEmpty) {
-        payload['order_local_id'] = orderLocalId;
         payload['client_reference'] = orderLocalId;
+        payload['order_local_id'] = orderLocalId;
         final order =
             await (_db.select(_db.localOrders)..where(
                   (t) =>
@@ -695,16 +806,14 @@ class SyncEngineV2 {
       return payload;
     }
     payload['client_reference'] = row.clientReference;
+    if (row.entityType == 'category' ||
+        row.entityType == 'product' ||
+        row.entityType == 'table') {
+      return _catalogPushData(row, payload);
+    }
     if (row.entityType == 'order' && row.operation == 'create') {
       payload['offline_sale'] = true;
-      final tableId = _numericId(
-        payload['table_server_id'] ??
-            payload['dining_table_id'] ??
-            payload['table_id'],
-      );
-      if (tableId != null) {
-        payload['dining_table_id'] = tableId;
-      }
+      await _resolveOrderTableId(row, payload);
     }
     if (row.entityType != 'order' || row.operation != 'create') {
       return payload;
@@ -726,6 +835,104 @@ class SyncEngineV2 {
     return payload;
   }
 
+  Future<Map<String, dynamic>> _catalogPushData(
+    SyncQueueItem row,
+    Map<String, dynamic> payload,
+  ) async {
+    if (row.entityType == 'product') {
+      final product =
+          await (_db.select(_db.localProducts)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      if (product?.serverId != null && product!.serverId! > 0) {
+        payload['server_id'] = product.serverId;
+      }
+      final categoryLocal =
+          '${payload['category_local_id'] ?? product?.categoryLocalId ?? ''}'
+              .trim();
+      if (categoryLocal.isNotEmpty) {
+        payload['category_local_id'] = categoryLocal;
+        final category =
+            await (_db.select(_db.localCategories)..where(
+                  (t) =>
+                      t.workspaceId.equals(row.workspaceId) &
+                      t.localId.equals(categoryLocal),
+                ))
+                .getSingleOrNull();
+        if (category?.serverId != null && category!.serverId! > 0) {
+          payload['pos_item_category_id'] = category.serverId;
+        }
+      }
+    }
+    if (row.entityType == 'category') {
+      final category =
+          await (_db.select(_db.localCategories)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      if (category?.serverId != null && category!.serverId! > 0) {
+        payload['server_id'] = category.serverId;
+      }
+    }
+    if (row.entityType == 'table') {
+      payload.remove('status');
+      payload.remove('session_id');
+      payload.remove('session_open');
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      final serverId = table?.serverId ??
+          (payload['server_id'] as num?)?.toInt() ??
+          (payload['table_server_id'] as num?)?.toInt();
+      if (serverId != null && serverId > 0) {
+        payload['server_id'] = serverId;
+        payload['table_server_id'] = serverId;
+      }
+    }
+    return payload;
+  }
+
+  Future<void> _resolveOrderTableId(
+    SyncQueueItem row,
+    Map<String, dynamic> payload,
+  ) async {
+    final tableLocal = '${payload['table_local_id'] ?? ''}'.trim();
+    if (tableLocal.isNotEmpty) {
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(tableLocal),
+              ))
+              .getSingleOrNull();
+      if (table?.serverId != null && table!.serverId! > 0) {
+        payload['dining_table_id'] = table.serverId;
+        payload['table_server_id'] = table.serverId;
+        return;
+      }
+      payload.remove('dining_table_id');
+      payload.remove('table_server_id');
+      return;
+    }
+    final tableId = _numericId(
+      payload['table_server_id'] ??
+          payload['dining_table_id'] ??
+          payload['table_id'],
+    );
+    if (tableId != null) {
+      payload['dining_table_id'] = tableId;
+    }
+  }
+
   Future<void> _applyAcceptedAck(
     SyncQueueItem row,
     Map<String, dynamic> ack,
@@ -738,6 +945,10 @@ class SyncEngineV2 {
     }
     if (row.entityType == 'customer') {
       await _finalizeCustomer(row, result);
+    } else if (row.entityType == 'category' ||
+        row.entityType == 'product' ||
+        row.entityType == 'table') {
+      await _finalizeCatalogMaster(row, result);
     } else if (row.entityType == 'table_session' && row.operation == 'open') {
       await _finalizeSessionOpen(row, result);
     } else if (row.entityType == 'table_session' && row.operation == 'close') {
@@ -776,14 +987,17 @@ class SyncEngineV2 {
   }
 
   int _pushPriority(SyncQueueItem row) {
-    if (row.entityType == 'customer') return 0;
-    if (row.entityType == 'table_session' && row.operation == 'open') return 1;
+    if (row.entityType == 'category') return 0;
+    if (row.entityType == 'product') return 1;
+    if (row.entityType == 'table') return 1;
+    if (row.entityType == 'customer') return 2;
+    if (row.entityType == 'table_session' && row.operation == 'open') return 3;
     if (row.entityType == 'table_session' && _isSessionAction(row.operation)) {
-      return 2;
+      return 4;
     }
-    if (row.entityType == 'order') return 3;
-    if (row.entityType == 'invoice') return 4;
-    if (row.entityType == 'table_session' && row.operation == 'close') return 5;
+    if (row.entityType == 'order') return 5;
+    if (row.entityType == 'invoice') return 6;
+    if (row.entityType == 'table_session' && row.operation == 'close') return 7;
     return 9;
   }
 
@@ -1027,6 +1241,111 @@ class SyncEngineV2 {
               updatedAt: Value(DateTime.now()),
             ),
           );
+      await _queue.markSynced(row.id);
+    });
+  }
+
+  Future<void> _finalizeCatalogMaster(
+    SyncQueueItem row,
+    Map<String, dynamic> data,
+  ) async {
+    final serverId = data['id'] is num
+        ? asInt(data['id'])
+        : int.tryParse('${data['id']}');
+    final now = DateTime.now();
+    await _db.transaction(() async {
+      if (row.entityType == 'category') {
+        if (row.operation == 'create' && serverId != null && serverId > 0) {
+          await (_db.update(_db.localCategories)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .write(
+                LocalCategoriesCompanion(
+                  serverId: Value(serverId),
+                  updatedAt: Value(now),
+                ),
+              );
+          await (_db.update(_db.localProducts)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.categoryLocalId.equals(row.entityId),
+              ))
+              .write(
+                LocalProductsCompanion(
+                  categoryServerId: Value(serverId),
+                  updatedAt: Value(now),
+                ),
+              );
+        }
+      } else if (row.entityType == 'product') {
+        if (row.operation == 'create' && serverId != null && serverId > 0) {
+          final categoryServerId =
+              (data['pos_item_category_id'] as num?)?.toInt();
+          await (_db.update(_db.localProducts)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .write(
+                LocalProductsCompanion(
+                  serverId: Value(serverId),
+                  categoryServerId: categoryServerId == null
+                      ? const Value.absent()
+                      : Value(categoryServerId),
+                  updatedAt: Value(now),
+                ),
+              );
+        }
+      } else if (row.entityType == 'table') {
+        if (row.operation == 'delete') {
+          await (_db.delete(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .go();
+        } else if (row.operation == 'create' &&
+            serverId != null &&
+            serverId > 0) {
+          final table =
+              await (_db.select(_db.localTables)..where(
+                    (t) =>
+                        t.localId.equals(row.entityId) &
+                        t.workspaceId.equals(row.workspaceId),
+                  ))
+                  .getSingleOrNull();
+          Map<String, dynamic> payload = const {};
+          if (table != null) {
+            payload = _decode(table.payloadJson);
+          }
+          payload['id'] = serverId;
+          await (_db.update(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .write(
+                LocalTablesCompanion(
+                  serverId: Value(serverId),
+                  payloadJson: Value(jsonEncode(payload)),
+                  updatedAt: Value(now),
+                ),
+              );
+          await (_db.update(_db.localOrders)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.tableLocalId.equals(row.entityId),
+              ))
+              .write(
+                LocalOrdersCompanion(
+                  tableServerId: Value(serverId),
+                  updatedAt: Value(now),
+                ),
+              );
+        }
+      }
       await _queue.markSynced(row.id);
     });
   }

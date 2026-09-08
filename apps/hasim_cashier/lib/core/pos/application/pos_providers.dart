@@ -45,7 +45,11 @@ final shiftServiceProvider = Provider<ShiftService>((ref) {
 });
 
 final catalogAdminServiceProvider = Provider<CatalogAdminService>((ref) {
-  return CatalogAdminService(ref.watch(appDatabaseProvider));
+  return CatalogAdminService(
+    ref.watch(appDatabaseProvider),
+    queue: ref.watch(syncQueueRepositoryProvider),
+    deviceId: () => ref.read(deviceIdentityProvider).getOrCreateDeviceId(),
+  );
 });
 
 final draftCartStoreProvider = Provider<DraftCartStore>((ref) {

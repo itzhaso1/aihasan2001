@@ -146,7 +146,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       final counts = await SyncQueueClassifier(
         ref.read(appDatabaseProvider),
       ).counts(workspaceId);
-      pending = counts.invoicePending;
+      pending = counts.scopedPending;
       failed = counts.failed;
       unsupported = counts.unsupported +
           counts.standalone +
@@ -235,7 +235,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         return;
       }
       _showSyncMessage(
-        'لا توجد فواتير بانتظار المزامنة.',
+        'لا توجد فواتير أو تغييرات منيو/طاولات بانتظار المزامنة.',
       );
     } catch (e) {
       _showSyncMessage(
@@ -925,7 +925,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       iconColor: HasimColors.brandDark,
       title: 'مزامنة السحابة',
       subtitle:
-          'إرسال أي فاتورة بيع نقدية إلى حساب حاسم. الهوية من السحابة.',
+          'إرسال الفواتير وتغييرات المنيو وبيانات الطاولات الأساسية إلى حساب حاسم.',
       highlight: true,
       children: [
         _infoBanner(
@@ -941,8 +941,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           style: const TextStyle(fontSize: 12, color: HasimColors.muted),
         ),
         Text(
-          'فواتير بانتظار الدفع: $_pendingSync'
-          '${_waitingParentSync > 0 ? ' · منها $_waitingParentSync تنتظر الطلب' : ''}',
+          'بانتظار المزامنة: $_pendingSync'
+          '${_waitingParentSync > 0 ? ' · منها $_waitingParentSync تنتظر عنصراً أب' : ''}',
           style: const TextStyle(fontSize: 12, color: HasimColors.muted),
         ),
         Text(

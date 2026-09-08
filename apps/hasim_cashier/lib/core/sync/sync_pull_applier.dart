@@ -134,7 +134,12 @@ class SyncPullApplier {
     Map<String, dynamic> data,
   ) async {
     if (serverId == null || serverId <= 0) return;
-    final localId = LocalIds.product(workspaceId, serverId);
+    final existing = await (_db.select(_db.localProducts)..where(
+          (t) =>
+              t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId),
+        ))
+        .getSingleOrNull();
+    final localId = existing?.localId ?? LocalIds.product(workspaceId, serverId);
     if (operation == 'delete') {
       await (_db.update(_db.localProducts)
             ..where((t) =>
@@ -151,27 +156,57 @@ class SyncPullApplier {
     }
 
     final catServerId = (data['pos_item_category_id'] as num?)?.toInt();
+    String? categoryLocalId = existing?.categoryLocalId;
+    if (catServerId != null) {
+      final category = await (_db.select(_db.localCategories)..where(
+            (t) =>
+                t.workspaceId.equals(workspaceId) &
+                t.serverId.equals(catServerId),
+          ))
+          .getSingleOrNull();
+      categoryLocalId =
+          category?.localId ?? LocalIds.category(workspaceId, catServerId);
+    }
     final now = DateTime.now();
+    if (existing != null) {
+      await (_db.update(_db.localProducts)
+            ..where((t) => t.localId.equals(existing.localId)))
+          .write(
+        LocalProductsCompanion(
+          serverId: Value(serverId),
+          categoryLocalId: Value(categoryLocalId),
+          categoryServerId: Value(catServerId),
+          name: Value('${data['name'] ?? existing.name}'),
+          sku: Value(data['sku'] as String? ?? existing.sku),
+          barcode: Value(data['barcode'] as String? ?? existing.barcode),
+          itemType: Value(data['item_type'] as String? ?? existing.itemType),
+          price: Value(Money.toCents((data['price'] as num?) ?? 0)),
+          isActive: Value(data['is_active'] != false),
+          isDeleted: const Value(false),
+          payloadJson: Value(jsonEncode({...data, 'id': serverId})),
+          stock: Value((data['stock'] as num?)?.toInt() ?? existing.stock),
+          updatedAt: Value(now),
+          serverVersion: Value((data['version'] as num?)?.toInt()),
+        ),
+      );
+      return;
+    }
     await _db.into(_db.localProducts).insertOnConflictUpdate(
           LocalProductsCompanion.insert(
             localId: localId,
             workspaceId: workspaceId,
             serverId: Value(serverId),
-            categoryLocalId: Value(
-              catServerId == null
-                  ? null
-                  : LocalIds.category(workspaceId, catServerId),
-            ),
+            categoryLocalId: Value(categoryLocalId),
             categoryServerId: Value(catServerId),
-            name: '${data['name'] ?? ''}',
-            sku: Value(data['sku'] as String?),
-            barcode: Value(data['barcode'] as String?),
-            itemType: Value(data['item_type'] as String?),
+            name: '${data['name'] ?? existing?.name ?? ''}',
+            sku: Value(data['sku'] as String? ?? existing?.sku),
+            barcode: Value(data['barcode'] as String? ?? existing?.barcode),
+            itemType: Value(data['item_type'] as String? ?? existing?.itemType),
             price: Value(Money.toCents((data['price'] as num?) ?? 0)),
             isActive: Value(data['is_active'] != false),
             isDeleted: const Value(false),
             payloadJson: Value(jsonEncode({...data, 'id': serverId})),
-            stock: Value((data['stock'] as num?)?.toInt()),
+            stock: Value((data['stock'] as num?)?.toInt() ?? existing?.stock),
             updatedAt: now,
             serverVersion: Value((data['version'] as num?)?.toInt()),
           ),
@@ -185,7 +220,13 @@ class SyncPullApplier {
     Map<String, dynamic> data,
   ) async {
     if (serverId == null || serverId <= 0) return;
-    final localId = LocalIds.category(workspaceId, serverId);
+    final existing = await (_db.select(_db.localCategories)..where(
+          (t) =>
+              t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId),
+        ))
+        .getSingleOrNull();
+    final localId =
+        existing?.localId ?? LocalIds.category(workspaceId, serverId);
     if (operation == 'delete') {
       await (_db.update(_db.localCategories)
             ..where((t) =>
@@ -201,13 +242,32 @@ class SyncPullApplier {
       return;
     }
 
+    if (existing != null) {
+      await (_db.update(_db.localCategories)
+            ..where((t) => t.localId.equals(existing.localId)))
+          .write(
+        LocalCategoriesCompanion(
+          serverId: Value(serverId),
+          name: Value('${data['name'] ?? existing.name}'),
+          sortOrder: Value((data['sort_order'] as num?)?.toInt() ??
+              existing.sortOrder),
+          isActive: Value(data['is_active'] != false),
+          isDeleted: const Value(false),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      return;
+    }
+
     await _db.into(_db.localCategories).insertOnConflictUpdate(
           LocalCategoriesCompanion.insert(
             localId: localId,
             workspaceId: workspaceId,
             serverId: Value(serverId),
-            name: '${data['name'] ?? ''}',
-            sortOrder: Value((data['sort_order'] as num?)?.toInt() ?? 0),
+            name: '${data['name'] ?? existing?.name ?? ''}',
+            sortOrder: Value((data['sort_order'] as num?)?.toInt() ??
+                existing?.sortOrder ??
+                0),
             isActive: Value(data['is_active'] != false),
             isDeleted: const Value(false),
             updatedAt: DateTime.now(),
@@ -222,7 +282,12 @@ class SyncPullApplier {
     Map<String, dynamic> data,
   ) async {
     if (serverId == null || serverId <= 0) return;
-    final localId = LocalIds.table(workspaceId, serverId);
+    final existing = await (_db.select(_db.localTables)..where(
+          (t) =>
+              t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId),
+        ))
+        .getSingleOrNull();
+    final localId = existing?.localId ?? LocalIds.table(workspaceId, serverId);
     if (operation == 'delete') {
       await (_db.delete(_db.localTables)
             ..where((t) =>
@@ -232,16 +297,53 @@ class SyncPullApplier {
       return;
     }
 
+    Map<String, dynamic> payload = {};
+    if (existing != null) {
+      try {
+        final decoded = jsonDecode(existing.payloadJson);
+        if (decoded is Map) payload = Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    payload.addAll(data);
+    payload['id'] = serverId;
+    if (existing != null) {
+      await (_db.update(_db.localTables)
+            ..where((t) => t.localId.equals(existing.localId)))
+          .write(
+        LocalTablesCompanion(
+          serverId: Value(serverId),
+          name: Value('${data['name'] ?? existing.name}'),
+          status: Value(
+            '${data['status'] ?? existing.status}',
+          ),
+          capacity: Value(
+            (data['capacity'] as num?)?.toInt() ?? existing.capacity,
+          ),
+          sessionServerId: Value(
+            (data['session_id'] as num?)?.toInt() ?? existing.sessionServerId,
+          ),
+          payloadJson: Value(jsonEncode(payload)),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      return;
+    }
     await _db.into(_db.localTables).insertOnConflictUpdate(
           LocalTablesCompanion.insert(
             localId: localId,
             workspaceId: workspaceId,
             serverId: Value(serverId),
-            name: '${data['name'] ?? ''}',
-            status: Value('${data['status'] ?? 'available'}'),
-            capacity: Value((data['capacity'] as num?)?.toInt()),
-            sessionServerId: Value((data['session_id'] as num?)?.toInt()),
-            payloadJson: Value(jsonEncode({...data, 'id': serverId})),
+            name: '${data['name'] ?? existing?.name ?? ''}',
+            status: Value(
+              '${data['status'] ?? existing?.status ?? 'available'}',
+            ),
+            capacity: Value(
+              (data['capacity'] as num?)?.toInt() ?? existing?.capacity,
+            ),
+            sessionServerId: Value(
+              (data['session_id'] as num?)?.toInt() ?? existing?.sessionServerId,
+            ),
+            payloadJson: Value(jsonEncode(payload)),
             updatedAt: DateTime.now(),
           ),
         );

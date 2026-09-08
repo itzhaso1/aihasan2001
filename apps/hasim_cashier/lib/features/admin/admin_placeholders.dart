@@ -358,6 +358,25 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
               .createCategory(
                 workspaceId: workspaceId,
                 name: payload['name'] as String,
+                sortOrder: asIntOr(payload['sort_order']),
+                isActive: payload['is_active'] != false,
+                permissions: session?.permissions ?? _perms,
+              );
+        } else {
+          final localId = '${existing['local_id'] ?? ''}';
+          if (localId.isEmpty) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('تعذر تحديد التصنيف المحلي.')),
+            );
+            return;
+          }
+          await ref.read(catalogAdminServiceProvider).updateCategory(
+                workspaceId: workspaceId,
+                localId: localId,
+                name: payload['name'] as String,
+                sortOrder: asIntOr(payload['sort_order']),
+                isActive: payload['is_active'] != false,
                 permissions: session?.permissions ?? _perms,
               );
         }
@@ -404,18 +423,6 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
       final session = ref.read(authControllerProvider).valueOrNull;
       final workspaceId = ref.read(workspaceIdProvider);
       final localId = '${category['local_id'] ?? ''}';
-      final serverId = asInt(category['server_id']);
-      if (serverId != null && serverId > 0) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'هذا تصنيف سحابة. احذفه من لوحة Hasim، لا من الكاشير.',
-            ),
-          ),
-        );
-        return;
-      }
       if (workspaceId != null && localId.isNotEmpty) {
         await ref.read(catalogAdminServiceProvider).deleteCategory(
               workspaceId: workspaceId,
@@ -425,23 +432,10 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
         await _load();
         return;
       }
-      if (asInt(category['id']) != null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'هذا تصنيف سحابة. احذفه من لوحة Hasim، لا من الكاشير.',
-            ),
-          ),
-        );
-        return;
-      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'تعذر تحديد ملكية التصنيف. التصنيفات المحلية تُحذف هنا، وتصنيفات السحابة من لوحة Hasim.',
-          ),
+          content: Text('تعذر تحديد التصنيف المحلي للحذف.'),
         ),
       );
     } on ApiException catch (e) {

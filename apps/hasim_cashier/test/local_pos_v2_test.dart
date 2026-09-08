@@ -358,6 +358,10 @@ void main() {
     expect(listed.single['local_id'], localId);
     expect(asInt(listed.single['id']), isA<int>());
     expect(listed.single['status'], 'available');
+    final stored = await (db.select(db.localTables)
+          ..where((t) => t.localId.equals(localId)))
+        .getSingle();
+    expect(stored.serverId, equals(null));
 
     final opened = await repo.openSessionLocal(
       workspaceId: 1,
@@ -367,7 +371,7 @@ void main() {
     expect(opened['status'], 'occupied');
   });
 
-  test('uuid-only tables get a server id and remain visible', () async {
+  test('uuid-only tables get a board id and remain visible', () async {
     await db.into(db.localTables).insert(
           LocalTablesCompanion.insert(
             localId: 'uuid-table-old',
