@@ -318,4 +318,23 @@ void main() {
     expect(invoice.bucket, SyncQueueBucket.waitingParent);
     expect(invoice.reason, contains('صنف غير موجود'));
   });
+
+  test('kitchen status update is ready after the order has a server id', () async {
+    await insertOrder(localId: 'k-ready', serverId: 77);
+    await insertQueue(
+      entityType: 'order',
+      entityId: 'k-ready',
+      operation: 'update',
+      status: 'pending',
+      payload: {
+        'kitchen_status': true,
+        'pos_status': 'ready',
+        'client_reference': 'k-ready',
+        'order_server_id': 77,
+      },
+    );
+    final item = (await SyncQueueClassifier(db).classifyWorkspace(workspaceId))
+        .single;
+    expect(item.bucket, SyncQueueBucket.ready);
+  });
 }

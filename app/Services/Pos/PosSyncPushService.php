@@ -29,6 +29,7 @@ use Throwable;
  *
  * Allowed cashier contract:
  *   kitchen orders (paid or unpaid) → POS then Laravel then kitchen pull
+ *   kitchen order status (pos_status only) → POS then Laravel change log
  *   invoices / reporting snapshots → POS then Laravel
  *   menu (categories / products / prices) → Flutter then Laravel
  *   table master data (create / rename / delete) → Flutter then Laravel
@@ -285,7 +286,12 @@ class PosSyncPushService
     private function orderUpdated(Workspace $workspace, array $data): array
     {
         $order = $this->resolveOrder($workspace, $data);
-        $updated = $this->orders->updateOrderItems($order, $data);
+        $updated = $this->isKitchenStatusUpdate($data)
+            ? $this->orders->applyKitchenPosStatus(
+                $order,
+                trim((string) ($data['pos_status'] ?? '')),
+            )
+            : $this->orders->updateOrderItems($order, $data);
         $updated->load(['items', 'table', 'customer']);
 
         return [
@@ -293,6 +299,23 @@ class PosSyncPushService
             'entity_id' => (int) $updated->id,
             'result' => $this->orderResult($updated),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function isKitchenStatusUpdate(array $data): bool
+    {
+        $status = trim((string) ($data['pos_status'] ?? ''));
+        if ($status === '') {
+            return false;
+        }
+        if (filter_var($data['kitchen_status'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return true;
+        }
+        $items = $data['items'] ?? null;
+
+        return ! is_array($items) || $items === [];
     }
 
     /**

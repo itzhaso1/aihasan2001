@@ -299,6 +299,38 @@ class PosOrderService
     }
 
     /**
+     * Kitchen board status only. Does not invoice, pay, cancel inventory,
+     * or open/close a live table session.
+     */
+    public function applyKitchenPosStatus(Order $order, string $status): Order
+    {
+        $status = strtolower(trim($status));
+        $allowed = ['new', 'accepted', 'preparing', 'ready', 'delivered', 'completed', 'cancelled'];
+        if (! in_array($status, $allowed, true)) {
+            throw new RuntimeException('حالة المطبخ غير صالحة.');
+        }
+
+        if ($order->pos_status === $status) {
+            return $order->fresh(['items', 'customer', 'table', 'tableSession']) ?? $order;
+        }
+
+        $attributes = ['pos_status' => $status];
+        if (in_array($status, ['accepted', 'preparing', 'ready'], true)) {
+            $attributes['fulfillment_status'] = 'processing';
+        }
+        if (in_array($status, ['delivered', 'completed'], true)) {
+            $attributes['fulfillment_status'] = 'fulfilled';
+        }
+        if ($status === 'cancelled') {
+            $attributes['fulfillment_status'] = 'cancelled';
+        }
+
+        $order->update($attributes);
+
+        return $order->fresh(['items', 'customer', 'table', 'tableSession']) ?? $order;
+    }
+
+    /**
      * @param  array<string,mixed>  $payload
      */
     public function updateOrderItems(Order $order, array $payload): Order
