@@ -75,6 +75,9 @@ class OrdersRepository {
     final resolvedServerId = table?.serverId ?? tableId;
     final resolvedLocalId =
         table?.localId ?? LocalIds.table(workspaceId, tableId);
+    final sessionLocalId = table == null
+        ? null
+        : await _ensureOpenSessionLocalId(table);
     final apiPayload = _apiCreatePayload(
       orderType: 'table',
       tableId: resolvedServerId,
@@ -100,6 +103,13 @@ class OrdersRepository {
                   'local_tables',
                   'local_id',
                   resolvedLocalId,
+                ),
+              ),
+              sessionLocalId: Value(
+                await _db.existingFk(
+                  'local_sessions',
+                  'local_id',
+                  sessionLocalId,
                 ),
               ),
               notes: Value(notes),
@@ -438,6 +448,9 @@ class OrdersRepository {
   }) async {
     if (workspaceId <= 0 || tableId <= 0) return const [];
     final table = await _lookupTable(workspaceId, tableId);
+    final currentSession = table == null
+        ? ''
+        : await _openSessionLocalId(table) ?? '';
     final rows =
         await (_db.select(_db.localOrders)
               ..where((t) {
@@ -457,8 +470,22 @@ class OrdersRepository {
               })
               ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
             .get();
+    final openedAt = table == null
+        ? null
+        : parseOpenedAt(_tablePayload(table)['opened_at']);
     final out = <Map<String, dynamic>>[];
     for (final row in rows) {
+      if (!isOrderInOpenTableSession(
+        posStatus: row.posStatus,
+        paymentStatus: row.paymentStatus,
+        createdAt: row.createdAt,
+        openedAt: openedAt,
+        completedAt: row.completedAt,
+        orderSessionLocalId: row.sessionLocalId,
+        currentSessionLocalId: currentSession,
+      )) {
+        continue;
+      }
       out.add(_orderToDisplay(row, await _itemsFor(row.localId)));
     }
     return out;
@@ -981,6 +1008,65 @@ class OrdersRepository {
     };
   }
 
+  Map<String, dynamic> _tablePayload(LocalTable table) {
+    try {
+      final decoded = jsonDecode(table.payloadJson);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return const {};
+  }
+
+  Future<String?> _openSessionLocalId(LocalTable table) async {
+    final preferred = '${_tablePayload(table)['session_client_id'] ?? ''}'
+        .trim();
+    if (preferred.isNotEmpty) {
+      final byId = await (_db.select(
+        _db.localSessions,
+      )..where((t) => t.localId.equals(preferred))).getSingleOrNull();
+      if (byId != null && byId.status == 'open') return byId.localId;
+      if (byId == null && table.status == 'occupied') return preferred;
+    }
+    final open =
+        await (_db.select(_db.localSessions)
+              ..where(
+                (t) =>
+                    t.workspaceId.equals(table.workspaceId) &
+                    t.tableLocalId.equals(table.localId) &
+                    t.status.equals('open'),
+              )
+              ..orderBy([(t) => OrderingTerm.desc(t.openedAt)])
+              ..limit(1))
+            .getSingleOrNull();
+    return open?.localId;
+  }
+
+  Future<String?> _ensureOpenSessionLocalId(LocalTable table) async {
+    final existing = await _openSessionLocalId(table);
+    if (existing != null && existing.isNotEmpty) {
+      final row = await (_db.select(
+        _db.localSessions,
+      )..where((t) => t.localId.equals(existing))).getSingleOrNull();
+      if (row != null) return existing;
+      final now = DateTime.now();
+      final openedAt = parseOpenedAt(_tablePayload(table)['opened_at']) ?? now;
+      await _db
+          .into(_db.localSessions)
+          .insert(
+            LocalSessionsCompanion.insert(
+              localId: existing,
+              workspaceId: table.workspaceId,
+              tableLocalId: table.localId,
+              status: const Value('open'),
+              openedAt: openedAt,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      return existing;
+    }
+    return null;
+  }
+
   Future<LocalTable?> _lookupTable(int workspaceId, int tableId) async {
     if (workspaceId <= 0 || tableId <= 0) return null;
     final byServer =
@@ -1043,7 +1129,9 @@ class OrdersRepository {
       if (decoded is Map) payload = Map<String, dynamic>.from(decoded);
     } catch (_) {}
     final openedAt = parseOpenedAt(payload['opened_at']);
-    final currentSession = '${payload['session_client_id'] ?? ''}'.trim();
+    final currentSession =
+        await _openSessionLocalId(table) ??
+        '${payload['session_client_id'] ?? ''}'.trim();
     final sessionRows =
         await (_db.select(_db.localOrders)..where((t) {
               Expression<bool> match =

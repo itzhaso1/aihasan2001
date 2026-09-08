@@ -1,6 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hasim_cashier/core/local_db/app_database.dart';
 import 'package:hasim_cashier/core/pos/application/reports_service.dart';
@@ -224,8 +225,160 @@ void main() {
       expect(freshOrders, hasLength(1));
       expect(freshOrders.single['local_id'], 'ord-new-sitting');
       expect(asDoubleOr(fresh?['total']), 2);
+      expect(fresh?['items_count'], 1);
+
+      final storedOld = await (db.select(
+        db.localOrders,
+      )..where((t) => t.localId.equals('ord-old-sitting'))).getSingle();
+      expect(storedOld.posStatus, 'completed');
+      expect(storedOld.paymentStatus, 'paid');
+      expect(
+        storedOld.sessionLocalId,
+        isNot(freshOrders.single['session_local_id']),
+      );
+      expect(
+        created['session_local_id'],
+        freshOrders.single['session_local_id'],
+      );
+      expect(created['session_local_id'], isNot(storedOld.sessionLocalId));
+
+      final invoices = await finance.listInvoices(
+        workspaceId: 1,
+        onDate: DateTime.now(),
+      );
+      expect(invoices, hasLength(1));
+      expect(asDoubleOr(invoices.single['total_amount']), 90);
     },
   );
+
+  test('session 2 pizza does not revive session 1 burger and cola', () async {
+    await seedUuidTable();
+    await tables.openSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 4,
+    );
+    await orders.createTableOrder(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableId: 4,
+      clientReference: 'sess1-burger',
+      items: [
+        {'name': 'Burger', 'quantity': 2, 'unit_price': 10, 'total_amount': 20},
+      ],
+    );
+    await orders.createTableOrder(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableId: 4,
+      clientReference: 'sess1-cola',
+      items: [
+        {'name': 'Cola', 'quantity': 1, 'unit_price': 5, 'total_amount': 5},
+      ],
+    );
+    await tables.closeSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 4,
+      paymentMethod: 'cash',
+    );
+
+    await tables.openSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 4,
+    );
+    expect(asMapList((await tables.getTable(1, 4))?['orders']), isEmpty);
+
+    await orders.createTableOrder(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableId: 4,
+      clientReference: 'sess2-pizza',
+      items: [
+        {'name': 'Pizza', 'quantity': 1, 'unit_price': 12, 'total_amount': 12},
+      ],
+    );
+    final session2 = await tables.getTable(1, 4);
+    final names = [
+      for (final order in asMapList(session2?['orders']))
+        for (final item in asMapList(order['items'])) '${item['name']}',
+    ];
+    expect(names, ['Pizza']);
+    expect(names, isNot(contains('Burger')));
+    expect(names, isNot(contains('Cola')));
+    expect(asMapList(session2?['orders']), hasLength(1));
+    expect(asDoubleOr(session2?['total']), 12);
+
+    expect(await db.select(db.localOrders).get(), hasLength(3));
+    expect(await db.select(db.localInvoices).get(), hasLength(1));
+  });
+
+  test('closed sitting stays empty after a database restart', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    final dir = await Directory.systemTemp.createTemp('table_session_restart_');
+    final file = File('${dir.path}/pos.sqlite');
+    final db1 = AppDatabase.file(file);
+    final queue1 = SyncQueueRepository(db1);
+    final tables1 = TablesRepository(db1, queue1);
+    final orders1 = OrdersRepository(db1, queue1);
+    await db1
+        .into(db1.localTables)
+        .insert(
+          LocalTablesCompanion.insert(
+            localId: 'uuid-table-4',
+            workspaceId: 1,
+            serverId: const Value(4),
+            name: 'طاولة 4',
+            status: const Value('available'),
+            payloadJson: Value(
+              jsonEncode({'id': 4, 'name': 'طاولة 4', 'status': 'available'}),
+            ),
+            updatedAt: DateTime.now(),
+          ),
+        );
+    await tables1.openSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 4,
+    );
+    await orders1.createTableOrder(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableId: 4,
+      clientReference: 'restart-old',
+      items: [
+        {'name': 'Burger', 'quantity': 1, 'unit_price': 10, 'total_amount': 10},
+      ],
+    );
+    await tables1.closeSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 4,
+      paymentMethod: 'cash',
+    );
+    await db1.close();
+
+    final db2 = AppDatabase.file(file);
+    final queue2 = SyncQueueRepository(db2);
+    final tables2 = TablesRepository(db2, queue2);
+    final finance2 = LocalFinanceRepository(db2);
+    final reopened = await tables2.openSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 4,
+    );
+    expect(asMapList(reopened['orders']), isEmpty);
+    expect(asDoubleOr(reopened['total']), 0);
+    final invoices = await finance2.listInvoices(workspaceId: 1);
+    expect(invoices, hasLength(1));
+    expect(asDoubleOr(invoices.single['total_amount']), 10);
+    final persisted = await db2.select(db2.localOrders).get();
+    expect(persisted, hasLength(1));
+    expect(persisted.single.localId, 'restart-old');
+    expect(persisted.single.posStatus, 'completed');
+    await db2.close();
+  });
 
   test('reports.daily completes with an empty workspace', () async {
     final daily = await reports
