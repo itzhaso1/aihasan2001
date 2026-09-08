@@ -13,6 +13,7 @@ import '../offline/pending_order.dart';
 import '../util/json_numbers.dart';
 import '../util/occupied_duration.dart';
 import 'sync_queue_repository.dart';
+import 'tables_repository.dart';
 
 /// Local-first orders: UI → repository → SQLite transaction → sync_queue.
 class OrdersRepository {
@@ -81,6 +82,7 @@ class OrdersRepository {
       notes: notes,
       items: normalized,
     );
+    apiPayload['table_local_id'] = resolvedLocalId;
 
     await _db.transaction(() async {
       await _db
@@ -988,12 +990,20 @@ class OrdersRepository {
             ))
             .getSingleOrNull();
     if (byServer != null) return byServer;
-    return (_db.select(_db.localTables)..where(
+    final scoped = await (_db.select(_db.localTables)..where(
           (t) =>
               t.workspaceId.equals(workspaceId) &
               t.localId.equals(LocalIds.table(workspaceId, tableId)),
         ))
         .getSingleOrNull();
+    if (scoped != null) return scoped;
+    final rows = await (_db.select(_db.localTables)
+          ..where((t) => t.workspaceId.equals(workspaceId)))
+        .get();
+    for (final row in rows) {
+      if (TablesRepository.boardNumericId(row) == tableId) return row;
+    }
+    return null;
   }
 
   Future<List<LocalOrder>> _ordersForTable({

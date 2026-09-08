@@ -8,6 +8,8 @@ use App\Models\DiningTable;
 use App\Models\InventoryMovement;
 use App\Models\Order;
 use App\Models\PosDevice;
+use App\Models\PosItemCategory;
+use App\Models\PosMenuItem;
 use App\Models\PosSyncChange;
 use App\Models\PosSyncOperation;
 use App\Models\TableSession;
@@ -17,6 +19,7 @@ use App\Services\Feature\FeatureAccessService;
 use App\Services\Inventory\InventoryService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Throwable;
@@ -24,10 +27,13 @@ use Throwable;
 /**
  * Batch POS push — idempotent by (workspace_id, operation_uuid).
  *
- * Source of Truth:
- *   catalog / prices / categories / users / settings → Laravel
- *   orders / payments / table sessions / invoices     → POS then Laravel
- *   stock                                             → Laravel via movements (sale stock is applied by order.created)
+ * Allowed cashier contract:
+ *   invoices / reporting snapshots → POS then Laravel
+ *   menu (categories / products / prices) → Flutter then Laravel
+ *   table master data (create / rename / delete) → Flutter then Laravel
+ *
+ * Out of scope on this path: table sessions, stock, shifts, cash drawer,
+ * returns, QR, billing, chat, payment.created / gateways.
  */
 class PosSyncPushService
 {
@@ -228,6 +234,15 @@ class PosSyncPushService
             'table_session.merge' => $this->sessionMerge($workspace, $data),
             'table_session.split' => $this->sessionSplit($workspace, $user, $data),
             'invoice.created' => $this->invoiceCreated($workspace, $user, $data),
+            'category.created' => $this->categoryCreated($workspace, $data),
+            'category.updated' => $this->categoryUpdated($workspace, $data),
+            'category.deleted' => $this->categoryDeleted($workspace, $data),
+            'product.created' => $this->productCreated($workspace, $data),
+            'product.updated' => $this->productUpdated($workspace, $data),
+            'product.deleted' => $this->productDeleted($workspace, $data),
+            'table.created' => $this->tableCreated($workspace, $data),
+            'table.updated' => $this->tableUpdated($workspace, $data),
+            'table.deleted' => $this->tableDeleted($workspace, $data),
             'stock.movement' => $this->stockMovement($workspace, $user, $data, $uuid),
             default => throw PosSyncOperationException::permanent('نوع عملية غير مدعوم: '.$type),
         };
@@ -603,6 +618,250 @@ class PosSyncPushService
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function categoryCreated(Workspace $workspace, array $data): array
+    {
+        $name = trim((string) ($data['name'] ?? ''));
+        if ($name === '') {
+            throw PosSyncOperationException::permanent('اسم التصنيف مطلوب.');
+        }
+
+        $existing = PosItemCategory::withoutGlobalScopes()
+            ->withTrashed()
+            ->where('workspace_id', $workspace->id)
+            ->where('name', $name)
+            ->first();
+        if ($existing) {
+            if ($existing->trashed()) {
+                $existing->restore();
+            }
+            $existing->fill([
+                'is_active' => array_key_exists('is_active', $data) ? (bool) $data['is_active'] : true,
+                'sort_order' => (int) ($data['sort_order'] ?? $existing->sort_order ?? 0),
+            ])->save();
+
+            return $this->categoryResult($existing->fresh() ?? $existing);
+        }
+
+        $category = PosItemCategory::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => $name,
+            'is_active' => array_key_exists('is_active', $data) ? (bool) $data['is_active'] : true,
+            'sort_order' => (int) ($data['sort_order'] ?? 0),
+        ]);
+
+        return $this->categoryResult($category);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function categoryUpdated(Workspace $workspace, array $data): array
+    {
+        $category = $this->resolveCategory($workspace, $data);
+        $name = trim((string) ($data['name'] ?? $category->name));
+        if ($name === '') {
+            throw PosSyncOperationException::permanent('اسم التصنيف مطلوب.');
+        }
+        $taken = PosItemCategory::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->where('name', $name)
+            ->whereKeyNot($category->id)
+            ->exists();
+        if ($taken) {
+            throw PosSyncOperationException::permanent('يوجد تصنيف بنفس الاسم في هذه المساحة.');
+        }
+        $category->update([
+            'name' => $name,
+            'is_active' => array_key_exists('is_active', $data)
+                ? (bool) $data['is_active']
+                : (bool) $category->is_active,
+            'sort_order' => (int) ($data['sort_order'] ?? $category->sort_order ?? 0),
+        ]);
+
+        return $this->categoryResult($category->fresh() ?? $category);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function categoryDeleted(Workspace $workspace, array $data): array
+    {
+        $category = $this->resolveCategory($workspace, $data);
+        if ($category->items()->exists()) {
+            throw PosSyncOperationException::permanent('لا يمكن حذف تصنيف مرتبط بأصناف. انقل الأصناف أولاً.');
+        }
+        $category->delete();
+
+        return $this->categoryResult($category);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function productCreated(Workspace $workspace, array $data): array
+    {
+        $name = trim((string) ($data['name'] ?? ''));
+        if ($name === '') {
+            throw PosSyncOperationException::permanent('اسم الصنف مطلوب.');
+        }
+        if (! array_key_exists('price', $data) || ! is_numeric($data['price']) || (float) $data['price'] < 0) {
+            throw PosSyncOperationException::permanent('سعر الصنف مطلوب.');
+        }
+        $categoryId = $this->optionalCategoryId($workspace, $data);
+        $currency = strtoupper(trim((string) ($data['currency'] ?? 'SAR')));
+        if (! preg_match('/^[A-Z]{3}$/', $currency)) {
+            $currency = 'SAR';
+        }
+
+        $item = PosMenuItem::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => $name,
+            'sku' => $this->nullableString($data['sku'] ?? null),
+            'barcode' => $this->nullableString($data['barcode'] ?? null),
+            'pos_item_category_id' => $categoryId,
+            'item_type' => $this->nullableString($data['item_type'] ?? null) ?? 'عام',
+            'price' => (float) $data['price'],
+            'currency' => $currency,
+            'is_active' => array_key_exists('is_active', $data) ? (bool) $data['is_active'] : true,
+            'sort_order' => (int) ($data['sort_order'] ?? 0),
+        ]);
+
+        return $this->productResult($item);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function productUpdated(Workspace $workspace, array $data): array
+    {
+        $item = $this->resolveProduct($workspace, $data);
+        $name = trim((string) ($data['name'] ?? $item->name));
+        if ($name === '') {
+            throw PosSyncOperationException::permanent('اسم الصنف مطلوب.');
+        }
+        $price = array_key_exists('price', $data) ? (float) $data['price'] : (float) $item->price;
+        if ($price < 0) {
+            throw PosSyncOperationException::permanent('سعر الصنف غير صالح.');
+        }
+        $currency = strtoupper(trim((string) ($data['currency'] ?? $item->currency ?? 'SAR')));
+        if (! preg_match('/^[A-Z]{3}$/', $currency)) {
+            $currency = (string) ($item->currency ?: 'SAR');
+        }
+        $item->update([
+            'name' => $name,
+            'sku' => array_key_exists('sku', $data) ? $this->nullableString($data['sku']) : $item->sku,
+            'barcode' => array_key_exists('barcode', $data) ? $this->nullableString($data['barcode']) : $item->barcode,
+            'pos_item_category_id' => array_key_exists('pos_item_category_id', $data) || array_key_exists('category_local_id', $data)
+                ? $this->optionalCategoryId($workspace, $data)
+                : $item->pos_item_category_id,
+            'price' => $price,
+            'currency' => $currency,
+            'is_active' => array_key_exists('is_active', $data) ? (bool) $data['is_active'] : (bool) $item->is_active,
+            'sort_order' => (int) ($data['sort_order'] ?? $item->sort_order ?? 0),
+        ]);
+
+        return $this->productResult($item->fresh() ?? $item);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function productDeleted(Workspace $workspace, array $data): array
+    {
+        $item = $this->resolveProduct($workspace, $data);
+        $item->delete();
+
+        return $this->productResult($item);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function tableCreated(Workspace $workspace, array $data): array
+    {
+        $name = trim((string) ($data['name'] ?? ''));
+        if ($name === '') {
+            throw PosSyncOperationException::permanent('اسم الطاولة مطلوب.');
+        }
+
+        $existing = DiningTable::withoutGlobalScopes()
+            ->withTrashed()
+            ->where('workspace_id', $workspace->id)
+            ->where('name', $name)
+            ->first();
+        if ($existing) {
+            if ($existing->trashed()) {
+                $existing->restore();
+            }
+            $existing->fill(['name' => $name])->save();
+
+            return $this->tableMasterResult($existing->fresh() ?? $existing);
+        }
+
+        $table = DiningTable::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => $name,
+            'status' => 'available',
+            'qr_token' => Str::random(48),
+        ]);
+
+        return $this->tableMasterResult($table);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function tableUpdated(Workspace $workspace, array $data): array
+    {
+        $table = $this->resolveMasterTable($workspace, $data);
+        $name = trim((string) ($data['name'] ?? $table->name));
+        if ($name === '') {
+            throw PosSyncOperationException::permanent('اسم الطاولة مطلوب.');
+        }
+        $taken = DiningTable::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->where('name', $name)
+            ->whereKeyNot($table->id)
+            ->exists();
+        if ($taken) {
+            throw PosSyncOperationException::permanent('يوجد طاولة بنفس الاسم في هذه المساحة.');
+        }
+        $table->update(['name' => $name]);
+
+        return $this->tableMasterResult($table->fresh() ?? $table);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function tableDeleted(Workspace $workspace, array $data): array
+    {
+        $table = $this->resolveMasterTable($workspace, $data);
+        $open = TableSession::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->where('dining_table_id', $table->id)
+            ->where('status', 'open')
+            ->exists();
+        if ($open) {
+            throw PosSyncOperationException::permanent('لا يمكن حذف طاولة عليها جلسة مفتوحة.');
+        }
+        $table->delete();
+
+        return $this->tableMasterResult($table);
+    }
+
+    /**
      * Standalone stock ledger. Sale deductions from order.created are skipped
      * so inventory is not double-applied.
      *
@@ -687,6 +946,145 @@ class PosSyncPushService
         }
 
         return $mapped;
+    }
+
+    /**
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function categoryResult(PosItemCategory $category): array
+    {
+        return [
+            'entity_type' => 'category',
+            'entity_id' => (int) $category->id,
+            'result' => [
+                'id' => $category->id,
+                'name' => $category->name,
+                'is_active' => (bool) $category->is_active,
+                'sort_order' => (int) $category->sort_order,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function productResult(PosMenuItem $item): array
+    {
+        return [
+            'entity_type' => 'product',
+            'entity_id' => (int) $item->id,
+            'result' => [
+                'id' => $item->id,
+                'name' => $item->name,
+                'price' => (float) $item->price,
+                'currency' => $item->currency,
+                'pos_item_category_id' => $item->pos_item_category_id,
+                'is_active' => (bool) $item->is_active,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function tableMasterResult(DiningTable $table): array
+    {
+        return [
+            'entity_type' => 'table',
+            'entity_id' => (int) $table->id,
+            'result' => [
+                'id' => $table->id,
+                'name' => $table->name,
+                'status' => $table->status,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveCategory(Workspace $workspace, array $data): PosItemCategory
+    {
+        $id = (int) ($data['server_id'] ?? $data['id'] ?? $data['pos_item_category_id'] ?? 0);
+        if ($id > 0) {
+            $category = PosItemCategory::withoutGlobalScopes()
+                ->where('workspace_id', $workspace->id)
+                ->whereKey($id)
+                ->first();
+            if ($category) {
+                return $category;
+            }
+        }
+
+        throw PosSyncOperationException::permanent('التصنيف غير موجود.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveProduct(Workspace $workspace, array $data): PosMenuItem
+    {
+        $id = (int) ($data['server_id'] ?? $data['id'] ?? $data['pos_menu_item_id'] ?? 0);
+        if ($id > 0) {
+            $item = PosMenuItem::withoutGlobalScopes()
+                ->where('workspace_id', $workspace->id)
+                ->whereKey($id)
+                ->first();
+            if ($item) {
+                return $item;
+            }
+        }
+
+        throw PosSyncOperationException::permanent('الصنف غير موجود.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveMasterTable(Workspace $workspace, array $data): DiningTable
+    {
+        $id = (int) ($data['server_id'] ?? $data['table_server_id'] ?? $data['dining_table_id'] ?? $data['id'] ?? 0);
+        if ($id > 0) {
+            $table = DiningTable::withoutGlobalScopes()
+                ->where('workspace_id', $workspace->id)
+                ->whereKey($id)
+                ->first();
+            if ($table) {
+                return $table;
+            }
+        }
+
+        throw PosSyncOperationException::permanent('الطاولة غير موجودة.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function optionalCategoryId(Workspace $workspace, array $data): ?int
+    {
+        $id = (int) ($data['pos_item_category_id'] ?? $data['category_server_id'] ?? 0);
+        if ($id <= 0) {
+            return null;
+        }
+        $exists = PosItemCategory::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->whereKey($id)
+            ->exists();
+        if (! $exists) {
+            throw PosSyncOperationException::permanent('تصنيف الصنف غير موجود.');
+        }
+
+        return $id;
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $text = trim((string) $value);
+
+        return $text === '' ? null : $text;
     }
 
     /**

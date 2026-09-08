@@ -32,7 +32,7 @@ class TablesRepository {
 
   Future<List<Map<String, dynamic>>> listTables(int workspaceId) async {
     if (workspaceId <= 0) return const [];
-    await _backfillMissingServerIds(workspaceId);
+    await _ensureLocalBoardIds(workspaceId);
     final rows =
         await (_db.select(_db.localTables)
               ..where((t) => t.workspaceId.equals(workspaceId))
@@ -88,12 +88,19 @@ class TablesRepository {
               ))
               .getSingleOrNull();
       if (byServer != null) return byServer;
-      return (_db.select(_db.localTables)..where(
+      final scoped = await (_db.select(_db.localTables)..where(
             (t) =>
                 t.localId.equals(tableLocalId(workspaceId, serverId)) &
                 t.workspaceId.equals(workspaceId),
           ))
           .getSingleOrNull();
+      if (scoped != null) return scoped;
+      final rows = await (_db.select(_db.localTables)
+            ..where((t) => t.workspaceId.equals(workspaceId)))
+          .get();
+      for (final row in rows) {
+        if (boardNumericId(row) == serverId) return row;
+      }
     }
     return null;
   }
@@ -109,36 +116,46 @@ class TablesRepository {
     return table;
   }
 
-  Future<void> _backfillMissingServerIds(int workspaceId) async {
+  Future<void> _ensureLocalBoardIds(int workspaceId) async {
     final rows = await (_db.select(
       _db.localTables,
     )..where((t) => t.workspaceId.equals(workspaceId))).get();
     final missing = [
       for (final row in rows)
-        if (row.serverId == null) row,
+        if (row.serverId == null && boardNumericId(row) == null) row,
     ];
     if (missing.isEmpty) return;
     var next = 0;
     for (final row in rows) {
-      final sid = row.serverId;
-      if (sid != null && sid > next) next = sid;
+      final board = boardNumericId(row);
+      if (board != null && board > next) next = board;
     }
     for (final row in missing) {
       next += 1;
       final payload = _safeMap(row.payloadJson);
-      payload['id'] = next;
+      payload['board_id'] = next;
       payload['name'] = row.name;
       payload['status'] = row.status;
       await (_db.update(
         _db.localTables,
       )..where((t) => t.localId.equals(row.localId))).write(
         LocalTablesCompanion(
-          serverId: Value(next),
           payloadJson: Value(jsonEncode(payload)),
           updatedAt: Value(DateTime.now()),
         ),
       );
     }
+  }
+
+  static int? boardNumericId(LocalTable row) {
+    if (row.serverId != null && row.serverId! > 0) return row.serverId;
+    try {
+      final decoded = jsonDecode(row.payloadJson);
+      if (decoded is Map) {
+        return asInt(decoded['board_id']) ?? asInt(decoded['id']);
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<void> replaceBoard(
@@ -696,6 +713,8 @@ class TablesRepository {
       'order_type': 'table',
       'offline_sale': true,
       if (order.tableServerId != null) 'dining_table_id': order.tableServerId,
+      if (order.tableLocalId != null && order.tableLocalId!.trim().isNotEmpty)
+        'table_local_id': order.tableLocalId!.trim(),
       'client_reference': order.clientReference,
       'placed_at': order.createdAt.toUtc().toIso8601String(),
       'currency': 'SAR',
@@ -1440,7 +1459,7 @@ class TablesRepository {
     );
     return {
       ...payload,
-      'id': row.serverId ?? row.localId,
+      'id': row.serverId ?? boardNumericId(row) ?? row.localId,
       'local_id': row.localId,
       'name': row.name,
       'status': occupied ? 'occupied' : 'available',
@@ -1496,7 +1515,7 @@ class TablesRepository {
     );
     return {
       ...payload,
-      'id': row.serverId ?? row.localId,
+      'id': row.serverId ?? boardNumericId(row) ?? row.localId,
       'local_id': row.localId,
       'name': row.name.isNotEmpty ? row.name : '${payload['name'] ?? ''}',
       'status': occupied ? 'occupied' : 'available',

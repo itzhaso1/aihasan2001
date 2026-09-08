@@ -61,9 +61,11 @@ class SyncQueueCountsByBucket {
   final int standalone;
   final int blocked;
 
-  /// Paid invoice rows that should move on the next successful push.
-  /// Unpaid table leftovers, session ops, and missing product ids stay out.
+  /// Invoice + menu + table-master rows that should move on the next push.
+  /// Session/stock leftovers stay out of this count.
   int get invoicePending => ready + waitingParent;
+
+  int get scopedPending => invoicePending;
 
   int get totalOpen =>
       ready +
@@ -82,6 +84,10 @@ class SyncQueueClassifier {
   final AppDatabase _db;
 
   static const saleTypes = {'takeaway', 'table', 'delivery'};
+
+  static const menuTypes = {'category', 'product'};
+
+  static const tableMasterType = 'table';
 
   static Map<String, dynamic> decodePayload(String raw) {
     try {
@@ -166,7 +172,7 @@ class SyncQueueClassifier {
         row: row,
         bucket: SyncQueueBucket.unsupported,
         reason:
-            'خارج عقد مزامنة الفواتير الحالي (order.created + invoice.created).',
+            'خارج عقد المزامنة (فواتير + منيو + بيانات الطاولات الأساسية).',
       );
     }
 
@@ -183,6 +189,18 @@ class SyncQueueClassifier {
     }
     if (row.entityType == 'invoice' && row.operation == 'create') {
       return _classifyInvoiceCreate(row);
+    }
+    if (menuTypes.contains(row.entityType) &&
+        (row.operation == 'create' ||
+            row.operation == 'update' ||
+            row.operation == 'delete')) {
+      return _classifyMenu(row);
+    }
+    if (row.entityType == tableMasterType &&
+        (row.operation == 'create' ||
+            row.operation == 'update' ||
+            row.operation == 'delete')) {
+      return _classifyTableMaster(row);
     }
 
     return SyncQueueClassification(
@@ -244,6 +262,16 @@ class SyncQueueClassifier {
         );
       }
     }
+    if (type == 'table') {
+      final waitingTable = await _tableNeedsServerId(row, payload);
+      if (waitingTable) {
+        return SyncQueueClassification(
+          row: row,
+          bucket: SyncQueueBucket.waitingParent,
+          reason: 'فاتورة الطاولة تنتظر وصول الطاولة إلى Laravel أولاً.',
+        );
+      }
+    }
     return SyncQueueClassification(
       row: row,
       bucket: SyncQueueBucket.ready,
@@ -252,6 +280,111 @@ class SyncQueueClassifier {
           : type == 'delivery'
               ? 'طلب توصيل جاهز للدفع.'
               : 'طلب سفري جاهز للدفع.',
+    );
+  }
+
+  Future<SyncQueueClassification> _classifyMenu(SyncQueueItem row) async {
+    if (row.entityType == 'category') {
+      final category = await _category(row.workspaceId, row.entityId);
+      if (row.operation == 'create' &&
+          category?.serverId != null &&
+          category!.serverId! > 0) {
+        return SyncQueueClassification(
+          row: row,
+          bucket: SyncQueueBucket.alreadyApplied,
+          reason: 'التصنيف المحلي لديه server_id=${category.serverId}.',
+        );
+      }
+      if (row.operation != 'create' &&
+          (category == null ||
+              category.serverId == null ||
+              category.serverId! <= 0)) {
+        return SyncQueueClassification(
+          row: row,
+          bucket: SyncQueueBucket.waitingParent,
+          reason: 'تحديث/حذف التصنيف ينتظر معرّف السحابة.',
+        );
+      }
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.ready,
+        reason: 'تغيير منيو (تصنيف) جاهز للدفع.',
+      );
+    }
+
+    final product = await _product(row.workspaceId, row.entityId);
+    if (row.operation == 'create' &&
+        product?.serverId != null &&
+        product!.serverId! > 0) {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.alreadyApplied,
+        reason: 'الصنف المحلي لديه server_id=${product.serverId}.',
+      );
+    }
+    if (row.operation != 'create' &&
+        (product == null ||
+            product.serverId == null ||
+            product.serverId! <= 0)) {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.waitingParent,
+        reason: 'تحديث/حذف الصنف ينتظر معرّف السحابة.',
+      );
+    }
+    final payload = decodePayload(row.payloadJson);
+    final categoryLocalId =
+        '${payload['category_local_id'] ?? product?.categoryLocalId ?? ''}'
+            .trim();
+    if (categoryLocalId.isNotEmpty) {
+      final category = await _category(row.workspaceId, categoryLocalId);
+      if (category == null ||
+          category.serverId == null ||
+          category.serverId! <= 0) {
+        return SyncQueueClassification(
+          row: row,
+          bucket: SyncQueueBucket.waitingParent,
+          reason: 'الصنف ينتظر وصول التصنيف إلى Laravel أولاً.',
+        );
+      }
+    }
+    return SyncQueueClassification(
+      row: row,
+      bucket: SyncQueueBucket.ready,
+      reason: 'تغيير منيو (صنف) جاهز للدفع.',
+    );
+  }
+
+  Future<SyncQueueClassification> _classifyTableMaster(
+    SyncQueueItem row,
+  ) async {
+    final table = await _table(row.workspaceId, row.entityId);
+    if (row.operation == 'create' &&
+        table?.serverId != null &&
+        table!.serverId! > 0) {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.alreadyApplied,
+        reason: 'الطاولة المحلية لديها server_id=${table.serverId}.',
+      );
+    }
+    if (row.operation != 'create') {
+      final payload = decodePayload(row.payloadJson);
+      final serverId = table?.serverId ??
+          (payload['server_id'] as num?)?.toInt() ??
+          (payload['table_server_id'] as num?)?.toInt();
+      if (serverId == null || serverId <= 0) {
+        return SyncQueueClassification(
+          row: row,
+          bucket: SyncQueueBucket.waitingParent,
+          reason: 'تحديث/حذف الطاولة ينتظر معرّف السحابة.',
+        );
+      }
+    }
+    return SyncQueueClassification(
+      row: row,
+      bucket: SyncQueueBucket.ready,
+      reason: 'بيانات الطاولة الأساسية جاهزة للدفع.',
     );
   }
 
@@ -321,5 +454,36 @@ class SyncQueueClassifier {
           (t) => t.workspaceId.equals(workspaceId) & t.localId.equals(localId),
         ))
         .getSingleOrNull();
+  }
+
+  Future<LocalCategory?> _category(int workspaceId, String localId) {
+    return (_db.select(_db.localCategories)..where(
+          (t) => t.workspaceId.equals(workspaceId) & t.localId.equals(localId),
+        ))
+        .getSingleOrNull();
+  }
+
+  Future<LocalProduct?> _product(int workspaceId, String localId) {
+    return (_db.select(_db.localProducts)..where(
+          (t) => t.workspaceId.equals(workspaceId) & t.localId.equals(localId),
+        ))
+        .getSingleOrNull();
+  }
+
+  Future<LocalTable?> _table(int workspaceId, String localId) {
+    return (_db.select(_db.localTables)..where(
+          (t) => t.workspaceId.equals(workspaceId) & t.localId.equals(localId),
+        ))
+        .getSingleOrNull();
+  }
+
+  Future<bool> _tableNeedsServerId(
+    SyncQueueItem row,
+    Map<String, dynamic> payload,
+  ) async {
+    final tableLocalId = '${payload['table_local_id'] ?? ''}'.trim();
+    if (tableLocalId.isEmpty) return false;
+    final table = await _table(row.workspaceId, tableLocalId);
+    return table == null || table.serverId == null || table.serverId! <= 0;
   }
 }

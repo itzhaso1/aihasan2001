@@ -237,4 +237,31 @@ void main() {
     expect(item.bucket, SyncQueueBucket.waitingParent);
     expect((await SyncQueueClassifier(db).counts(workspaceId)).invoicePending, 1);
   });
+
+  test('menu and table-master rows are scoped pending, sessions are not', () async {
+    await insertQueue(
+      entityType: 'category',
+      entityId: 'cat-1',
+      operation: 'create',
+      status: 'pending',
+      payload: {'name': 'مشروبات'},
+    );
+    await insertQueue(
+      entityType: 'table',
+      entityId: 'tbl-1',
+      operation: 'create',
+      status: 'pending',
+      payload: {'name': 'VIP 1'},
+    );
+    await insertQueue(
+      entityType: 'table_session',
+      entityId: 'sess-1',
+      operation: 'open',
+      status: 'pending',
+    );
+    final counts = await SyncQueueClassifier(db).counts(workspaceId);
+    expect(counts.ready, 2);
+    expect(counts.unsupported, 1);
+    expect(counts.scopedPending, 2);
+  });
 }
