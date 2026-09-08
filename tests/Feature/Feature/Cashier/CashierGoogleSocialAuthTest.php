@@ -155,6 +155,57 @@ class CashierGoogleSocialAuthTest extends TestCase
             ->assertStatus(404);
     }
 
+    public function test_google_cashier_callback_skips_session_state_when_cache_misses(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        Config::set('services.google.client_id', 'google-client-id');
+        Config::set('services.google.client_secret', 'google-client-secret');
+        Config::set('services.google.redirect', 'http://localhost/auth/google/callback');
+
+        $this->mockGoogleBrowserDriver('ya29.cache-miss');
+        $ticket = '22222222-2222-4222-8222-222222222222';
+
+        $this->get('/auth/google/callback?state='.$ticket.'&code=oauth-code')
+            ->assertOk()
+            ->assertSee('تم تسجيل الدخول عبر Google', false);
+
+        $this->getJson('/api/cashier/v1/auth/google/status?ticket='.$ticket)
+            ->assertOk()
+            ->assertJsonPath('data.access_token', 'ya29.cache-miss');
+    }
+
+    public function test_google_cashier_callback_accepts_prefixed_oauth_state(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        Config::set('services.google.client_id', 'google-client-id');
+        Config::set('services.google.client_secret', 'google-client-secret');
+        Config::set('services.google.redirect', 'http://localhost/auth/google/callback');
+
+        $this->mockGoogleBrowserDriver('ya29.prefixed-state');
+        $ticket = (string) $this->postJson('/api/cashier/v1/auth/google/start')
+            ->assertOk()
+            ->json('data.ticket');
+
+        $this->get('/auth/google/callback?state=cashier.'.$ticket.'&code=oauth-code')
+            ->assertOk()
+            ->assertSee('تم تسجيل الدخول عبر Google', false);
+
+        $this->getJson('/api/cashier/v1/auth/google/status?ticket='.$ticket)
+            ->assertOk()
+            ->assertJsonPath('data.access_token', 'ya29.prefixed-state');
+    }
+
+    public function test_website_google_callback_uses_stateless_and_does_not_throw_invalid_state(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        $this->fakeWebsiteGoogleUser('web-google-1', 'owner@hasim.test', 'Owner');
+
+        $this->get('/auth/google/callback?code=oauth-code&state='.str_repeat('a', 40))
+            ->assertRedirect(route('workspace.choose'));
+
+        $this->assertAuthenticated();
+    }
+
     /**
      * @return array{0: User, 1: Workspace}
      */
@@ -223,6 +274,22 @@ class CashierGoogleSocialAuthTest extends TestCase
         $driver->shouldReceive('scopes')->andReturnSelf();
         $driver->shouldReceive('with')->andReturnSelf();
         $driver->shouldReceive('redirect')->andReturn($redirect);
+        $driver->shouldReceive('user')->andReturn($socialUser);
+
+        Socialite::shouldReceive('driver')->with('google')->andReturn($driver);
+    }
+
+    private function fakeWebsiteGoogleUser(string $googleId, string $email, string $name): void
+    {
+        $socialUser = Mockery::mock(SocialiteUser::class);
+        $socialUser->shouldReceive('getId')->andReturn($googleId);
+        $socialUser->shouldReceive('getEmail')->andReturn($email);
+        $socialUser->shouldReceive('getName')->andReturn($name);
+        $socialUser->shouldReceive('getNickname')->andReturnNull();
+        $socialUser->shouldReceive('getAvatar')->andReturnNull();
+
+        $driver = Mockery::mock();
+        $driver->shouldReceive('stateless')->andReturnSelf();
         $driver->shouldReceive('user')->andReturn($socialUser);
 
         Socialite::shouldReceive('driver')->with('google')->andReturn($driver);

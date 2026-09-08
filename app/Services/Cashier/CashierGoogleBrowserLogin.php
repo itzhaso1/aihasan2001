@@ -2,6 +2,7 @@
 
 namespace App\Services\Cashier;
 
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -12,6 +13,8 @@ use Throwable;
 class CashierGoogleBrowserLogin
 {
     public const TTL_SECONDS = 600;
+
+    public const STATE_PREFIX = 'cashier.';
 
     public static function cacheKey(string $ticket): string
     {
@@ -25,6 +28,31 @@ class CashierGoogleBrowserLogin
     }
 
     /**
+     * Extract the cashier ticket from Google's OAuth `state`.
+     *
+     * Website Socialite uses a 40-char random string, not a UUID, so a UUID
+     * (optionally prefixed) is always the desktop cashier browser flow.
+     */
+    public function parseTicket(string $state): ?string
+    {
+        $state = trim($state);
+        if ($state === '') {
+            return null;
+        }
+
+        if (str_starts_with($state, self::STATE_PREFIX)) {
+            $state = substr($state, strlen(self::STATE_PREFIX));
+        }
+
+        return $this->isTicket($state) ? $state : null;
+    }
+
+    public function isCashierTicket(string $state): bool
+    {
+        return $this->parseTicket($state) !== null;
+    }
+
+    /**
      * @return array{ticket: string, auth_url: string, expires_in: int}
      */
     public function start(): array
@@ -34,7 +62,7 @@ class CashierGoogleBrowserLogin
         }
 
         $ticket = (string) Str::uuid();
-        Cache::put(self::cacheKey($ticket), [
+        $this->cache()->put(self::cacheKey($ticket), [
             'status' => 'pending',
             'access_token' => null,
             'error' => null,
@@ -49,7 +77,7 @@ class CashierGoogleBrowserLogin
             ->stateless()
             ->scopes(['openid', 'profile', 'email'])
             ->with([
-                'state' => $ticket,
+                'state' => self::STATE_PREFIX.$ticket,
                 'prompt' => 'select_account',
             ])
             ->redirect()
@@ -60,16 +88,6 @@ class CashierGoogleBrowserLogin
             'auth_url' => $authUrl,
             'expires_in' => self::TTL_SECONDS,
         ];
-    }
-
-    public function isCashierTicket(string $state): bool
-    {
-        $state = trim($state);
-        if ($state === '') {
-            return false;
-        }
-
-        return Cache::has(self::cacheKey($state));
     }
 
     public function complete(string $provider, string $ticket): Response
@@ -97,7 +115,7 @@ class CashierGoogleBrowserLogin
      */
     public function status(string $ticket): array
     {
-        $payload = Cache::get(self::cacheKey($ticket));
+        $payload = $this->cache()->get(self::cacheKey($ticket));
         if (! is_array($payload)) {
             return [
                 'status' => 'expired',
@@ -111,7 +129,7 @@ class CashierGoogleBrowserLogin
         $error = isset($payload['error']) ? (string) $payload['error'] : null;
 
         if ($status === 'ready' && $token !== '') {
-            Cache::forget(self::cacheKey($ticket));
+            $this->cache()->forget(self::cacheKey($ticket));
 
             return [
                 'status' => 'ready',
@@ -127,9 +145,27 @@ class CashierGoogleBrowserLogin
         ];
     }
 
+    private function isTicket(string $value): bool
+    {
+        return (bool) preg_match(
+            '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',
+            $value
+        );
+    }
+
+    private function cache(): Repository
+    {
+        $default = (string) config('cache.default');
+        if (! app()->environment('testing') && in_array($default, ['array', 'null', ''], true)) {
+            return Cache::store('file');
+        }
+
+        return Cache::store();
+    }
+
     private function mark(string $ticket, string $status, ?string $accessToken = null, ?string $error = null): void
     {
-        Cache::put(self::cacheKey($ticket), [
+        $this->cache()->put(self::cacheKey($ticket), [
             'status' => $status,
             'access_token' => $accessToken,
             'error' => $error,

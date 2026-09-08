@@ -7,10 +7,10 @@ use App\Models\AuthIdentity;
 use App\Models\User;
 use App\Services\Cashier\CashierGoogleBrowserLogin;
 use App\Services\Workspace\WorkspaceService;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\InvalidStateException;
 
 class SocialLoginController extends Controller
 {
@@ -23,23 +23,34 @@ class SocialLoginController extends Controller
     {
         abort_unless(in_array($provider, ['google', 'facebook'], true), 404);
 
-        return Socialite::driver($provider)->redirect();
+        return Socialite::driver($provider)->stateless()->redirect();
     }
 
     public function callback(string $provider)
     {
         abort_unless(in_array($provider, ['google', 'facebook'], true), 404);
 
-        $state = trim((string) request()->query('state', ''));
-        if ($provider === 'google' && $this->cashierGoogleBrowserLogin->isCashierTicket($state)) {
-            return $this->cashierGoogleBrowserLogin->complete($provider, $state);
+        $state = trim((string) request()->input('state', ''));
+        if ($provider === 'google') {
+            $ticket = $this->cashierGoogleBrowserLogin->parseTicket($state);
+            if ($ticket !== null) {
+                return $this->cashierGoogleBrowserLogin->complete($provider, $ticket);
+            }
         }
 
         if (Auth::check()) {
             return redirect()->route('workspace.choose');
         }
 
-        $socialUser = Socialite::driver($provider)->user();
+        try {
+            $socialUser = Socialite::driver($provider)->stateless()->user();
+        } catch (InvalidStateException) {
+            return redirect()
+                ->route('login')
+                ->withErrors([
+                    'email' => 'تعذر إكمال تسجيل الدخول عبر Google. أعد المحاولة.',
+                ]);
+        }
 
         $identity = AuthIdentity::query()
             ->where('provider', $provider)
