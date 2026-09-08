@@ -106,7 +106,7 @@ class PosFinalCashierCompletionTest extends TestCase
         $this->assertSame(80.0, (float) $order->total_amount);
     }
 
-    public function test_creating_order_does_not_auto_create_invoice(): void
+    public function test_creating_takeaway_order_creates_cashier_invoice(): void
     {
         $this->seed(FoundationSeeder::class);
         [$owner, $workspace] = $this->createWorkspaceOwner('store');
@@ -120,9 +120,45 @@ class PosFinalCashierCompletionTest extends TestCase
             ])
             ->assertCreated();
 
-        $response->assertJsonPath('invoice_id', null);
+        $invoiceId = $response->json('invoice_id');
+        $this->assertNotNull($invoiceId);
         $this->assertNotEmpty($response->json('print_url'));
+        $this->assertDatabaseCount('pos_cashier_invoices', 1);
+
+        $order = Order::query()->latest('id')->firstOrFail();
+        $this->assertSame((int) $invoiceId, (int) $order->pos_cashier_invoice_id);
+        $this->assertSame('completed', $order->pos_status);
+        $this->assertDatabaseHas('pos_cashier_invoices', [
+            'id' => $invoiceId,
+            'workspace_id' => $workspace->id,
+        ]);
+        $this->assertDatabaseHas('pos_cashier_invoice_items', [
+            'pos_cashier_invoice_id' => $invoiceId,
+        ]);
+    }
+
+    public function test_creating_table_order_does_not_auto_create_invoice(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        [$owner, $workspace] = $this->createWorkspaceOwner('store');
+        $item = $this->makeItem($workspace);
+        $table = $this->makeTable($workspace, 'T-INV');
+
+        $this->actingAs($owner)
+            ->withSession(['current_workspace_id' => $workspace->id])
+            ->postJson(route('workspace.pos.orders.store'), [
+                'order_type' => 'table',
+                'dining_table_id' => $table->id,
+                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('invoice_id', null);
+
         $this->assertDatabaseCount('pos_cashier_invoices', 0);
+        $order = Order::query()->latest('id')->firstOrFail();
+        $this->assertNotNull($order->table_session_id);
+        $this->assertNull($order->pos_cashier_invoice_id);
+        $this->assertSame('new', $order->pos_status);
     }
 
     public function test_menu_order_idempotency_with_client_reference(): void

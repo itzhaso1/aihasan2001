@@ -984,6 +984,41 @@ class PosOrderService
     }
 
     /**
+     * Laravel Web POS takeaway/delivery checkout writes a cashier invoice.
+     * Table sittings still invoice only on session close. Flutter offline_sale
+     * kitchen tickets and QR menu orders are not invoiced here.
+     */
+    public function issueWebPosDirectInvoice(Order $order, int $actorUserId): ?PosCashierInvoice
+    {
+        if ($order->pos_cashier_invoice_id) {
+            return PosCashierInvoice::withoutGlobalScopes()->find($order->pos_cashier_invoice_id);
+        }
+
+        if ($order->source !== 'pos') {
+            return null;
+        }
+
+        $metadata = is_array($order->metadata) ? $order->metadata : [];
+        if (filter_var($metadata['offline_sale'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return null;
+        }
+
+        if ($order->table_session_id) {
+            return null;
+        }
+
+        if (! in_array($order->order_type, [Order::ORDER_TYPE_TAKEAWAY, Order::ORDER_TYPE_DELIVERY], true)) {
+            return null;
+        }
+
+        if ($order->pos_status === 'cancelled') {
+            return null;
+        }
+
+        return $this->createInvoiceFromOrder($order, $actorUserId);
+    }
+
+    /**
      * تعديل فاتورة كاشير مغلقة مع مزامنة الطلبات المرتبطة.
      *
      * @param  array<string,mixed>  $payload

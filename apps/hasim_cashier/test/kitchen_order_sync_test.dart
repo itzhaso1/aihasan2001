@@ -537,4 +537,121 @@ void main() {
       isNot(contains('برجر')),
     );
   });
+
+  test('TEST 8 table-menu Laravel payload without client_reference reaches kitchen',
+      () async {
+    await SyncPullApplier(kitchen).applyBatch(
+      workspaceId: workspaceId,
+      fromCursor: 0,
+      responseCursor: 2,
+      changes: [
+        {
+          'version': 1,
+          'entity': 'table',
+          'operation': 'update',
+          'id': 5,
+          'data': {
+            'id': 5,
+            'name': 'طاولة 5',
+            'status': 'occupied',
+          },
+        },
+        {
+          'version': 2,
+          'entity': 'order',
+          'operation': 'update',
+          'id': 501,
+          'data': {
+            'id': 501,
+            'client_reference': null,
+            'order_type': 'table',
+            'dining_table_id': 5,
+            'table_name': 'طاولة 5',
+            'table_session_id': 88,
+            'pos_status': 'new',
+            'payment_status': 'pending',
+            'items': [
+              {
+                'id': 9,
+                'product_name': 'برجر',
+                'quantity': 1,
+                'unit_price': 10,
+                'total_amount': 10,
+              },
+            ],
+          },
+        },
+      ],
+    );
+    final tickets =
+        await KitchenLocalService(kitchen).watchActive(workspaceId).first;
+    expect(tickets, hasLength(1));
+    expect(tickets.single['items'].single['name'], 'برجر');
+    expect(tickets.single['pos_status'], 'new');
+  });
+
+  test('TEST 9 UUID table master plus occupied update does not drop the ticket',
+      () async {
+    final now = DateTime.now();
+    await kitchen.into(kitchen.localTables).insert(
+          LocalTablesCompanion.insert(
+            localId: 'uuid-table-9',
+            workspaceId: workspaceId,
+            serverId: const Value(9),
+            name: 'طاولة 9',
+            updatedAt: now,
+          ),
+        );
+
+    await SyncPullApplier(kitchen).applyBatch(
+      workspaceId: workspaceId,
+      fromCursor: 0,
+      responseCursor: 2,
+      changes: [
+        {
+          'version': 1,
+          'entity': 'order',
+          'operation': 'create',
+          'id': 777,
+          'data': {
+            'id': 777,
+            'client_reference': null,
+            'order_type': 'table',
+            'dining_table_id': 9,
+            'table_name': 'طاولة 9',
+            'pos_status': 'new',
+            'payment_status': 'pending',
+            'items': [
+              {
+                'id': 70,
+                'product_name': 'كولا',
+                'quantity': 1,
+              },
+            ],
+          },
+        },
+        {
+          'version': 2,
+          'entity': 'table',
+          'operation': 'update',
+          'id': 9,
+          'data': {
+            'id': 9,
+            'name': 'طاولة 9',
+            'status': 'occupied',
+          },
+        },
+      ],
+    );
+
+    final tickets =
+        await KitchenLocalService(kitchen).watchActive(workspaceId).first;
+    expect(tickets, hasLength(1));
+    expect(tickets.single['items'].single['name'], 'كولا');
+    final tables = await (kitchen.select(kitchen.localTables)
+          ..where((t) => t.serverId.equals(9)))
+        .get();
+    expect(tables, hasLength(1));
+    expect(tables.single.localId, 'uuid-table-9');
+  });
 }

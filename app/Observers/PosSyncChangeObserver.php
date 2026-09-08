@@ -65,6 +65,17 @@ class PosSyncChangeObserver
             return;
         }
 
+        // Order::create runs before line items exist. An empty create snapshot
+        // is useless to kitchen pull; OrderItem observers write the full order.
+        if ($model instanceof Order && $operation === 'create') {
+            if (! $model->relationLoaded('items')) {
+                $model->load('items');
+            }
+            if ($model->items->isEmpty()) {
+                return;
+            }
+        }
+
         $this->recorder->record($entity, $operation, $model, $this->originDeviceId());
     }
 
