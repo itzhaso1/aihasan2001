@@ -7,6 +7,8 @@ import 'package:hasim_cashier/core/auth/cloud_link_store.dart';
 import 'package:hasim_cashier/core/config/app_config.dart';
 import 'package:hasim_cashier/core/device/device_registration_service.dart';
 import 'package:hasim_cashier/core/local_db/app_database.dart';
+import 'package:hasim_cashier/core/local_db/initial_sync_service.dart';
+import 'package:hasim_cashier/core/local_db/workspace_scope.dart';
 import 'package:hasim_cashier/core/pos/application/checkout_service.dart';
 import 'package:hasim_cashier/core/pos/application/document_numbers.dart';
 import 'package:hasim_cashier/core/pos/application/local_auth_service.dart';
@@ -34,6 +36,7 @@ void main() {
   CashierCloudLinkService serviceFor(
     Dio dio, {
     String deviceId = 'device-fixed-uuid',
+    InitialSyncService? initialSync,
   }) {
     final api = CashierApiClient(dio);
     return CashierCloudLinkService(
@@ -43,6 +46,7 @@ void main() {
       db: db,
       localAuth: localAuth,
       deviceId: () async => deviceId,
+      initialSync: initialSync,
     );
   }
 
@@ -154,6 +158,15 @@ void main() {
         method: 'POST',
       ),
       isFalse,
+    );
+    expect(
+      CashierNetworkPolicy.allowRequest(
+        offlineOnly: true,
+        token: 'sanctum-token',
+        path: '/auth/social',
+        method: 'POST',
+      ),
+      isTrue,
     );
     expect(
       CashierNetworkPolicy.allowRequest(
@@ -391,6 +404,62 @@ void main() {
     expect(PosMode.admitRestoredSession('sanctum-persisted'), isFalse);
   });
 
+  test('failed catalog snapshot does not keep a cloud link', () async {
+    await localAuth.bootstrapStore(
+      storeName: 'محلي',
+      adminName: 'مدير',
+      username: 'admin',
+      pin: '1234',
+    );
+    final backend = _FakeCashierBackend()
+      ..workspaces = [
+        {'id': 42, 'name': 'POS', 'pos_enabled': true},
+      ];
+    final api = CashierApiClient(fakeDio(backend));
+    final service = serviceFor(
+      fakeDio(backend),
+      initialSync: _ThrowingInitialSync(db, api),
+    );
+    expect(
+      () => service.bindWorkspace(
+        workspace: backend.workspaces.first,
+        token: 'token-1',
+        user: {'id': 9},
+      ),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 500)),
+    );
+    expect(await store.read(), isNull);
+  });
+
+  test('ensureCatalogSnapshot retries a missing initial sync', () async {
+    const link = CloudLinkSnapshot(
+      token: 'sanctum-live',
+      workspaceId: 42,
+      userId: 9,
+      deviceId: 'device-fixed-uuid',
+      posEnabled: true,
+      deviceRegistered: true,
+    );
+    await store.save(link);
+    expect(await db.hasInitialSync(42), isFalse);
+
+    final api = CashierApiClient(fakeDio(_FakeCashierBackend()));
+    final service = serviceFor(
+      fakeDio(_FakeCashierBackend()),
+      initialSync: _OkInitialSync(db, api),
+    );
+    expect(await service.ensureCatalogSnapshot(link), isTrue);
+    expect(await db.hasInitialSync(42), isTrue);
+    expect(
+      await CashierCloudLinkService.catalogWorkspaceId(
+        localStoreWorkspaceId: PosMode.standaloneWorkspaceId,
+        link: link,
+        db: db,
+      ),
+      42,
+    );
+  });
+
   test('timeout is not rewritten as a successful offline login', () async {
     final dio = Dio(
       BaseOptions(baseUrl: 'http://cashier.test/api/cashier/v1'),
@@ -576,5 +645,26 @@ class _FakeCashierBackend {
         ),
       ),
     );
+  }
+}
+
+class _ThrowingInitialSync extends InitialSyncService {
+  _ThrowingInitialSync(AppDatabase db, CashierApiClient api) : super(db, api);
+
+  @override
+  Future<InitialSyncResult> run(int workspaceId, {String? deviceId}) {
+    throw ApiException('فشل snapshot', statusCode: 500);
+  }
+}
+
+class _OkInitialSync extends InitialSyncService {
+  _OkInitialSync(this.appDb, CashierApiClient api) : super(appDb, api);
+
+  final AppDatabase appDb;
+
+  @override
+  Future<InitialSyncResult> run(int workspaceId, {String? deviceId}) async {
+    await appDb.markInitialSyncCompleted(workspaceId, deviceId: deviceId);
+    return const InitialSyncResult(ready: true, message: 'ok');
   }
 }

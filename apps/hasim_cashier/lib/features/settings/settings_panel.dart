@@ -9,6 +9,7 @@ import '../../core/api/cashier_api.dart';
 import '../../core/api/cashier_request_auth.dart';
 import '../../core/audio/menu_sound_service.dart';
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/cashier_cloud_link_service.dart';
 import '../../core/auth/cloud_link_store.dart';
 import '../../core/config/app_config.dart';
 import '../../core/local_db/app_database.dart';
@@ -172,7 +173,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     if (_syncing) return;
     setState(() => _syncing = true);
     try {
-      final cloud = CashierRequestAuth.activeLink(
+      await ref.read(authControllerProvider.notifier).hydrateCloudLinkSession();
+      var cloud = CashierRequestAuth.activeLink(
         ref.read(cloudLinkSessionProvider),
       );
       final sessionToken = ref.read(authControllerProvider).valueOrNull?.token;
@@ -181,6 +183,36 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           'اربط الحساب السحابي أولاً من شاشة الدخول (وضع السحابة)، ثم ادخل بالـ PIN. تشغيل Laravel وحده لا يكفي.',
         );
         return;
+      }
+      if (cloud != null) {
+        try {
+          await ref
+              .read(cashierCloudLinkServiceProvider)
+              .ensureCatalogSnapshot(cloud);
+          await ref
+              .read(authControllerProvider.notifier)
+              .hydrateCloudLinkSession();
+          cloud = CashierRequestAuth.activeLink(
+            ref.read(cloudLinkSessionProvider),
+          );
+          final store = await ref.read(localAuthServiceProvider).anyStore();
+          final catalogId = await CashierCloudLinkService.catalogWorkspaceId(
+            localStoreWorkspaceId:
+                store?.workspaceId ?? PosMode.standaloneWorkspaceId,
+            link: cloud,
+            db: ref.read(appDatabaseProvider),
+          );
+          if (!PosMode.isReservedStandaloneWorkspace(catalogId)) {
+            ref.read(workspaceIdProvider.notifier).state = catalogId;
+          }
+        } catch (e) {
+          _showSyncMessage(
+            e is ApiException
+                ? 'تعذر تحميل كتالوج السحابة: ${e.message}'
+                : 'تعذر تحميل كتالوج السحابة. تحقق من Laravel على ${AppConfig.apiBase}.',
+          );
+          return;
+        }
       }
       final coordinator = ref.read(posSyncCoordinatorProvider);
       if (!coordinator.allowNetwork) {
@@ -261,7 +293,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
   }
 
   Future<void> _refreshUsers() async {
-    final workspaceId = ref.read(workspaceIdProvider);
+    final workspaceId =
+        await ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
     if (workspaceId == null || workspaceId <= 0) return;
     try {
       final users = await ref
@@ -668,7 +701,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       );
       return;
     }
-    final workspaceId = ref.read(workspaceIdProvider);
+    final workspaceId =
+        await ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
     if (workspaceId == null || workspaceId <= 0) return;
     final name = TextEditingController();
     final username = TextEditingController();

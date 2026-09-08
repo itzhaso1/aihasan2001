@@ -5,11 +5,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/cashier_api.dart';
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/google_access_token.dart';
 import '../../core/pos/application/pos_providers.dart';
 import '../../core/pos/pos_errors.dart';
 import '../../core/theme/hasim_colors.dart';
 import '../../core/theme/hasim_radius.dart';
 import '../../core/theme/hasim_spacing.dart';
+import '../../core/widgets/hasim_brand_logo.dart';
 import '../../core/widgets/hasim_widgets.dart';
 
 /// Offline-only entry: cashier login, kitchen station, or reports station.
@@ -109,6 +111,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _google() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final accessToken = await GoogleAccessTokenClient().obtainAccessToken();
+      await ref.read(authControllerProvider.notifier).socialLogin(
+            provider: 'google',
+            accessToken: accessToken,
+          );
+      if (!mounted) return;
+      final link = await ref.read(cloudLinkStoreProvider).read();
+      setState(() {
+        _linked = link?.isLinked == true;
+        if (_linked) _cloudMode = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is PosException
+            ? e.messageAr
+            : e is ApiException
+                ? e.message
+                : e.toString();
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -130,37 +163,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 24),
                   Column(
                         children: [
-                          Container(
-                            width: 72,
-                            height: 72,
-                            decoration: BoxDecoration(
-                              color: HasimColors.surface,
-                              borderRadius: BorderRadius.circular(
-                                HasimRadius.lg,
-                              ),
-                              border: Border.all(color: HasimColors.border),
-                            ),
-                            alignment: Alignment.center,
-                            child: const Text(
-                              'ح',
-                              style: TextStyle(
-                                fontSize: 34,
-                                fontWeight: FontWeight.w900,
-                                color: HasimColors.brand,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'حاسم',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              color: HasimColors.brand,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
+                          const HasimBrandLogo(width: 240),
+                          const SizedBox(height: 8),
                           Text(
                             _cloudMode
                                 ? 'تسجيل الدخول بحساب حاسم'
@@ -168,6 +172,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     ? 'كاشير حاسم — مربوط، والعمل المحلي متاح بدون إنترنت'
                                     : 'كاشير حاسم — أوفلاين بالكامل'),
                             style: Theme.of(context).textTheme.bodySmall,
+                            textAlign: TextAlign.center,
                           ),
                         ],
                       )
@@ -286,6 +291,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                     ),
                             ),
                           ),
+                          if (_cloudMode) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                const Expanded(child: Divider()),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  child: Text(
+                                    'أو',
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ),
+                                const Expanded(child: Divider()),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              height: 48,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      HasimRadius.md,
+                                    ),
+                                  ),
+                                ),
+                                onPressed: _busy ? null : _google,
+                                icon: const Icon(Icons.g_mobiledata_rounded),
+                                label: const Text('الدخول عبر Google'),
+                              ),
+                            ),
+                          ],
                           if (!_cloudMode) ...[
                             const SizedBox(height: 10),
                             SizedBox(

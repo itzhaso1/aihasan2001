@@ -2,15 +2,34 @@ class AppConfig {
   static const appName = 'كاشير حاسم';
   static const apiVersion = 'cashier/v1';
 
-  /// Hard offline build: no Laravel API, no sync, no connectivity checks.
-  /// Network login / Google / remote bootstrap are disabled for the whole app.
+  /// SQLite-first POS: checkout never waits on Laravel.
+  /// First-connect may still call cashier auth (password or Google),
+  /// workspace bind, device register, catalog snapshot, and `/sync/push`.
   static const bool offlineOnly = true;
 
-  /// Kept for compile compatibility only — never used while [offlineOnly] is true.
   /// Override via --dart-define=CASHIER_API_BASE=https://example.com
   static const apiBase = String.fromEnvironment(
     'CASHIER_API_BASE',
     defaultValue: 'http://127.0.0.1:8000',
+  );
+
+  /// Public Google OAuth client id for cashier sign-in.
+  /// Override via --dart-define=GOOGLE_OAUTH_CLIENT_ID=...
+  static const googleOAuthClientId = String.fromEnvironment(
+    'GOOGLE_OAUTH_CLIENT_ID',
+    defaultValue: '',
+  );
+
+  /// Optional. Only for a Google *web* OAuth client on desktop loopback.
+  static const googleOAuthClientSecret = String.fromEnvironment(
+    'GOOGLE_OAUTH_CLIENT_SECRET',
+    defaultValue: '',
+  );
+
+  /// Optional Android/iOS server client id (same Google Cloud project as Laravel).
+  static const googleOAuthServerClientId = String.fromEnvironment(
+    'GOOGLE_OAUTH_SERVER_CLIENT_ID',
+    defaultValue: '',
   );
 
   static String get apiRoot => '$apiBase/api/$apiVersion';

@@ -53,11 +53,9 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
   }
 
   Future<void> _load() async {
-    var workspaceId = ref.read(workspaceIdProvider);
-    if (workspaceId == null || workspaceId <= 0) {
-      final store = await ref.read(localAuthServiceProvider).anyStore();
-      workspaceId = store?.workspaceId;
-    }
+    var workspaceId =
+        await ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
+    workspaceId ??= ref.read(workspaceIdProvider);
     if (workspaceId == null || workspaceId <= 0) {
       if (!mounted) return;
       setState(() {
@@ -158,7 +156,8 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
       );
       return;
     }
-    final workspaceId = ref.read(workspaceIdProvider);
+    final workspaceId =
+        await ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
     if (workspaceId == null || workspaceId <= 0) return;
     final name = TextEditingController();
     final email = TextEditingController();
