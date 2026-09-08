@@ -1,3 +1,5 @@
+import '../util/occupied_duration.dart';
+
 /// Stable id for a table-session order snapshot (SQLite row or payload).
 String tableOrderIdentity(Map<String, dynamic> order) {
   for (final key in [
@@ -23,6 +25,23 @@ bool isPaidTableOrder(Map<String, dynamic> order) {
   final pay = '${order['payment_status'] ?? ''}';
   if (pay == 'paid' || status == 'completed') return true;
   return '${order['invoice_local_id'] ?? ''}'.trim().isNotEmpty;
+}
+
+String tableSessionIdentity(Map<String, dynamic> order) {
+  for (final key in ['session_local_id', 'session_client_id', 'session_id']) {
+    final value = '${order[key] ?? ''}'.trim();
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+DateTime? tableOrderCreatedAt(Map<String, dynamic> order) {
+  return parseOpenedAt(
+    order['created_at'] ??
+        order['createdAt'] ??
+        order['placed_at'] ??
+        order['completed_at'],
+  );
 }
 
 /// Append live (usually unpaid) orders onto existing session snapshots.
@@ -62,18 +81,74 @@ List<Map<String, dynamic>> mergeTableSessionOrders({
 }
 
 /// True when a SQLite order belongs to the currently open table session.
+///
+/// Paid/completed rows from a previous sitting must not reappear after the
+/// cashier closes the table and opens a new session. Unpaid rows stay visible
+/// so in-progress work is not dropped.
 bool isOrderInOpenTableSession({
   required String posStatus,
   required String paymentStatus,
   required DateTime createdAt,
   DateTime? openedAt,
+  DateTime? completedAt,
+  String? orderSessionLocalId,
+  String? currentSessionLocalId,
 }) {
   if (posStatus == 'cancelled') return false;
   final unpaid = paymentStatus != 'paid' && posStatus != 'completed';
   if (unpaid) return true;
+
+  final current = (currentSessionLocalId ?? '').trim();
+  final orderSession = (orderSessionLocalId ?? '').trim();
+  if (current.isNotEmpty && orderSession.isNotEmpty) {
+    return orderSession == current;
+  }
   if (openedAt == null) return false;
-  final start = openedAt.toUtc().subtract(const Duration(minutes: 5));
+  final start = openedAt.toUtc();
+  if (completedAt != null && completedAt.toUtc().isBefore(start)) {
+    return false;
+  }
   return !createdAt.toUtc().isBefore(start);
+}
+
+/// Payload snapshots for the open sitting. Untimestamped occupy cards stay on
+/// this session; dated/paid history from an earlier sitting is dropped.
+bool isSnapshotInOpenTableSession(
+  Map<String, dynamic> order, {
+  DateTime? openedAt,
+  String? currentSessionLocalId,
+}) {
+  if (isCancelledTableOrder(order)) return false;
+  if (!isPaidTableOrder(order)) return true;
+
+  final current = (currentSessionLocalId ?? '').trim();
+  final orderSession = tableSessionIdentity(order);
+  if (current.isNotEmpty && orderSession.isNotEmpty) {
+    return orderSession == current;
+  }
+
+  final created = tableOrderCreatedAt(order);
+  if (created == null) {
+    return openedAt != null;
+  }
+  if (openedAt == null) return false;
+  return !created.toUtc().isBefore(openedAt.toUtc());
+}
+
+List<Map<String, dynamic>> filterOrdersForOpenTableSession({
+  required List<Map<String, dynamic>> orders,
+  DateTime? openedAt,
+  String? currentSessionLocalId,
+}) {
+  return [
+    for (final order in orders)
+      if (isSnapshotInOpenTableSession(
+        order,
+        openedAt: openedAt,
+        currentSessionLocalId: currentSessionLocalId,
+      ))
+        order,
+  ];
 }
 
 bool looksLikeFlatOrderLines(List<Map<String, dynamic>> rows) {

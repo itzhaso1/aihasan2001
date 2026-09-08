@@ -88,16 +88,17 @@ class TablesRepository {
               ))
               .getSingleOrNull();
       if (byServer != null) return byServer;
-      final scoped = await (_db.select(_db.localTables)..where(
-            (t) =>
-                t.localId.equals(tableLocalId(workspaceId, serverId)) &
-                t.workspaceId.equals(workspaceId),
-          ))
-          .getSingleOrNull();
+      final scoped =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(tableLocalId(workspaceId, serverId)) &
+                    t.workspaceId.equals(workspaceId),
+              ))
+              .getSingleOrNull();
       if (scoped != null) return scoped;
-      final rows = await (_db.select(_db.localTables)
-            ..where((t) => t.workspaceId.equals(workspaceId)))
-          .get();
+      final rows = await (_db.select(
+        _db.localTables,
+      )..where((t) => t.workspaceId.equals(workspaceId))).get();
       for (final row in rows) {
         if (boardNumericId(row) == serverId) return row;
       }
@@ -316,6 +317,9 @@ class TablesRepository {
       'orders': const [],
       'last_sale_items': const [],
       'last_sale_total': 0,
+      'last_invoice_local_id': null,
+      'last_invoice_number': null,
+      'last_local_invoice': null,
       'subtotal': 0,
       'tax_amount': 0,
       'discount_amount': 0,
@@ -394,9 +398,15 @@ class TablesRepository {
       orderLocalId: orderLocalId,
       total: total,
       items: items,
+      sessionClientId: sessionClientId,
+      createdAt: openedAt,
     );
     final previousOrders = alreadyOpen
-        ? _normalizeActiveOrders(payload['orders'])
+        ? filterOrdersForOpenTableSession(
+            orders: _normalizeActiveOrders(payload['orders']),
+            openedAt: parseOpenedAt(openedAt),
+            currentSessionLocalId: sessionClientId,
+          )
         : const <Map<String, dynamic>>[];
     final nextPayload = {
       ...payload,
@@ -640,14 +650,13 @@ class TablesRepository {
       );
       await _closeOpenLocalSessions(localId, now);
       if (activeOrders.length == 1) {
-        await (_db.update(_db.localInvoices)..where(
-              (t) => t.localId.equals(invoiceLocalId),
-            ))
-            .write(
-              LocalInvoicesCompanion(
-                orderLocalId: Value(activeOrders.first.localId),
-              ),
-            );
+        await (_db.update(
+          _db.localInvoices,
+        )..where((t) => t.localId.equals(invoiceLocalId))).write(
+          LocalInvoicesCompanion(
+            orderLocalId: Value(activeOrders.first.localId),
+          ),
+        );
       }
       for (final order in activeOrders) {
         await _enqueuePaidTableInvoice(
@@ -1439,10 +1448,16 @@ class TablesRepository {
         sessionOrders.isNotEmpty ||
         row.status == 'occupied' ||
         _payloadSessionOpen(payload);
+    final sessionClientId = '${payload['session_client_id'] ?? ''}'.trim();
+    final openedAt = parseOpenedAt(payload['opened_at']);
     final activeOrders = !occupied
         ? const <Map<String, dynamic>>[]
         : mergeTableSessionOrders(
-            sessionOrders: _normalizeActiveOrders(payload['orders']),
+            sessionOrders: filterOrdersForOpenTableSession(
+              orders: _normalizeActiveOrders(payload['orders']),
+              openedAt: openedAt,
+              currentSessionLocalId: sessionClientId,
+            ),
             liveOrders: [
               for (final order in sessionOrders) _orderIdentityMap(order),
             ],
@@ -1451,7 +1466,6 @@ class TablesRepository {
       0,
       (sum, order) => sum + order.totalAmount,
     );
-    final sessionClientId = '${payload['session_client_id'] ?? ''}'.trim();
     final lastSale = asDouble(payload['last_sale_total'] ?? payload['total']);
     final mergedTotal = activeOrders.fold<double>(
       0,
@@ -1499,10 +1513,15 @@ class TablesRepository {
         _payloadSessionOpen(payload);
     final sessionClientId = '${payload['session_client_id'] ?? ''}'.trim();
     final lastSale = asDouble(payload['last_sale_total'] ?? payload['total']);
+    final openedAt = parseOpenedAt(payload['opened_at']);
     final activeOrders = !occupied
         ? const <Map<String, dynamic>>[]
         : mergeTableSessionOrders(
-            sessionOrders: _normalizeActiveOrders(payload['orders']),
+            sessionOrders: filterOrdersForOpenTableSession(
+              orders: _normalizeActiveOrders(payload['orders']),
+              openedAt: openedAt,
+              currentSessionLocalId: sessionClientId,
+            ),
             liveOrders: liveOrderMaps,
           );
     final totalCents = liveOrders.fold<int>(
@@ -1561,6 +1580,8 @@ class TablesRepository {
         'order_number': order.orderNumber ?? order.localId,
         'pos_status': order.posStatus,
         'payment_status': order.paymentStatus,
+        'session_local_id': order.sessionLocalId,
+        'created_at': order.createdAt.toUtc().toIso8601String(),
         'discount_amount': Money.fromCents(order.discountAmount),
         'tax_amount': Money.fromCents(order.taxAmount),
         'total_amount': Money.fromCents(order.totalAmount),
@@ -1585,6 +1606,8 @@ class TablesRepository {
     String? orderLocalId,
     required double total,
     required List<Map<String, dynamic>> items,
+    required String sessionClientId,
+    required Object? createdAt,
   }) {
     final lines = [for (final item in items) _lineSnapshot(item)];
     final lineTotal = lines.fold<double>(
@@ -1598,6 +1621,8 @@ class TablesRepository {
       'order_number': invoiceNumber,
       'pos_status': 'completed',
       'payment_status': 'paid',
+      'session_client_id': sessionClientId,
+      'created_at': createdAt,
       'total_amount': total > 0 ? total : lineTotal,
       'items': lines,
     };
@@ -1688,6 +1713,7 @@ class TablesRepository {
   ) {
     final payload = _safeMap(table.payloadJson);
     final openedAt = parseOpenedAt(payload['opened_at']);
+    final currentSession = '${payload['session_client_id'] ?? ''}'.trim();
     return [
       for (final order in _ordersMatchingTable(table, orders))
         if (isOrderInOpenTableSession(
@@ -1695,6 +1721,9 @@ class TablesRepository {
           paymentStatus: order.paymentStatus,
           createdAt: order.createdAt,
           openedAt: openedAt,
+          completedAt: order.completedAt,
+          orderSessionLocalId: order.sessionLocalId,
+          currentSessionLocalId: currentSession,
         ))
           order,
     ];
@@ -1706,6 +1735,8 @@ class TablesRepository {
     'order_number': order.orderNumber ?? order.localId,
     'pos_status': order.posStatus,
     'payment_status': order.paymentStatus,
+    'session_local_id': order.sessionLocalId,
+    'created_at': order.createdAt.toUtc().toIso8601String(),
     'total_amount': Money.fromCents(order.totalAmount),
   };
 

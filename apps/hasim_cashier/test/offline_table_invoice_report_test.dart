@@ -37,18 +37,22 @@ void main() {
     String localId = 'uuid-table-4',
   }) async {
     final now = DateTime.now();
-    await db.into(db.localTables).insert(
+    await db
+        .into(db.localTables)
+        .insert(
           LocalTablesCompanion.insert(
             localId: localId,
             workspaceId: workspaceId,
             serverId: Value(tableId),
             name: 'طاولة $tableId',
             status: const Value('available'),
-            payloadJson: Value(jsonEncode({
-              'id': tableId,
-              'name': 'طاولة $tableId',
-              'status': 'available',
-            })),
+            payloadJson: Value(
+              jsonEncode({
+                'id': tableId,
+                'name': 'طاولة $tableId',
+                'status': 'available',
+              }),
+            ),
             updatedAt: now,
           ),
         );
@@ -92,62 +96,136 @@ void main() {
     expect((payloadOrders as List), isNotEmpty);
   });
 
-  test('closing a table writes a local invoice that reports can load', () async {
-    await seedUuidTable();
-    await tables.openSessionLocal(
-      workspaceId: 1,
-      deviceId: 'dev-1',
-      tableServerId: 4,
-    );
-    await orders.createTableOrder(
-      workspaceId: 1,
-      deviceId: 'dev-1',
-      tableId: 4,
-      clientReference: 'ord-close-1',
-      items: [
-        {
-          'pos_menu_item_id': 11,
-          'name': 'شاي',
-          'quantity': 2,
-          'unit_price': 7.5,
-          'total_amount': 15,
-        },
-      ],
-    );
+  test(
+    'closing a table writes a local invoice that reports can load',
+    () async {
+      await seedUuidTable();
+      await tables.openSessionLocal(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableServerId: 4,
+      );
+      await orders.createTableOrder(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableId: 4,
+        clientReference: 'ord-close-1',
+        items: [
+          {
+            'pos_menu_item_id': 11,
+            'name': 'شاي',
+            'quantity': 2,
+            'unit_price': 7.5,
+            'total_amount': 15,
+          },
+        ],
+      );
 
-    final closed = await tables.closeSessionLocal(
-      workspaceId: 1,
-      deviceId: 'dev-1',
-      tableServerId: 4,
-      paymentMethod: 'cash',
-    );
-    expect(closed['invoice'], isA<Map>());
-    expect(closed['invoice']['total_amount'], 15);
+      final closed = await tables.closeSessionLocal(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableServerId: 4,
+        paymentMethod: 'cash',
+      );
+      expect(closed['invoice'], isA<Map>());
+      expect(closed['invoice']['total_amount'], 15);
 
-    final table = await tables.getTable(1, 4);
-    expect(table?['status'], 'available');
-    final stillOpen = await orders.listOpenForTable(workspaceId: 1, tableId: 4);
-    expect(stillOpen, isEmpty);
+      final table = await tables.getTable(1, 4);
+      expect(table?['status'], 'available');
+      final stillOpen = await orders.listOpenForTable(
+        workspaceId: 1,
+        tableId: 4,
+      );
+      expect(stillOpen, isEmpty);
 
-    final invoices = await finance.listInvoices(
-      workspaceId: 1,
-      onDate: DateTime.now(),
-    );
-    expect(invoices, hasLength(1));
-    expect(asDoubleOr(invoices.single['total_amount']), 15);
-    expect(invoices.single['items'], isNotEmpty);
+      final invoices = await finance.listInvoices(
+        workspaceId: 1,
+        onDate: DateTime.now(),
+      );
+      expect(invoices, hasLength(1));
+      expect(asDoubleOr(invoices.single['total_amount']), 15);
+      expect(invoices.single['items'], isNotEmpty);
 
-    final listedWithoutDate = await finance.listInvoices(
-      workspaceId: 1,
-      fallbackAllWorkspaces: true,
-    );
-    expect(listedWithoutDate, hasLength(1));
+      final listedWithoutDate = await finance.listInvoices(
+        workspaceId: 1,
+        fallbackAllWorkspaces: true,
+      );
+      expect(listedWithoutDate, hasLength(1));
 
-    final daily = await reports.daily(workspaceId: 1, date: DateTime.now());
-    expect(daily['summary']['invoices_count'], 1);
-    expect(asDoubleOr(daily['summary']['invoice_sales_total']), 15);
-    expect((daily['invoices'] as List), isNotEmpty);
-  });
+      final daily = await reports.daily(workspaceId: 1, date: DateTime.now());
+      expect(daily['summary']['invoices_count'], 1);
+      expect(asDoubleOr(daily['summary']['invoice_sales_total']), 15);
+      expect((daily['invoices'] as List), isNotEmpty);
+    },
+  );
+
+  test(
+    'opening a new table session does not show completed orders from the last sitting',
+    () async {
+      await seedUuidTable();
+      await tables.openSessionLocal(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableServerId: 4,
+      );
+      await orders.createTableOrder(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableId: 4,
+        clientReference: 'ord-old-sitting',
+        items: [
+          {
+            'pos_menu_item_id': 11,
+            'name': 'قهوه كولد برو',
+            'quantity': 6,
+            'unit_price': 15,
+            'total_amount': 90,
+          },
+        ],
+      );
+      await tables.closeSessionLocal(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableServerId: 4,
+        paymentMethod: 'cash',
+      );
+
+      final reopened = await tables.openSessionLocal(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableServerId: 4,
+      );
+      expect(reopened['status'], 'occupied');
+      expect(asMapList(reopened['orders']), isEmpty);
+      expect(asDoubleOr(reopened['total']), 0);
+      expect(asDoubleOr(reopened['last_sale_total']), 0);
+
+      final board = await tables.listTables(1);
+      expect(asMapList(board.single['orders']), isEmpty);
+
+      final created = await orders.createTableOrder(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableId: 4,
+        clientReference: 'ord-new-sitting',
+        items: [
+          {
+            'pos_menu_item_id': 12,
+            'name': 'ماء',
+            'quantity': 1,
+            'unit_price': 2,
+            'total_amount': 2,
+          },
+        ],
+      );
+      expect(created['total_amount'], 2);
+      final fresh = await tables.getTable(1, 4);
+      final freshOrders = asMapList(fresh?['orders']);
+      expect(freshOrders, hasLength(1));
+      expect(freshOrders.single['local_id'], 'ord-new-sitting');
+      expect(asDoubleOr(fresh?['total']), 2);
+    },
+  );
 
   test('reports.daily completes with an empty workspace', () async {
     final daily = await reports
@@ -157,25 +235,28 @@ void main() {
     expect(daily['source'], 'local_sqlite');
   });
 
-  test('offline invoices tab can find a sale saved under another workspace id',
-      () async {
-    final now = DateTime.now();
-    await db.into(db.localInvoices).insert(
-          LocalInvoicesCompanion.insert(
-            localId: 'inv-other-ws',
-            workspaceId: 42,
-            deviceId: 'dev-1',
-            invoiceNumber: const Value('INV-OTHER'),
-            totalAmount: const Value(2500),
-            createdAt: now,
-          ),
-        );
-    final found = await finance.listInvoices(
-      workspaceId: 900001,
-      fallbackAllWorkspaces: true,
-    );
-    expect(found, hasLength(1));
-    expect(found.single['invoice_number'], 'INV-OTHER');
-  });
+  test(
+    'offline invoices tab can find a sale saved under another workspace id',
+    () async {
+      final now = DateTime.now();
+      await db
+          .into(db.localInvoices)
+          .insert(
+            LocalInvoicesCompanion.insert(
+              localId: 'inv-other-ws',
+              workspaceId: 42,
+              deviceId: 'dev-1',
+              invoiceNumber: const Value('INV-OTHER'),
+              totalAmount: const Value(2500),
+              createdAt: now,
+            ),
+          );
+      final found = await finance.listInvoices(
+        workspaceId: 900001,
+        fallbackAllWorkspaces: true,
+      );
+      expect(found, hasLength(1));
+      expect(found.single['invoice_number'], 'INV-OTHER');
+    },
+  );
 }
-

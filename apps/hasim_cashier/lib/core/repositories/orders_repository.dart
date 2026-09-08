@@ -931,6 +931,7 @@ class OrdersRepository {
           ? numbered
           : (order.serverId != null ? '${order.serverId}' : 'محلي'),
       'order_type': order.orderType,
+      'session_local_id': order.sessionLocalId,
       'created_at': order.createdAt.toIso8601String(),
       'source': 'POS',
       if (table != null)
@@ -990,16 +991,17 @@ class OrdersRepository {
             ))
             .getSingleOrNull();
     if (byServer != null) return byServer;
-    final scoped = await (_db.select(_db.localTables)..where(
-          (t) =>
-              t.workspaceId.equals(workspaceId) &
-              t.localId.equals(LocalIds.table(workspaceId, tableId)),
-        ))
-        .getSingleOrNull();
+    final scoped =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) &
+                  t.localId.equals(LocalIds.table(workspaceId, tableId)),
+            ))
+            .getSingleOrNull();
     if (scoped != null) return scoped;
-    final rows = await (_db.select(_db.localTables)
-          ..where((t) => t.workspaceId.equals(workspaceId)))
-        .get();
+    final rows = await (_db.select(
+      _db.localTables,
+    )..where((t) => t.workspaceId.equals(workspaceId))).get();
     for (final row in rows) {
       if (TablesRepository.boardNumericId(row) == tableId) return row;
     }
@@ -1041,6 +1043,7 @@ class OrdersRepository {
       if (decoded is Map) payload = Map<String, dynamic>.from(decoded);
     } catch (_) {}
     final openedAt = parseOpenedAt(payload['opened_at']);
+    final currentSession = '${payload['session_client_id'] ?? ''}'.trim();
     final sessionRows =
         await (_db.select(_db.localOrders)..where((t) {
               Expression<bool> match =
@@ -1058,6 +1061,9 @@ class OrdersRepository {
           paymentStatus: order.paymentStatus,
           createdAt: order.createdAt,
           openedAt: openedAt,
+          completedAt: order.completedAt,
+          orderSessionLocalId: order.sessionLocalId,
+          currentSessionLocalId: currentSession,
         ))
           order,
     ];
@@ -1083,7 +1089,11 @@ class OrdersRepository {
       ];
     }
     final merged = mergeTableSessionOrders(
-      sessionOrders: previous,
+      sessionOrders: filterOrdersForOpenTableSession(
+        orders: previous,
+        openedAt: openedAt,
+        currentSessionLocalId: currentSession,
+      ),
       liveOrders: liveMaps,
     );
     if (merged.isEmpty) {
