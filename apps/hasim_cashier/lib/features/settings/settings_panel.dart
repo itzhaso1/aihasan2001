@@ -54,6 +54,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
   var _failedSync = 0;
   var _unsupportedSync = 0;
   var _waitingParentSync = 0;
+  String? _failedHint;
   final _tax = TextEditingController(text: '0');
   final _currency = TextEditingController(text: 'SAR');
   PrinterProfile? _profile;
@@ -146,10 +147,10 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     var failed = 0;
     var unsupported = 0;
     var waitingParent = 0;
+    String? failedHint;
     if (workspaceId != null && workspaceId > 0) {
-      final counts = await SyncQueueClassifier(
-        ref.read(appDatabaseProvider),
-      ).counts(workspaceId);
+      final classifier = SyncQueueClassifier(ref.read(appDatabaseProvider));
+      final counts = await classifier.counts(workspaceId);
       pending = counts.scopedPending;
       failed = counts.failed;
       unsupported = counts.unsupported +
@@ -157,6 +158,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           counts.blocked +
           counts.alreadyApplied;
       waitingParent = counts.waitingParent;
+      failedHint = await classifier.firstFailedHint(workspaceId);
     }
     if (!mounted) return;
     setState(() {
@@ -164,6 +166,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       _failedSync = failed;
       _unsupportedSync = unsupported;
       _waitingParentSync = waitingParent;
+      _failedHint = failedHint;
     });
   }
 
@@ -262,11 +265,13 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           counts.standalone +
           counts.blocked +
           counts.alreadyApplied;
-      final lastError = await classifier.firstReadyLastError(workspaceId);
+      final lastError = await classifier.firstReadyLastError(workspaceId) ??
+          await classifier.firstFailedHint(workspaceId);
       _showSyncMessage(
         SyncNowCopy.afterFlush(
           synced: result.synced,
           failed: result.failed,
+          failedQueued: counts.failed,
           ready: counts.ready,
           waitingParent: counts.waitingParent,
           leftovers: leftovers,
@@ -282,6 +287,31 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     } finally {
       if (mounted) setState(() => _syncing = false);
     }
+  }
+
+  Future<void> _retryFailedThenSync() async {
+    if (_syncing) return;
+    final cloud = CashierRequestAuth.activeLink(
+      ref.read(cloudLinkSessionProvider),
+    );
+    final workspaceId = CashierRequestAuth.workspaceId(
+      sessionWorkspaceId: ref.read(workspaceIdProvider),
+      cloud: cloud,
+    );
+    if (workspaceId == null || workspaceId <= 0) {
+      _showSyncMessage('لا توجد مساحة عمل للمزامنة.');
+      return;
+    }
+    final n = await ref
+        .read(syncQueueRepositoryProvider)
+        .requeueInContractFailed(workspaceId);
+    if (n == 0) {
+      _showSyncMessage(
+        'لا يوجد فشل فواتير/منيو/طاولات لإعادة المحاولة. الرقم $_failedSync غالباً جلسات خارج العقد وتبقى محلية.',
+      );
+      return;
+    }
+    await _syncNow();
   }
 
   Future<void> _refreshOpenShift() async {
@@ -989,6 +1019,13 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           'فشل دائم: $_failedSync · عمليات جلسة/أخرى خارج العقد: $_unsupportedSync',
           style: const TextStyle(fontSize: 12, color: HasimColors.muted),
         ),
+        if (_failedHint != null && _failedHint!.trim().isNotEmpty)
+          _infoBanner(
+            icon: Icons.error_outline,
+            text: 'سبب الفشل: $_failedHint',
+            background: Colors.white,
+            foreground: HasimColors.warning,
+          ),
         if (linked && localWorkspace)
           _infoBanner(
             icon: Icons.info_outline,
@@ -1003,6 +1040,12 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           loading: _syncing,
           onPressed: _syncing ? null : _syncNow,
         ),
+        if (_failedSync > 0)
+          HsOutlineButton(
+            label: 'إعادة محاولة الفاشل',
+            icon: Icons.replay,
+            onPressed: _syncing ? null : _retryFailedThenSync,
+          ),
       ],
     );
   }

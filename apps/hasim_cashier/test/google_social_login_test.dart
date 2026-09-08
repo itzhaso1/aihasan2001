@@ -214,6 +214,7 @@ void main() {
       SyncNowCopy.afterFlush(
         synced: 0,
         failed: 0,
+        failedQueued: 0,
         ready: 0,
         waitingParent: 0,
         leftovers: 54,
@@ -226,6 +227,7 @@ void main() {
       SyncNowCopy.afterFlush(
         synced: 0,
         failed: 0,
+        failedQueued: 0,
         ready: 0,
         waitingParent: 0,
         leftovers: 54,
@@ -238,6 +240,7 @@ void main() {
       SyncNowCopy.afterFlush(
         synced: 0,
         failed: 0,
+        failedQueued: 0,
         ready: 3,
         waitingParent: 0,
         leftovers: 51,
@@ -250,6 +253,7 @@ void main() {
       SyncNowCopy.afterFlush(
         synced: 0,
         failed: 0,
+        failedQueued: 0,
         ready: 0,
         waitingParent: 8,
         leftovers: 0,
@@ -262,6 +266,7 @@ void main() {
       SyncNowCopy.afterFlush(
         synced: 0,
         failed: 0,
+        failedQueued: 0,
         ready: 0,
         waitingParent: 8,
         leftovers: 0,
@@ -269,6 +274,20 @@ void main() {
         apiBase: 'http://127.0.0.1:8000',
       ),
       isNot(contains('تحقق من Laravel')),
+    );
+    expect(
+      SyncNowCopy.afterFlush(
+        synced: 0,
+        failed: 0,
+        failedQueued: 18,
+        ready: 0,
+        waitingParent: 8,
+        leftovers: 29,
+        authRequired: false,
+        apiBase: 'http://127.0.0.1:8000',
+        lastError: 'صنف غير موجود',
+      ),
+      contains('18 عملية فشلت'),
     );
   });
 }

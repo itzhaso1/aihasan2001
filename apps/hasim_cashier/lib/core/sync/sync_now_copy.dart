@@ -7,6 +7,7 @@ class SyncNowCopy {
   static String afterFlush({
     required int synced,
     required int failed,
+    required int failedQueued,
     required int ready,
     required int waitingParent,
     required int leftovers,
@@ -16,6 +17,11 @@ class SyncNowCopy {
   }) {
     if (authRequired) {
       return 'الخادم رفض التوكن. أعد ربط السحابة من شاشة الدخول.';
+    }
+    if (failedQueued > 0 && waitingParent > 0 && ready == 0 && synced == 0) {
+      final error = lastError?.trim() ?? '';
+      final hint = error.isEmpty ? '' : ' السبب: $error';
+      return 'ما زال $waitingParent بانتظار أب لأن $failedQueued عملية فشلت دائماً.$hint أعد محاولة الفاشل بعد إصلاح السبب.';
     }
     if (failed > 0) {
       return 'فشلت $failed · نجحت $synced · جاهز $ready · ينتظر أب $waitingParent.';

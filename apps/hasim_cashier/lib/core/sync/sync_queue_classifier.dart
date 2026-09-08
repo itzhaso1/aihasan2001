@@ -157,6 +157,19 @@ class SyncQueueClassifier {
     return null;
   }
 
+  Future<String?> firstFailedHint(int workspaceId) async {
+    final items = await classifyWorkspace(workspaceId);
+    String? fallback;
+    for (final item in items) {
+      if (item.bucket != SyncQueueBucket.failed) continue;
+      final error = (item.row.lastError ?? item.reason).trim();
+      if (error.isEmpty) continue;
+      if (SyncQueueRepository.isInContract(item.row)) return error;
+      fallback ??= error;
+    }
+    return fallback;
+  }
+
   Future<SyncQueueClassification> classify(SyncQueueItem row) async {
     if (PosMode.isReservedStandaloneWorkspace(row.workspaceId)) {
       return SyncQueueClassification(
@@ -453,10 +466,18 @@ class SyncQueueClassifier {
       );
     }
     if (order.serverId == null || order.serverId! <= 0) {
+      final parentErr = await _parentQueueError(
+        row.workspaceId,
+        'order',
+        orderLocalId,
+        'create',
+      );
       return SyncQueueClassification(
         row: row,
         bucket: SyncQueueBucket.waitingParent,
-        reason: 'الفاتورة تنتظر وصول الطلب إلى Laravel أولاً.',
+        reason: parentErr == null
+            ? 'الفاتورة تنتظر وصول الطلب إلى Laravel أولاً.'
+            : 'الفاتورة تنتظر طلباً فشل: $parentErr',
       );
     }
     return SyncQueueClassification(
@@ -464,6 +485,26 @@ class SyncQueueClassifier {
       bucket: SyncQueueBucket.ready,
       reason: 'فاتورة جاهزة بعد وجود طلب السحابة.',
     );
+  }
+
+  Future<String?> _parentQueueError(
+    int workspaceId,
+    String entityType,
+    String entityId,
+    String operation,
+  ) async {
+    final rows = await SyncQueueRepository(_db).pendingForWorkspace(workspaceId);
+    for (final row in rows) {
+      if (row.entityType != entityType ||
+          row.entityId != entityId ||
+          row.operation != operation) {
+        continue;
+      }
+      if (row.status == 'failed') {
+        return (row.lastError ?? 'فشل دائم').trim();
+      }
+    }
+    return null;
   }
 
   Future<LocalCustomer?> _customer(int workspaceId, String localId) {
