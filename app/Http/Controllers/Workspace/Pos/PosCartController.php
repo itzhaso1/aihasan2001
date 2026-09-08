@@ -128,7 +128,19 @@ class PosCartController extends PosBaseController
             return back()->withInput()->with('error', $exception->getMessage());
         }
 
-        $printUrl = route('workspace.pos.orders.print', $order);
+        $invoice = null;
+        try {
+            $invoice = $this->posOrderService->issueWebPosDirectInvoice(
+                $order,
+                (int) ($request->user()?->id ?? 0),
+            );
+        } catch (RuntimeException) {
+            $invoice = null;
+        }
+
+        $printUrl = $invoice
+            ? route('workspace.pos.invoices.print', $invoice)
+            : route('workspace.pos.orders.print', $order);
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -137,7 +149,7 @@ class PosCartController extends PosBaseController
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,
                 'order_type' => $order->order_type,
-                'invoice_id' => null,
+                'invoice_id' => $invoice?->id,
                 'print_url' => $printUrl,
                 'redirect' => null,
             ], 201);

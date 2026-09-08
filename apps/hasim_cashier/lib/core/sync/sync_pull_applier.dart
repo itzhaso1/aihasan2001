@@ -282,11 +282,10 @@ class SyncPullApplier {
     Map<String, dynamic> data,
   ) async {
     if (serverId == null || serverId <= 0) return;
-    final existing = await (_db.select(_db.localTables)..where(
-          (t) =>
-              t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId),
-        ))
-        .getSingleOrNull();
+    final existing = await _findLocalTable(
+      workspaceId: workspaceId,
+      serverId: serverId,
+    );
     final localId = existing?.localId ?? LocalIds.table(workspaceId, serverId);
     if (operation == 'delete') {
       await (_db.delete(_db.localTables)
@@ -358,22 +357,15 @@ class SyncPullApplier {
     String? originDeviceId,
     String? ourDeviceId,
   }) async {
-    final clientRef = '${data['client_reference'] ?? ''}'.trim();
-    LocalOrder? local;
-    if (clientRef.isNotEmpty) {
-      local = await (_db.select(_db.localOrders)
-            ..where((t) =>
-                t.workspaceId.equals(workspaceId) &
-                t.clientReference.equals(clientRef)))
-          .getSingleOrNull();
+    var clientRef = '${data['client_reference'] ?? ''}'.trim();
+    if (clientRef.toLowerCase() == 'null') {
+      clientRef = '';
     }
-    local ??= serverId == null
-        ? null
-        : await (_db.select(_db.localOrders)
-              ..where((t) =>
-                  t.workspaceId.equals(workspaceId) &
-                  t.serverId.equals(serverId)))
-            .getSingleOrNull();
+    final local = await _findLocalOrder(
+      workspaceId: workspaceId,
+      clientRef: clientRef,
+      serverId: serverId,
+    );
 
     final isEcho = ourDeviceId != null &&
         originDeviceId != null &&
@@ -635,6 +627,44 @@ class SyncPullApplier {
         order.syncStatus == 'failed';
   }
 
+  Future<LocalOrder?> _findLocalOrder({
+    required int workspaceId,
+    required String clientRef,
+    required int? serverId,
+  }) async {
+    if (clientRef.isNotEmpty) {
+      final matches = await (_db.select(_db.localOrders)
+            ..where((t) =>
+                t.workspaceId.equals(workspaceId) &
+                t.clientReference.equals(clientRef)))
+          .get();
+      if (matches.length == 1) return matches.first;
+      if (matches.isNotEmpty && serverId != null) {
+        for (final row in matches) {
+          if (row.serverId == serverId) return row;
+        }
+      }
+      if (matches.isNotEmpty) return matches.first;
+    }
+    if (serverId == null) return null;
+    final byServer = await (_db.select(_db.localOrders)
+          ..where((t) =>
+              t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId)))
+        .get();
+    return byServer.isEmpty ? null : byServer.first;
+  }
+
+  Future<LocalTable?> _findLocalTable({
+    required int workspaceId,
+    required int serverId,
+  }) async {
+    final matches = await (_db.select(_db.localTables)
+          ..where((t) =>
+              t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId)))
+        .get();
+    return matches.isEmpty ? null : matches.first;
+  }
+
   /// Invoice close sets Laravel `pos_status=completed`. That means the sale
   /// was invoiced, not that the kitchen finished cooking. Keep takeaway /
   /// delivery tickets on the board until this kitchen device marks them done.
@@ -643,9 +673,19 @@ class SyncPullApplier {
     required LocalOrder? local,
     required Map<String, dynamic> data,
   }) {
-    final remote = '${data['pos_status'] ?? local?.posStatus ?? 'new'}'.trim();
+    final remote =
+        '${data['pos_status'] ?? local?.posStatus ?? 'new'}'.trim().toLowerCase();
     final type =
         '${data['order_type'] ?? local?.orderType ?? ''}'.trim().toLowerCase();
+    const known = {
+      'new',
+      'accepted',
+      'preparing',
+      'ready',
+      'delivered',
+      'completed',
+      'cancelled',
+    };
     if (remote == 'cancelled') return 'cancelled';
     final invoiceClosed =
         remote == 'completed' && (type == 'takeaway' || type == 'delivery');
@@ -658,7 +698,11 @@ class SyncPullApplier {
       if (localStatus.isNotEmpty) return local!.posStatus;
       return 'new';
     }
-    return remote.isEmpty ? 'new' : remote;
+    if (remote.isEmpty || !known.contains(remote)) {
+      final localStatus = local?.posStatus.trim() ?? '';
+      return localStatus.isEmpty ? 'new' : localStatus;
+    }
+    return remote;
   }
 
   String _kitchenPaymentStatus(Object? raw) {
@@ -677,22 +721,29 @@ class SyncPullApplier {
     required DateTime now,
   }) async {
     if (tableServerId == null || tableServerId <= 0) return null;
-    final localId = LocalIds.table(workspaceId, tableServerId);
-    final existing = await (_db.select(_db.localTables)
-          ..where((t) => t.localId.equals(localId)))
-        .getSingleOrNull();
-    if (existing != null) return existing.localId;
+    final scopedId = LocalIds.table(workspaceId, tableServerId);
+    final byScoped = await (_db.select(_db.localTables)
+          ..where((t) => t.localId.equals(scopedId)))
+        .get();
+    if (byScoped.isNotEmpty) return byScoped.first.localId;
+
+    final byServer = await _findLocalTable(
+      workspaceId: workspaceId,
+      serverId: tableServerId,
+    );
+    if (byServer != null) return byServer.localId;
+
     final name = tableName.trim().isEmpty ? 'طاولة' : tableName.trim();
-    await _db.into(_db.localTables).insert(
+    await _db.into(_db.localTables).insertOnConflictUpdate(
           LocalTablesCompanion.insert(
-            localId: localId,
+            localId: scopedId,
             workspaceId: workspaceId,
             serverId: Value(tableServerId),
             name: name,
             updatedAt: now,
           ),
         );
-    return localId;
+    return scopedId;
   }
 
   Map<String, dynamic> _orderSnapshot(LocalOrder order) {
