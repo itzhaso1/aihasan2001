@@ -80,7 +80,11 @@ final tableSessionServiceProvider = Provider<TableSessionService>((ref) {
 });
 
 final kitchenLocalServiceProvider = Provider<KitchenLocalService>((ref) {
-  return KitchenLocalService(ref.watch(appDatabaseProvider));
+  return KitchenLocalService(
+    ref.watch(appDatabaseProvider),
+    queue: ref.watch(syncQueueRepositoryProvider),
+    deviceId: () => ref.read(deviceIdentityProvider).getOrCreateDeviceId(),
+  );
 });
 
 final barcodeInputProvider = Provider<BarcodeInput>((ref) {

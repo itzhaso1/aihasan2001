@@ -10,8 +10,8 @@ import 'auto_sync_controller.dart';
 ///
 /// Polling only (default 5s). Not WebSocket. Cancels its timer on pause,
 /// detach, and dispose. Standalone workspace 900001 never talks to Laravel.
-/// In-contract scope stays kitchen orders + invoices + menu + table master.
-/// Table live sessions are not included.
+/// In-contract scope stays kitchen orders + kitchen status + invoices +
+/// menu + table master. Table live sessions are not included.
 class AutoSyncHost extends ConsumerStatefulWidget {
   const AutoSyncHost({super.key, required this.child});
 

@@ -619,6 +619,9 @@ class SyncEngineV2 {
     // Scoped batch: kitchen/sale orders + invoices + menu + table master.
     // Table live sessions stay off.
     if (!_isScopedBatchOp(row)) return false;
+    if (row.entityType == 'order' && row.operation == 'update') {
+      return _kitchenStatusReady(row);
+    }
     if (row.entityType == 'order') {
       return _saleCreateReady(row);
     }
@@ -646,6 +649,9 @@ class SyncEngineV2 {
         SyncQueueClassifier.saleTypeOf(row),
       );
     }
+    if (row.entityType == 'order' && row.operation == 'update') {
+      return SyncQueueClassifier.isKitchenStatusOp(row);
+    }
     if (row.entityType == 'invoice' && row.operation == 'create') {
       final type = SyncQueueClassifier.saleTypeOf(row);
       return type == null || SyncQueueClassifier.saleTypes.contains(type);
@@ -663,6 +669,15 @@ class SyncEngineV2 {
       return true;
     }
     return false;
+  }
+
+  Future<bool> _kitchenStatusReady(SyncQueueItem row) async {
+    if (!SyncQueueClassifier.isKitchenStatusOp(row)) return false;
+    final payload = await _pushData(row);
+    final serverId = (payload['order_server_id'] as num?)?.toInt() ??
+        (payload['server_order_id'] as num?)?.toInt() ??
+        0;
+    return serverId > 0;
   }
 
   Future<bool> _saleCreateReady(SyncQueueItem row) async {
@@ -810,6 +825,28 @@ class SyncEngineV2 {
         row.entityType == 'product' ||
         row.entityType == 'table') {
       return _catalogPushData(row, payload);
+    }
+    if (row.entityType == 'order' && row.operation == 'update') {
+      final order =
+          await (_db.select(_db.localOrders)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      final serverId = order?.serverId ??
+          (payload['order_server_id'] as num?)?.toInt() ??
+          (payload['server_order_id'] as num?)?.toInt();
+      if (serverId != null && serverId > 0) {
+        payload['order_server_id'] = serverId;
+        payload['server_order_id'] = serverId;
+        payload['id'] = serverId;
+      }
+      payload['kitchen_status'] = true;
+      if ('${payload['pos_status'] ?? ''}'.trim().isEmpty) {
+        payload['pos_status'] = order?.posStatus ?? 'new';
+      }
+      return payload;
     }
     if (row.entityType == 'order' && row.operation == 'create') {
       payload['offline_sale'] = true;

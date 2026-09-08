@@ -85,6 +85,26 @@ class SyncQueueClassifier {
 
   static const saleTypes = {'takeaway', 'table', 'delivery'};
 
+  static const kitchenStatuses = {
+    'new',
+    'accepted',
+    'preparing',
+    'ready',
+    'delivered',
+    'completed',
+    'cancelled',
+  };
+
+  static bool isKitchenStatusOp(SyncQueueItem row) {
+    if (row.entityType != 'order' || row.operation != 'update') return false;
+    final payload = decodePayload(row.payloadJson);
+    final status = '${payload['pos_status'] ?? ''}'.trim().toLowerCase();
+    if (!kitchenStatuses.contains(status)) return false;
+    if (payload['kitchen_status'] == true) return true;
+    final items = payload['items'];
+    return items == null || (items is List && items.isEmpty);
+  }
+
   static const menuTypes = {'category', 'product'};
 
   static const tableMasterType = 'table';
@@ -186,11 +206,14 @@ class SyncQueueClassifier {
       );
     }
 
+    if (row.entityType == 'order' && row.operation == 'update') {
+      return _classifyKitchenStatus(row);
+    }
+
     if (row.entityType == 'table_session' ||
         row.entityType == 'stock' ||
         row.entityType == 'stock_movement' ||
-        (row.entityType == 'order' &&
-            (row.operation == 'update' || row.operation == 'delete'))) {
+        (row.entityType == 'order' && row.operation == 'delete')) {
       return SyncQueueClassification(
         row: row,
         bucket: SyncQueueBucket.unsupported,
@@ -230,6 +253,35 @@ class SyncQueueClassifier {
       row: row,
       bucket: SyncQueueBucket.unsupported,
       reason: 'نوع العملية ${row.entityType}.${row.operation} غير مدعوم للدفع.',
+    );
+  }
+
+  Future<SyncQueueClassification> _classifyKitchenStatus(
+    SyncQueueItem row,
+  ) async {
+    if (!isKitchenStatusOp(row)) {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.unsupported,
+        reason: 'تحديث الطلب خارج عقد حالة المطبخ.',
+      );
+    }
+    final payload = decodePayload(row.payloadJson);
+    final order = await _order(row.workspaceId, row.entityId);
+    final serverId = order?.serverId ??
+        (payload['order_server_id'] as num?)?.toInt() ??
+        (payload['server_order_id'] as num?)?.toInt();
+    if (serverId == null || serverId <= 0) {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.waitingParent,
+        reason: 'حالة المطبخ تنتظر وصول الطلب إلى Laravel أولاً.',
+      );
+    }
+    return SyncQueueClassification(
+      row: row,
+      bucket: SyncQueueBucket.ready,
+      reason: 'تحديث حالة المطبخ جاهز للمزامنة.',
     );
   }
 
