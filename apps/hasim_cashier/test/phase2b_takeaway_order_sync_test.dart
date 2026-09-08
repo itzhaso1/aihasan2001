@@ -704,7 +704,7 @@ void main() {
   });
 
   test(
-    'batch path does not send unpaid table orders even if they sit in the queue',
+    'batch path sends unpaid table kitchen tickets with takeaway sales',
     () async {
       await queue.enqueue(
         workspaceId: workspaceId,
@@ -727,6 +727,7 @@ void main() {
       );
       await sellTakeaway(clientReference: 'tw-only-batch');
       final pushedTypes = <String>[];
+      final pushedOrderTypes = <String>[];
       final engine = SyncEngineV2(
         db,
         queue,
@@ -734,7 +735,9 @@ void main() {
           final ops = (body['operations'] as List).cast<Map>();
           for (final op in ops) {
             pushedTypes.add(op['type'] as String);
-            expect(op['data']['order_type'], isNot('table'));
+            if (op['type'] == 'order.created') {
+              pushedOrderTypes.add('${op['data']['order_type']}');
+            }
           }
           return {
             'accepted': [
@@ -752,6 +755,7 @@ void main() {
       );
       await engine.pushPending(workspaceId: workspaceId);
       expect(pushedTypes, contains('order.created'));
+      expect(pushedOrderTypes, containsAll(['table', 'takeaway']));
       expect(
         pushedTypes.every(
           (t) => t == 'order.created' || t == 'invoice.created',
@@ -761,7 +765,7 @@ void main() {
       final tableRow = await (db.select(
         db.syncQueueItems,
       )..where((t) => t.entityId.equals('table-queued'))).getSingle();
-      expect(tableRow.status, 'pending');
+      expect(tableRow.status, 'synced');
     },
   );
 

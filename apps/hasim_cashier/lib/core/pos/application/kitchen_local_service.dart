@@ -57,6 +57,7 @@ class KitchenLocalService {
           'notes': row.notes,
           'created_at': row.createdAt.toIso8601String(),
           'table_local_id': row.tableLocalId,
+          'session_local_id': row.sessionLocalId,
           if (table != null)
             'table': {
               'id': table.serverId ?? table.localId,

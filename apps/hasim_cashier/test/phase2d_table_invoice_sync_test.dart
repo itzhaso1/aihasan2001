@@ -357,7 +357,12 @@ void main() {
     expect(orderOps.map((r) => r.operationUuid).toSet(), hasLength(2));
   });
 
-  test('unpaid table-board order stays off the batch until cash close', () async {
+  test('unpaid table-board order is pushed as a kitchen ticket before cash close', () async {
+    await tables.openSessionLocal(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      tableServerId: 4,
+    );
     await orders.createTableOrder(
       workspaceId: workspaceId,
       deviceId: deviceId,
@@ -376,23 +381,33 @@ void main() {
     );
     expect(
       (await SyncQueueClassifier(db).classifyWorkspace(workspaceId))
+          .where((c) => c.row.entityType == 'order')
           .single
           .bucket,
-      SyncQueueBucket.unsupported,
+      SyncQueueBucket.ready,
     );
 
-    final pushed = <String>[];
+    final kitchenPush = <String>[];
+    Map<String, dynamic>? kitchenOrder;
     await SyncEngineV2(
       db,
       queue,
       postPushBatch: (body) async {
         for (final op in (body['operations'] as List).cast<Map>()) {
-          pushed.add(op['type'] as String);
+          kitchenPush.add(op['type'] as String);
+          if (op['type'] == 'order.created') {
+            kitchenOrder = Map<String, dynamic>.from(op['data'] as Map);
+          }
         }
-        return ackBatch(body);
+        return ackBatch(body, orderId: 7701);
       },
     ).pushPending(workspaceId: workspaceId);
-    expect(pushed, isEmpty);
+    expect(kitchenPush, ['order.created']);
+    expect(kitchenOrder?['offline_sale'], isTrue);
+    expect(kitchenOrder?['dining_table_id'], 4);
+    expect(kitchenOrder?['payment_status'], 'unpaid');
+    expect(kitchenOrder?['session_local_id'], isNotNull);
+    expect(kitchenPush, isNot(contains('invoice.created')));
 
     await (db.update(db.localProducts)
           ..where((t) => t.localId.equals(productLocalId)))
@@ -406,33 +421,20 @@ void main() {
     );
     expect(closed['invoice'], isA<Map>());
 
-    final orderOp = await (db.select(db.syncQueueItems)
-          ..where((t) => t.entityType.equals('order')))
-        .getSingle();
-    final payload = jsonDecode(orderOp.payloadJson) as Map<String, dynamic>;
-    expect(payload['offline_sale'], isTrue);
-    expect(payload['dining_table_id'], 4);
-    expect((payload['items'] as List).single['unit_price'], 10);
-    expect(payload['total_amount'], 10);
-    expect(payload['total_amount'], isNot(12));
-
-    Map<String, dynamic>? sentOrder;
+    final invoicePush = <String>[];
     await SyncEngineV2(
       db,
       queue,
       postPushBatch: (body) async {
         for (final op in (body['operations'] as List).cast<Map>()) {
-          if (op['type'] == 'order.created') {
-            sentOrder = Map<String, dynamic>.from(op['data'] as Map);
-          }
+          invoicePush.add(op['type'] as String);
         }
         return ackBatch(body, orderId: 7701, invoiceId: 9901);
       },
     ).pushPending(workspaceId: workspaceId);
 
-    expect(sentOrder?['offline_sale'], isTrue);
-    expect(sentOrder?['dining_table_id'], 4);
-    expect(sentOrder?['items'][0]['unit_price'], 10);
+    expect(invoicePush, contains('invoice.created'));
+    expect(invoicePush.where((t) => t == 'order.created'), isEmpty);
     expect(
       (await SyncQueueClassifier(db).counts(workspaceId)).invoicePending,
       0,

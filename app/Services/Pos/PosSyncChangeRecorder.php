@@ -163,6 +163,11 @@ class PosSyncChangeRecorder
         if (! $order->relationLoaded('items')) {
             $order->load('items');
         }
+        if (! $order->relationLoaded('table')) {
+            $order->load('table');
+        }
+
+        $metadata = is_array($order->metadata) ? $order->metadata : [];
 
         return [
             'id' => $order->id,
@@ -170,6 +175,8 @@ class PosSyncChangeRecorder
             'customer_id' => $order->customer_id,
             'dining_table_id' => $order->dining_table_id,
             'table_session_id' => $order->table_session_id,
+            'table_name' => $order->table?->name ?? ($metadata['table_name'] ?? null),
+            'session_local_id' => $metadata['cashier_session_local_id'] ?? null,
             'order_number' => $order->order_number,
             'order_type' => $order->order_type,
             'status' => $order->status,
@@ -183,15 +190,24 @@ class PosSyncChangeRecorder
             'currency' => $order->currency,
             'updated_at' => optional($order->updated_at)?->toIso8601String(),
             'placed_at' => optional($order->placed_at)?->toIso8601String(),
-            'items' => $order->items->map(fn ($item) => [
-                'id' => $item->id,
-                'pos_menu_item_id' => $item->pos_menu_item_id,
-                'product_name' => $item->product_name,
-                'quantity' => (int) $item->quantity,
-                'unit_price' => (float) $item->unit_price,
-                'discount_amount' => (float) $item->discount_amount,
-                'total_amount' => (float) $item->total_amount,
-            ])->values()->all(),
+            'items' => $order->items->values()->map(function ($item, int $index) use ($metadata) {
+                $note = null;
+                $stored = $metadata['kitchen_item_notes'][$index] ?? null;
+                if (is_array($stored) && filled($stored['notes'] ?? null)) {
+                    $note = (string) $stored['notes'];
+                }
+
+                return [
+                    'id' => $item->id,
+                    'pos_menu_item_id' => $item->pos_menu_item_id,
+                    'product_name' => $item->product_name,
+                    'quantity' => (int) $item->quantity,
+                    'unit_price' => (float) $item->unit_price,
+                    'discount_amount' => (float) $item->discount_amount,
+                    'total_amount' => (float) $item->total_amount,
+                    'notes' => $note,
+                ];
+            })->all(),
         ];
     }
 

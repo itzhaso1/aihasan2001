@@ -789,12 +789,24 @@ class TablesRepository {
       final serverId = item.productServerId;
       if (serverId == null || serverId <= 0 || item.quantity < 1) return;
     }
+    String? tableName;
+    if (order.tableLocalId != null && order.tableLocalId!.trim().isNotEmpty) {
+      final named = await (_db.select(_db.localTables)
+            ..where((t) => t.localId.equals(order.tableLocalId!)))
+          .getSingleOrNull();
+      final name = named?.name.trim() ?? '';
+      if (name.isNotEmpty) tableName = name;
+    }
     final orderPayload = {
       'order_type': 'table',
       'offline_sale': true,
       if (order.tableServerId != null) 'dining_table_id': order.tableServerId,
       if (order.tableLocalId != null && order.tableLocalId!.trim().isNotEmpty)
         'table_local_id': order.tableLocalId!.trim(),
+      if (order.sessionLocalId != null &&
+          order.sessionLocalId!.trim().isNotEmpty)
+        'session_local_id': order.sessionLocalId!.trim(),
+      if (tableName != null) 'table_name': tableName,
       'client_reference': order.clientReference,
       'placed_at': order.createdAt.toUtc().toIso8601String(),
       'currency': 'SAR',

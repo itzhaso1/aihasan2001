@@ -167,9 +167,9 @@ void main() {
     final classified = await SyncQueueClassifier(db).counts(workspaceId);
     expect(classified.totalOpen, 18);
     expect(classified.failed, 6);
-    expect(classified.ready, 2);
-    expect(classified.unsupported, 10);
-    expect(classified.invoicePending, 2);
+    expect(classified.ready, 4);
+    expect(classified.unsupported, 8);
+    expect(classified.invoicePending, 4);
     expect(classified.invoicePending, isNot(raw.waiting));
   });
 

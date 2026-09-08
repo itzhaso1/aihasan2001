@@ -8,7 +8,7 @@ import '../repositories/sync_queue_repository.dart';
 
 /// Why a queue row is still visible after a successful takeaway push.
 enum SyncQueueBucket {
-  /// A — paid takeaway/table/delivery sale ready for /sync/push.
+  /// A — kitchen/sale order create (paid or unpaid) ready for /sync/push.
   ready,
 
   /// Invoice waiting for its local order.server_id.
@@ -61,7 +61,7 @@ class SyncQueueCountsByBucket {
   final int standalone;
   final int blocked;
 
-  /// Invoice + menu + table-master rows that should move on the next push.
+  /// Kitchen orders + invoices + menu + table-master rows for the next push.
   /// Session/stock leftovers stay out of this count.
   int get invoicePending => ready + waitingParent;
 
@@ -195,7 +195,7 @@ class SyncQueueClassifier {
         row: row,
         bucket: SyncQueueBucket.unsupported,
         reason:
-            'خارج عقد المزامنة (فواتير + منيو + بيانات الطاولات الأساسية).',
+            'خارج عقد المزامنة (طلبات المطبخ + فواتير + منيو + بيانات الطاولات الأساسية).',
       );
     }
 
@@ -251,14 +251,6 @@ class SyncQueueClassifier {
         reason: 'الطلب المحلي لديه server_id=${order.serverId} والطابور لم يُحدَّث.',
       );
     }
-    if (type == 'table' &&
-        (order == null || order.paymentStatus.trim().toLowerCase() != 'paid')) {
-      return SyncQueueClassification(
-        row: row,
-        bucket: SyncQueueBucket.unsupported,
-        reason: 'طلب طاولة غير مدفوع بعد. يُرسل بعد إغلاق الحساب نقداً.',
-      );
-    }
     final items = payload['items'];
     if (items is! List || items.isEmpty) {
       return SyncQueueClassification(
@@ -305,18 +297,25 @@ class SyncQueueClassifier {
         return SyncQueueClassification(
           row: row,
           bucket: SyncQueueBucket.waitingParent,
-          reason: 'فاتورة الطاولة تنتظر وصول الطاولة إلى Laravel أولاً.',
+          reason: 'طلب الطاولة ينتظر وصول الطاولة إلى Laravel أولاً.',
         );
       }
     }
+    final paid = order?.paymentStatus.trim().toLowerCase() == 'paid';
     return SyncQueueClassification(
       row: row,
       bucket: SyncQueueBucket.ready,
       reason: type == 'table'
-          ? 'طلب طاولة مدفوع جاهز للدفع.'
+          ? (paid
+              ? 'طلب طاولة مدفوع جاهز للدفع.'
+              : 'طلب مطبخ (طاولة) جاهز للمزامنة.')
           : type == 'delivery'
-              ? 'طلب توصيل جاهز للدفع.'
-              : 'طلب سفري جاهز للدفع.',
+              ? (paid
+                  ? 'طلب توصيل جاهز للدفع.'
+                  : 'طلب مطبخ (توصيل) جاهز للمزامنة.')
+              : (paid
+                  ? 'طلب سفري جاهز للدفع.'
+                  : 'طلب مطبخ (سفري) جاهز للمزامنة.'),
     );
   }
 

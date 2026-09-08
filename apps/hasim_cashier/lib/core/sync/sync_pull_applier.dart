@@ -444,6 +444,19 @@ class SyncPullApplier {
         (clientRef.isNotEmpty ? clientRef : 'w${workspaceId}_ord_${serverId ?? const Uuid().v4()}');
     final tableServerId = (data['dining_table_id'] as num?)?.toInt();
     final now = DateTime.now();
+    final tableLocalId = await _ensureKitchenTable(
+      workspaceId: workspaceId,
+      tableServerId: tableServerId,
+      tableName: '${data['table_name'] ?? ''}',
+      now: now,
+    );
+    final sessionHint = '${data['session_local_id'] ?? ''}'.trim();
+    final sessionLocalId = await _db.existingFk(
+          'local_sessions',
+          'local_id',
+          sessionHint.isEmpty ? null : sessionHint,
+        ) ??
+        local?.sessionLocalId;
     await _db.into(_db.localOrders).insertOnConflictUpdate(
           LocalOrdersCompanion.insert(
             localId: localId,
@@ -458,9 +471,14 @@ class SyncPullApplier {
               await _db.existingFk(
                 'local_tables',
                 'local_id',
-                tableServerId == null
-                    ? null
-                    : LocalIds.table(workspaceId, tableServerId),
+                tableLocalId,
+              ),
+            ),
+            sessionLocalId: Value(
+              await _db.existingFk(
+                'local_sessions',
+                'local_id',
+                sessionLocalId,
               ),
             ),
             notes: Value(data['notes'] as String?),
@@ -470,8 +488,8 @@ class SyncPullApplier {
                 Value(Money.toCents((data['discount_amount'] as num?) ?? 0)),
             totalAmount:
                 Value(Money.toCents((data['total_amount'] as num?) ?? 0)),
-            posStatus: Value('${data['pos_status'] ?? 'new'}'),
-            paymentStatus: Value('${data['payment_status'] ?? 'unpaid'}'),
+            posStatus: Value(_kitchenPosStatus(local: local, data: data)),
+            paymentStatus: Value(_kitchenPaymentStatus(data['payment_status'])),
             syncStatus: const Value('synced'),
             createdAt: local?.createdAt ?? now,
             updatedAt: now,
@@ -517,6 +535,11 @@ class SyncPullApplier {
                 Money.toCents((item['discount_amount'] as num?) ?? 0),
               ),
               totalAmount: Money.toCents((item['total_amount'] as num?) ?? 0),
+              notes: Value(
+                '${item['notes'] ?? ''}'.trim().isEmpty
+                    ? null
+                    : '${item['notes']}'.trim(),
+              ),
               updatedAt: now,
             ),
           );
@@ -610,6 +633,66 @@ class SyncPullApplier {
     return order.syncStatus == 'pending' ||
         order.syncStatus == 'syncing' ||
         order.syncStatus == 'failed';
+  }
+
+  /// Invoice close sets Laravel `pos_status=completed`. That means the sale
+  /// was invoiced, not that the kitchen finished cooking. Keep takeaway /
+  /// delivery tickets on the board until this kitchen device marks them done.
+  /// Table tickets follow the remote status so a closed sitting leaves the board.
+  String _kitchenPosStatus({
+    required LocalOrder? local,
+    required Map<String, dynamic> data,
+  }) {
+    final remote = '${data['pos_status'] ?? local?.posStatus ?? 'new'}'.trim();
+    final type =
+        '${data['order_type'] ?? local?.orderType ?? ''}'.trim().toLowerCase();
+    if (remote == 'cancelled') return 'cancelled';
+    final invoiceClosed =
+        remote == 'completed' && (type == 'takeaway' || type == 'delivery');
+    if (invoiceClosed) {
+      final localStatus = local?.posStatus.trim().toLowerCase() ?? '';
+      if (localStatus == 'cancelled') return 'cancelled';
+      if (localStatus == 'completed' || localStatus == 'delivered') {
+        return localStatus;
+      }
+      if (localStatus.isNotEmpty) return local!.posStatus;
+      return 'new';
+    }
+    return remote.isEmpty ? 'new' : remote;
+  }
+
+  String _kitchenPaymentStatus(Object? raw) {
+    final value = '$raw'.trim().toLowerCase();
+    if (value.isEmpty || value == 'null') return 'unpaid';
+    if (value == 'pending') return 'unpaid';
+    return value;
+  }
+
+  /// Kitchen devices may not have table-master yet. Seed a name-only stub so
+  /// tickets can show "طاولة 5" without opening a live sitting.
+  Future<String?> _ensureKitchenTable({
+    required int workspaceId,
+    required int? tableServerId,
+    required String tableName,
+    required DateTime now,
+  }) async {
+    if (tableServerId == null || tableServerId <= 0) return null;
+    final localId = LocalIds.table(workspaceId, tableServerId);
+    final existing = await (_db.select(_db.localTables)
+          ..where((t) => t.localId.equals(localId)))
+        .getSingleOrNull();
+    if (existing != null) return existing.localId;
+    final name = tableName.trim().isEmpty ? 'طاولة' : tableName.trim();
+    await _db.into(_db.localTables).insert(
+          LocalTablesCompanion.insert(
+            localId: localId,
+            workspaceId: workspaceId,
+            serverId: Value(tableServerId),
+            name: name,
+            updatedAt: now,
+          ),
+        );
+    return localId;
   }
 
   Map<String, dynamic> _orderSnapshot(LocalOrder order) {
