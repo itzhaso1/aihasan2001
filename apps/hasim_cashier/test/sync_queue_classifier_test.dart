@@ -264,4 +264,26 @@ void main() {
     expect(counts.unsupported, 1);
     expect(counts.scopedPending, 2);
   });
+
+  test('takeaway waiting for a local customer is waitingParent, not Laravel-down',
+      () async {
+    await insertOrder(localId: 'tw-cust');
+    await insertQueue(
+      entityType: 'order',
+      entityId: 'tw-cust',
+      operation: 'create',
+      status: 'pending',
+      payload: {
+        'order_type': 'takeaway',
+        'customer_local_id': 'cust-1',
+        'items': [
+          {'pos_menu_item_id': 9, 'quantity': 1},
+        ],
+      },
+    );
+    final item =
+        (await SyncQueueClassifier(db).classifyWorkspace(workspaceId)).single;
+    expect(item.bucket, SyncQueueBucket.waitingParent);
+    expect(item.reason, contains('العميل'));
+  });
 }

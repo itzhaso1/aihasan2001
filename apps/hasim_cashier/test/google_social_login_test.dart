@@ -214,18 +214,20 @@ void main() {
       SyncNowCopy.afterFlush(
         synced: 0,
         failed: 0,
-        scopedPending: 0,
+        ready: 0,
+        waitingParent: 0,
         leftovers: 54,
         authRequired: false,
         apiBase: 'http://127.0.0.1:8000',
       ),
-      contains('خارج العقد'),
+      contains('تبقى محلية'),
     );
     expect(
       SyncNowCopy.afterFlush(
         synced: 0,
         failed: 0,
-        scopedPending: 0,
+        ready: 0,
+        waitingParent: 0,
         leftovers: 54,
         authRequired: false,
         apiBase: 'http://127.0.0.1:8000',
@@ -236,12 +238,37 @@ void main() {
       SyncNowCopy.afterFlush(
         synced: 0,
         failed: 0,
-        scopedPending: 3,
+        ready: 3,
+        waitingParent: 0,
         leftovers: 51,
         authRequired: false,
         apiBase: 'http://127.0.0.1:8000',
       ),
       contains('ما زال 3 فاتورة'),
+    );
+    expect(
+      SyncNowCopy.afterFlush(
+        synced: 0,
+        failed: 0,
+        ready: 0,
+        waitingParent: 8,
+        leftovers: 0,
+        authRequired: false,
+        apiBase: 'http://127.0.0.1:8000',
+      ),
+      contains('انتظار عنصر أب'),
+    );
+    expect(
+      SyncNowCopy.afterFlush(
+        synced: 0,
+        failed: 0,
+        ready: 0,
+        waitingParent: 8,
+        leftovers: 0,
+        authRequired: false,
+        apiBase: 'http://127.0.0.1:8000',
+      ),
+      isNot(contains('تحقق من Laravel')),
     );
   });
 }

@@ -24,6 +24,7 @@ import '../../core/pos/pos_errors.dart';
 import '../../core/pos/pos_mode.dart';
 import '../../core/printing/printer_service.dart';
 import '../../core/realtime/pos_event_source.dart';
+import '../../core/repositories/sync_queue_repository.dart';
 import '../../core/sync/pos_sync_coordinator.dart';
 import '../../core/sync/sync_now_copy.dart';
 import '../../core/sync/sync_queue_classifier.dart';
@@ -31,6 +32,7 @@ import '../../core/theme/hasim_colors.dart';
 import '../../core/theme/hasim_radius.dart';
 import '../../core/theme/hasim_spacing.dart';
 import '../../core/util/json_numbers.dart';
+import '../../core/widgets/hasim_top_notice.dart';
 import '../../core/widgets/hasim_widgets.dart';
 import '../cart/cart_controller.dart';
 
@@ -167,7 +169,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
 
   void _showSyncMessage(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    showHasimTopNotice(context, text);
   }
 
   Future<void> _syncNow() async {
@@ -242,6 +244,9 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         );
         return;
       }
+      await SyncQueueRepository(
+        ref.read(appDatabaseProvider),
+      ).clearPendingBackoff(workspaceId);
       final result = await coordinator.flushPendingOrders(
         workspaceId: workspaceId,
         deviceId: deviceId,
@@ -251,21 +256,23 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         _showSyncMessage('الخادم رفض التوكن. أعد ربط السحابة من شاشة الدخول.');
         return;
       }
-      final counts = await SyncQueueClassifier(
-        ref.read(appDatabaseProvider),
-      ).counts(workspaceId);
+      final classifier = SyncQueueClassifier(ref.read(appDatabaseProvider));
+      final counts = await classifier.counts(workspaceId);
       final leftovers = counts.unsupported +
           counts.standalone +
           counts.blocked +
           counts.alreadyApplied;
+      final lastError = await classifier.firstReadyLastError(workspaceId);
       _showSyncMessage(
         SyncNowCopy.afterFlush(
           synced: result.synced,
           failed: result.failed,
-          scopedPending: counts.scopedPending,
+          ready: counts.ready,
+          waitingParent: counts.waitingParent,
           leftovers: leftovers,
           authRequired: false,
           apiBase: AppConfig.apiBase,
+          lastError: lastError,
         ),
       );
     } catch (e) {

@@ -277,6 +277,22 @@ class SyncQueueRepository {
       );
     }
   }
+
+  /// Settings → مزامنة الآن retries immediately instead of waiting backoff.
+  Future<int> clearPendingBackoff(int workspaceId) {
+    return (_db.update(_db.syncQueueItems)
+          ..where(
+            (t) =>
+                t.workspaceId.equals(workspaceId) &
+                t.status.isIn(['pending', 'syncing']),
+          ))
+        .write(
+          SyncQueueItemsCompanion(
+            nextAttemptAt: const Value(null),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+  }
 }
 
 class SyncQueueCounts {

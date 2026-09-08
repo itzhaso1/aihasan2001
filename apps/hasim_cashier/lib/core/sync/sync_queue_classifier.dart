@@ -147,6 +147,16 @@ class SyncQueueClassifier {
     );
   }
 
+  Future<String?> firstReadyLastError(int workspaceId) async {
+    final items = await classifyWorkspace(workspaceId);
+    for (final item in items) {
+      if (item.bucket != SyncQueueBucket.ready) continue;
+      final error = item.row.lastError?.trim() ?? '';
+      if (error.isNotEmpty) return error;
+    }
+    return null;
+  }
+
   Future<SyncQueueClassification> classify(SyncQueueItem row) async {
     if (PosMode.isReservedStandaloneWorkspace(row.workspaceId)) {
       return SyncQueueClassification(
@@ -259,6 +269,20 @@ class SyncQueueClassifier {
           row: row,
           bucket: SyncQueueBucket.blocked,
           reason: 'صنف محلي بدون server id — لا يُرسل إلى Laravel.',
+        );
+      }
+    }
+    final customerLocal = '${payload['customer_local_id'] ?? ''}'.trim();
+    final payloadCustomerId = (payload['customer_id'] as num?)?.toInt() ?? 0;
+    if (customerLocal.isNotEmpty && payloadCustomerId <= 0) {
+      final customer = await _customer(row.workspaceId, customerLocal);
+      if (customer == null ||
+          customer.serverId == null ||
+          customer.serverId! <= 0) {
+        return SyncQueueClassification(
+          row: row,
+          bucket: SyncQueueBucket.waitingParent,
+          reason: 'الطلب ينتظر وصول العميل إلى Laravel أولاً.',
         );
       }
     }
@@ -440,6 +464,13 @@ class SyncQueueClassifier {
       bucket: SyncQueueBucket.ready,
       reason: 'فاتورة جاهزة بعد وجود طلب السحابة.',
     );
+  }
+
+  Future<LocalCustomer?> _customer(int workspaceId, String localId) {
+    return (_db.select(_db.localCustomers)..where(
+          (t) => t.workspaceId.equals(workspaceId) & t.localId.equals(localId),
+        ))
+        .getSingleOrNull();
   }
 
   Future<LocalOrder?> _order(int workspaceId, String localId) {
