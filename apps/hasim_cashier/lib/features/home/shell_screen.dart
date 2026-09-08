@@ -62,6 +62,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
   _PosSection _section = _PosSection.cashier;
   final _search = TextEditingController();
   var _bootstrapInFlight = false;
+  String _shopName = '';
   var _checkoutInFlight = false;
   String? _checkoutClientRef;
 
@@ -96,6 +97,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
       // Offline-only: local SQLite path only — never hit API / sync.
       final store = await ref.read(localAuthServiceProvider).anyStore();
       if (store != null) {
+        _shopName = store.name.trim();
         ref.read(currentStoreIdProvider.notifier).state = store.localId;
         ref.read(posConnectedModeProvider.notifier).state = false;
         ref.read(cartControllerProvider.notifier).setTaxRate(store.taxRate);
@@ -189,13 +191,15 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     // Do NOT watch the full cart / auth session object here — every change
     // would rebuild the product grid under a hovering mouse and trip
     // mouse_tracker / no-size asserts.
-    final workspaceName = ref.watch(
-      authControllerProvider.select(
-        (auth) =>
-            (auth.valueOrNull?.workspace?['name'] as String?) ??
-            'المتجر المحلي',
-      ),
+    final sessionShop = ref.watch(
+      authControllerProvider.select((auth) {
+        final name = '${auth.valueOrNull?.workspace?['name'] ?? ''}'.trim();
+        return name;
+      }),
     );
+    final shopName = _shopName.isNotEmpty
+        ? _shopName
+        : (sessionShop.isNotEmpty ? sessionShop : 'المتجر المحلي');
 
     return Scaffold(
       backgroundColor: HasimColors.page,
@@ -204,7 +208,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
           _PosChrome(
             section: _section,
             onSelect: (s) => setState(() => _section = s),
-            workspaceName: workspaceName,
+            workspaceName: shopName,
             compact: !isDesktop,
             onCart: isDesktop ? null : () => _openCartSheet(context),
             onLogout: () async {
@@ -635,7 +639,7 @@ class _PosChrome extends ConsumerWidget {
                 )
               : Row(
                   children: [
-                    _brandMark(),
+                    _brandMark(workspaceName),
                     const SizedBox(width: 12),
                     Expanded(
                       child: FittedBox(
@@ -672,7 +676,7 @@ class _PosChrome extends ConsumerWidget {
             child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: AlignmentDirectional.centerStart,
-              child: _brandMark(),
+              child: _brandMark(workspaceName),
             ),
           ),
         ),
@@ -696,7 +700,7 @@ class _PosChrome extends ConsumerWidget {
     );
   }
 
-  Widget _brandMark() {
+  Widget _brandMark(String shopName) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -715,26 +719,33 @@ class _PosChrome extends ConsumerWidget {
           ),
         ),
         const SizedBox(width: 8),
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'نظام الكاشير',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: HasimColors.ink,
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 180),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                shopName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: HasimColors.ink,
+                ),
               ),
-            ),
-            Text(
-              'إدارة أسهل.. لعمل أفضل',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: HasimColors.muted,
+              const Text(
+                'إدارة أسهل.. لعمل أفضل',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: HasimColors.muted,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
