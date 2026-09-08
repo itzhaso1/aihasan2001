@@ -630,14 +630,20 @@ class _PosChrome extends ConsumerWidget {
                       roleLabel: roleLabel,
                     ),
                     const SizedBox(height: 6),
-                    _navRow(context, ref),
+                    _navRow(context, ref, scrollable: true),
                   ],
                 )
               : Row(
                   children: [
                     _brandMark(),
-                    const SizedBox(width: 16),
-                    Expanded(child: _navRow(context, ref)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.center,
+                        child: _navRow(context, ref, scrollable: false),
+                      ),
+                    ),
                     const SizedBox(width: 12),
                     _userCluster(
                       context,
@@ -734,7 +740,11 @@ class _PosChrome extends ConsumerWidget {
     );
   }
 
-  Widget _navRow(BuildContext context, WidgetRef ref) {
+  Widget _navRow(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool scrollable,
+  }) {
     final perms = CashierPermissions.resolve(
       ref.watch(cashierPermissionsProvider),
       ref.watch(authControllerProvider).valueOrNull?.permissions,
@@ -754,50 +764,50 @@ class _PosChrome extends ConsumerWidget {
       (_PosSection.settings, 'الإعدادات', Icons.settings_outlined),
     ];
     final menuBadge = ref.watch(menuNewOrdersCountProvider);
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final item in items) ...[
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                HsNavPill(
-                  label: item.$2,
-                  icon: item.$3,
-                  selected: section == item.$1,
-                  onTap: () => onSelect(item.$1),
-                ),
-                if (item.$1 == _PosSection.menu && menuBadge > 0)
-                  Positioned(
-                    top: -4,
-                    left: -2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: HasimColors.warning,
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: Text(
-                        '$menuBadge',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                        ),
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final item in items) ...[
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              HsNavPill(
+                label: item.$2,
+                icon: item.$3,
+                selected: section == item.$1,
+                onTap: () => onSelect(item.$1),
+              ),
+              if (item.$1 == _PosSection.menu && menuBadge > 0)
+                Positioned(
+                  top: -4,
+                  left: -2,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: HasimColors.warning,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      '$menuBadge',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(width: 4),
-          ],
+                ),
+            ],
+          ),
+          const SizedBox(width: 4),
         ],
-      ),
+      ],
     );
+    if (!scrollable) return row;
+    return SingleChildScrollView(scrollDirection: Axis.horizontal, child: row);
   }
 
   Widget _userCluster(
