@@ -29,6 +29,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   var _busy = false;
   var _cloudMode = true;
   var _linked = false;
+  var _hasStore = false;
   var _googleWaiting = false;
   String? _error;
 
@@ -57,6 +58,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
+        _hasStore = store != null;
         _cloudMode = store == null || wantCloud;
       });
       try {
@@ -82,19 +84,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     try {
       if (_cloudMode) {
-        await ref.read(authControllerProvider.notifier).login(
-              _email.text.trim(),
-              _password.text,
-            );
+        await ref
+            .read(authControllerProvider.notifier)
+            .login(_email.text.trim(), _password.text);
         if (!mounted) return;
-        final link = await ref.read(cloudLinkStoreProvider).read();
-        setState(() {
-          _linked = link?.isLinked == true;
-          if (_linked) _cloudMode = false;
-        });
+        await _refreshStoreFlags();
         return;
       }
-      await ref.read(authControllerProvider.notifier).loginStandalonePin(
+      await ref
+          .read(authControllerProvider.notifier)
+          .loginStandalonePin(
             username: _email.text.trim(),
             pin: _password.text,
           );
@@ -104,12 +103,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _error = e is PosException
             ? e.messageAr
             : e is ApiException
-                ? e.message
-                : e.toString();
+            ? e.message
+            : e.toString();
       });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _refreshStoreFlags() async {
+    final store = await ref.read(localAuthServiceProvider).anyStore();
+    var linked = false;
+    try {
+      final link = await ref.read(cloudLinkStoreProvider).read();
+      linked = link?.isLinked == true;
+    } catch (_) {
+      // Secure storage can stall in widget tests.
+    }
+    if (!mounted) return;
+    setState(() {
+      _hasStore = store != null;
+      _linked = linked;
+      if (_linked) _cloudMode = false;
+    });
   }
 
   Future<void> _google() async {
@@ -120,26 +136,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     try {
       final accessToken = await GoogleAccessTokenClient(
-            ref.read(cashierApiProvider),
-          ).obtainAccessToken();
-      await ref.read(authControllerProvider.notifier).socialLogin(
-            provider: 'google',
-            accessToken: accessToken,
-          );
+        ref.read(cashierApiProvider),
+      ).obtainAccessToken();
+      await ref
+          .read(authControllerProvider.notifier)
+          .socialLogin(provider: 'google', accessToken: accessToken);
       if (!mounted) return;
-      final link = await ref.read(cloudLinkStoreProvider).read();
-      setState(() {
-        _linked = link?.isLinked == true;
-        if (_linked) _cloudMode = false;
-      });
+      await _refreshStoreFlags();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e is PosException
             ? e.messageAr
             : e is ApiException
-                ? e.message
-                : e.toString();
+            ? e.message
+            : e.toString();
       });
     } finally {
       if (mounted) {
@@ -171,23 +182,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 children: [
                   const SizedBox(height: 24),
                   Column(
-                        children: [
-                          const HasimBrandLogo(width: 240),
-                          const SizedBox(height: 8),
-                          Text(
-                            _cloudMode
-                                ? 'تسجيل الدخول بحساب حاسم'
-                                : (_linked
-                                    ? 'كاشير حاسم — مربوط، والعمل المحلي متاح بدون إنترنت'
-                                    : 'كاشير حاسم — أوفلاين بالكامل'),
-                            style: Theme.of(context).textTheme.bodySmall,
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      )
-                      .animate()
-                      .fadeIn(duration: 280.ms)
-                      .slideY(begin: 0.06, end: 0),
+                    children: [
+                      const HasimBrandLogo(width: 240),
+                      const SizedBox(height: 8),
+                      Text(
+                        _cloudMode
+                            ? 'تسجيل الدخول بحساب حاسم'
+                            : (_linked
+                                  ? 'كاشير حاسم — مربوط، والعمل المحلي متاح بدون إنترنت'
+                                  : 'كاشير حاسم — أوفلاين بالكامل'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ).animate().fadeIn(duration: 280.ms).slideY(begin: 0.06, end: 0),
                   const SizedBox(height: 28),
                   HsCard(
                     padding: const EdgeInsets.all(HasimSpacing.lg),
@@ -311,7 +319,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                                   child: Text(
                                     'أو',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   ),
                                 ),
                                 const Expanded(child: Divider()),
@@ -380,29 +390,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                             ),
                           ],
-                          const SizedBox(height: 8),
-                          TextButton(
-                            onPressed: _busy
-                                ? null
-                                : () => setState(() {
-                                      _cloudMode = !_cloudMode;
-                                      _error = null;
-                                    }),
-                            child: Text(
-                              _cloudMode
-                                  ? 'العودة لتسجيل الدخول المحلي'
-                                  : 'ربط الجهاز بحساب حاسم',
-                            ),
-                          ),
-                          if (_cloudMode)
+                          if (_hasStore) ...[
+                            const SizedBox(height: 8),
                             TextButton(
                               onPressed: _busy
                                   ? null
-                                  : () => context.go('/standalone-setup'),
-                              child: const Text(
-                                'إعداد مستقل بدون حساب حاسم',
+                                  : () => setState(() {
+                                      _cloudMode = !_cloudMode;
+                                      _error = null;
+                                    }),
+                              child: Text(
+                                _cloudMode
+                                    ? 'العودة لتسجيل الدخول المحلي'
+                                    : 'ربط الجهاز بحساب حاسم',
                               ),
                             ),
+                          ],
                         ],
                       ],
                     ),

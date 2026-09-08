@@ -1192,7 +1192,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           ],
         ),
         HsToggleRow(
-          label: 'صوت طلبات المنيو',
+          label: 'صوت الطلبات الجديدة (المنيو والمطبخ)',
           value: _sound,
           onChanged: (!canManage || !_ready || _savingPos)
               ? null

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/cashier_api.dart';
+import '../../core/audio/menu_sound_service.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/pos/application/pos_providers.dart';
 import '../../core/pos/pos_labels.dart';
@@ -30,6 +31,8 @@ class _KitchenBoardState extends ConsumerState<KitchenBoard> {
   var _manualBusy = false;
   String? _error;
   int? _workspaceId;
+  final _seenOrderIds = <String>{};
+  var _soundPrimed = false;
 
   static const _statusOptions = [
     'new',
@@ -74,9 +77,7 @@ class _KitchenBoardState extends ConsumerState<KitchenBoard> {
     final messenger = ScaffoldMessenger.maybeOf(context);
     messenger
       ?..hideCurrentSnackBar()
-      ..showSnackBar(
-        const SnackBar(content: Text(KitchenSyncCopy.syncing)),
-      );
+      ..showSnackBar(const SnackBar(content: Text(KitchenSyncCopy.syncing)));
     try {
       final result = await ref
           .read(autoSyncStatusProvider.notifier)
@@ -84,16 +85,12 @@ class _KitchenBoardState extends ConsumerState<KitchenBoard> {
       if (!mounted) return;
       messenger
         ?..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text(result.kitchenMessage)),
-        );
+        ..showSnackBar(SnackBar(content: Text(result.kitchenMessage)));
     } catch (_) {
       if (!mounted) return;
       messenger
         ?..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(content: Text(KitchenSyncCopy.offline)),
-        );
+        ..showSnackBar(const SnackBar(content: Text(KitchenSyncCopy.offline)));
     } finally {
       if (mounted) setState(() => _manualBusy = false);
     }
@@ -122,11 +119,15 @@ class _KitchenBoardState extends ConsumerState<KitchenBoard> {
         .listen(
           (orders) {
             if (!mounted) return;
+            final shouldPlay = _noteNewKitchenOrders(orders);
             setState(() {
               _orders = orders;
               _loading = false;
               _error = null;
             });
+            if (shouldPlay) {
+              unawaited(ref.read(menuSoundServiceProvider).playNewOrder());
+            }
           },
           onError: (Object e) {
             if (!mounted) return;
@@ -136,6 +137,34 @@ class _KitchenBoardState extends ConsumerState<KitchenBoard> {
             });
           },
         );
+  }
+
+  bool _noteNewKitchenOrders(List<Map<String, dynamic>> orders) {
+    final ids = <String>{
+      for (final order in orders)
+        if (_kitchenOrderId(order) != null) _kitchenOrderId(order)!,
+    };
+    if (!_soundPrimed) {
+      _seenOrderIds
+        ..clear()
+        ..addAll(ids);
+      _soundPrimed = true;
+      return false;
+    }
+    var shouldPlay = false;
+    for (final id in ids) {
+      if (_seenOrderIds.add(id)) shouldPlay = true;
+    }
+    _seenOrderIds.removeWhere((id) => !ids.contains(id));
+    return shouldPlay;
+  }
+
+  String? _kitchenOrderId(Map<String, dynamic> order) {
+    final localId = order['local_id']?.toString().trim();
+    if (localId != null && localId.isNotEmpty) return localId;
+    final id = order['id']?.toString().trim();
+    if (id != null && id.isNotEmpty) return id;
+    return null;
   }
 
   Future<void> _updateStatus(String localId, String status) async {
@@ -248,13 +277,13 @@ class _KitchenBoardState extends ConsumerState<KitchenBoard> {
                         background: syncStatus.syncing
                             ? HasimColors.brandSoft
                             : (!syncStatus.eligible || !syncStatus.online)
-                                ? HasimColors.warningSoft
-                                : HasimColors.ctaSoft,
+                            ? HasimColors.warningSoft
+                            : HasimColors.ctaSoft,
                         foreground: syncStatus.syncing
                             ? HasimColors.brandDark
                             : (!syncStatus.eligible || !syncStatus.online)
-                                ? HasimColors.warning
-                                : HasimColors.cta,
+                            ? HasimColors.warning
+                            : HasimColors.cta,
                       ),
                     ),
                   ),
