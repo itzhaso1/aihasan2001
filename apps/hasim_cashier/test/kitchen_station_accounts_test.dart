@@ -559,6 +559,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('طاولة 9'), findsOneWidget);
+    expect(find.text('مزامنة الآن'), findsOneWidget);
     expect(find.textContaining('شاي'), findsOneWidget);
     expect(find.text('جديد'), findsWidgets);
     expect(find.text('مقبول'), findsWidgets);

@@ -222,6 +222,11 @@ class SyncFlushResult {
     this.keptPending = 0,
     this.authRequired = false,
     this.skippedInFlight = false,
+    this.skippedUnlinked = false,
+    this.skippedStandalone = false,
+    this.networkError = false,
+    this.pullFailed = false,
+    this.pulled = 0,
   });
 
   final int synced;
@@ -229,4 +234,14 @@ class SyncFlushResult {
   final int keptPending;
   final bool authRequired;
   final bool skippedInFlight;
+  final bool skippedUnlinked;
+  final bool skippedStandalone;
+  final bool networkError;
+  final bool pullFailed;
+  final int pulled;
+
+  bool get skipped => skippedUnlinked || skippedStandalone || skippedInFlight;
+
+  bool get ok =>
+      !authRequired && !networkError && !pullFailed && failed == 0 && !skippedUnlinked;
 }
