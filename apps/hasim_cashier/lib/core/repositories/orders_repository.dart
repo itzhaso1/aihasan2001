@@ -191,6 +191,34 @@ class OrdersRepository {
     return _orderToDisplay(order, await _itemsFor(key));
   }
 
+  /// Cashier → select table → Create Order.
+  ///
+  /// Opens a sitting if needed, then creates the same unpaid kitchen ticket as
+  /// Table → Open Session → Add Order. Does not invoice or complete.
+  Future<Map<String, dynamic>> createCashierTableOrder({
+    required TablesRepository tables,
+    required int workspaceId,
+    required String deviceId,
+    required int tableId,
+    required String clientReference,
+    required List<Map<String, dynamic>> items,
+    String? notes,
+  }) async {
+    await tables.openSessionLocal(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      tableServerId: tableId,
+    );
+    return createTableOrder(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      tableId: tableId,
+      clientReference: clientReference,
+      items: items,
+      notes: notes,
+    );
+  }
+
   /// Create a takeaway/cart order locally (same sync_queue path as table orders).
   Future<Map<String, dynamic>> createTakeawayOrder({
     required int workspaceId,

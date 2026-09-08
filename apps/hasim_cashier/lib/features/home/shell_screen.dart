@@ -338,12 +338,6 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     }
     ref.read(currentShiftIdProvider.notifier).state = shiftId;
 
-    // Cashier checkout: create the order immediately — no payment dialog.
-    // Default tender is cash for the full cart total.
-    final payments = <PaymentTender>[
-      PaymentTender(method: 'cash', amount: Money.round(cart.total)),
-    ];
-
     _checkoutInFlight = true;
     _checkoutClientRef ??= const Uuid().v4();
     final clientRef = _checkoutClientRef!;
@@ -392,11 +386,75 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
         tableServerId =
             asInt(match['id'] ?? match['server_id']) ?? tableServerId;
       }
+      if (cart.channel == OrderChannel.table) {
+        final tableId = tableServerId;
+        if (tableId == null || tableId <= 0) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('اختر طاولة لطلب الطاولة.')),
+          );
+          return;
+        }
+        final created = await ref
+            .read(ordersRepositoryProvider)
+            .createCashierTableOrder(
+              tables: ref.read(tablesRepositoryProvider),
+              workspaceId: workspaceId,
+              deviceId: deviceId,
+              tableId: tableId,
+              clientReference: clientRef,
+              notes: cart.notes,
+              items: [
+                for (final line in cart.lines)
+                  {
+                    'pos_menu_item_id': line.menuItemId,
+                    'product_local_id': line.productLocalId,
+                    'name': line.name,
+                    'quantity': line.quantity,
+                    'unit_price': line.unitPrice,
+                    'total_amount': line.quantity * line.unitPrice,
+                  },
+              ],
+            );
+        unawaited(
+          ref
+              .read(posSyncCoordinatorProvider)
+              .flushPendingOrders(workspaceId: workspaceId, deviceId: deviceId),
+        );
+        ref.read(cartControllerProvider.notifier).clear();
+        _checkoutClientRef = null;
+        ref.read(tablesRevisionProvider.notifier).state++;
+        ref.invalidate(localTablesProvider);
+        if (!mounted) return;
+        final orderNumber = '${created['order_number'] ?? 'محلي'}';
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('تم إنشاء الطلب'),
+            content: Text(
+              'الطلب #$orderNumber جاهز للمطبخ بحالة جديدة.\n'
+              'الطاولة أصبحت مشغولة. الفاتورة تُصدر عند الدفع أو إغلاق الجلسة.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إغلاق'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
       final store = await ref.read(localAuthServiceProvider).anyStore();
       final resolvedPerms = CashierPermissions.resolve(
         ref.read(cashierPermissionsProvider),
         session?.permissions,
       );
+      final payments = <PaymentTender>[
+        PaymentTender(method: 'cash', amount: Money.round(cart.total)),
+      ];
       final result = await ref
           .read(checkoutServiceProvider)
           .execute(
@@ -426,9 +484,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
             ),
           );
 
-      final occupiedTable = cart.channel == OrderChannel.table;
       if (cart.channel == OrderChannel.takeaway ||
-          cart.channel == OrderChannel.table ||
           cart.channel == OrderChannel.delivery) {
         unawaited(
           ref
@@ -449,9 +505,8 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
         barrierColor: HasimColors.ink.withValues(alpha: 0.38),
         builder: (context) => HsInvoiceSuccessDialog(
           invoiceNumber: result.invoiceNumber,
-          details: [
+          details: const [
             'حُفظت الفاتورة في قاعدة البيانات المحلية.',
-            if (occupiedTable) 'الطاولة أصبحت مشغولة.',
           ],
           onPrint: () async {
             Navigator.pop(context);
