@@ -12,13 +12,19 @@ use RuntimeException;
 
 class CreditNoteController extends FinanceBaseController
 {
+    /**
+     * Architectural decision: invoices.credit gates the whole credit/debit
+     * note lifecycle (draft create + issue). The seeder already has a single
+     * invoices.credit permission, so we do not add credit.create / credit.issue.
+     * Cancel stays invoices.cancel. Regular invoice drafts stay invoices.create.
+     */
     public function __construct(
         private readonly CreditNoteService $creditNoteService,
     ) {}
 
     public function create(Request $request, FinanceInvoice $invoice): View
     {
-        $this->authorizeFinance($request, 'invoices.create');
+        $this->authorizeFinance($request, 'invoices.credit');
         $this->assertSameWorkspace($invoice->workspace_id);
 
         return view('workspace.finance.credit-notes.create', [
@@ -29,7 +35,7 @@ class CreditNoteController extends FinanceBaseController
 
     public function store(Request $request, FinanceInvoice $invoice): RedirectResponse
     {
-        $this->authorizeFinance($request, 'invoices.create');
+        $this->authorizeFinance($request, 'invoices.credit');
         $this->assertSameWorkspace($invoice->workspace_id);
 
         $validated = $request->validate([
@@ -68,7 +74,7 @@ class CreditNoteController extends FinanceBaseController
 
     public function issue(Request $request, FinanceInvoice $invoice, FinanceCreditNote $creditNote): RedirectResponse
     {
-        $this->authorizeFinance($request, 'invoices.create');
+        $this->authorizeFinance($request, 'invoices.credit');
         $this->assertSameWorkspace($invoice->workspace_id);
         abort_unless((int) $creditNote->invoice_id === (int) $invoice->id, 404);
 

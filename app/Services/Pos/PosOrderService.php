@@ -18,6 +18,7 @@ use App\Services\Audit\AuditLogService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -1747,12 +1748,10 @@ class PosOrderService
         $discount = round((float) $orders->sum(fn (Order $order) => (float) $order->discount_amount), 2);
         $total = round((float) $orders->sum(fn (Order $order) => (float) $order->total_amount), 2);
 
-        $invoice = PosCashierInvoice::query()->create([
-            'workspace_id' => $workspaceId,
+        $invoice = $this->persistCashierInvoice($workspaceId, [
             'dining_table_id' => $table?->id,
             'table_session_id' => $session?->id,
             'closed_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
-            'invoice_number' => $this->nextCashierInvoiceNumber(),
             'status' => 'closed',
             'currency' => $currency,
             'subtotal' => $subtotal,
@@ -1810,11 +1809,53 @@ class PosOrderService
         return 'POS-'.str_pad((string) $lastId, 8, '0', STR_PAD_LEFT);
     }
 
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function persistCashierInvoice(int $workspaceId, array $attributes): PosCashierInvoice
+    {
+        return DB::transaction(function () use ($workspaceId, $attributes): PosCashierInvoice {
+            $attempt = 0;
+            while ($attempt < 2) {
+                try {
+                    return PosCashierInvoice::query()->create([
+                        ...$attributes,
+                        'workspace_id' => $workspaceId,
+                        'invoice_number' => $this->nextCashierInvoiceNumber(),
+                    ]);
+                } catch (UniqueConstraintViolationException $exception) {
+                    $attempt++;
+                    if ($attempt >= 2) {
+                        throw $exception;
+                    }
+                }
+            }
+
+            throw new RuntimeException('تعذر توليد رقم فاتورة كاشير فريد.');
+        });
+    }
+
     private function nextCashierInvoiceNumber(): string
     {
-        $lastId = (PosCashierInvoice::withoutGlobalScopes()->max('id') ?? 0) + 1;
+        $last = PosCashierInvoice::withoutGlobalScopes()
+            ->orderByDesc('id')
+            ->lockForUpdate()
+            ->first();
 
-        return 'CASH-'.str_pad((string) $lastId, 8, '0', STR_PAD_LEFT);
+        $next = ((int) ($last?->id ?? 0)) + 1;
+
+        do {
+            $candidate = 'CASH-'.str_pad((string) $next, 8, '0', STR_PAD_LEFT);
+            $taken = PosCashierInvoice::withoutGlobalScopes()
+                ->where('invoice_number', $candidate)
+                ->exists();
+            if (! $taken) {
+                return $candidate;
+            }
+            $next++;
+        } while ($next < ((int) ($last?->id ?? 0)) + 1000);
+
+        throw new RuntimeException('تعذر توليد رقم فاتورة كاشير فريد.');
     }
 
     /**

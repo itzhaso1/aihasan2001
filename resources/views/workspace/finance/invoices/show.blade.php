@@ -81,6 +81,11 @@
                         @csrf
                         <button class="rounded-lg bg-[#06C2A4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">إصدار</button>
                     </form>
+                    <form method="POST" action="{{ route('workspace.finance.invoices.destroy', $invoice) }}" onsubmit="return confirm('حذف مسودة الفاتورة؟ لا يمكن التراجع عن هذا الإجراء.')">
+                        @csrf
+                        @method('DELETE')
+                        <button class="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50">حذف المسودة</button>
+                    </form>
                 @endif
                 @if(! $isCancelled)
                     <form method="POST" action="{{ route('workspace.finance.invoices.cancel', $invoice) }}" onsubmit="return confirm('إلغاء الفاتورة؟ لن يُحذف القيد المحاسبي بل يُعكس بقيد جديد. يجب عكس الدفعات القائمة أولاً.')">

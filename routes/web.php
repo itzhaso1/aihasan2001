@@ -376,6 +376,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::get('invoices/{invoice}', [FinanceInvoiceController::class, 'show'])->name('invoices.show');
             Route::get('invoices/{invoice}/edit', [FinanceInvoiceController::class, 'edit'])->name('invoices.edit');
             Route::put('invoices/{invoice}', [FinanceInvoiceController::class, 'update'])->name('invoices.update');
+            Route::delete('invoices/{invoice}', [FinanceInvoiceController::class, 'destroy'])->name('invoices.destroy');
             Route::get('invoices/{invoice}/pdf', [FinanceInvoiceController::class, 'downloadPdf'])->name('invoices.pdf');
             Route::post('invoices/{invoice}/issue', [FinanceInvoiceController::class, 'issue'])->name('invoices.issue');
             Route::post('invoices/{invoice}/cancel', [FinanceInvoiceController::class, 'cancel'])->name('invoices.cancel');
