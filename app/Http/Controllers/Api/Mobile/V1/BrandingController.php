@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Api\Mobile\V1;
 
 use App\Http\Controllers\Api\Mobile\Concerns\ResolvesMobileWorkspace;
 use App\Http\Controllers\Api\Mobile\MobileController;
+use App\Services\Platform\PlatformBranding;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\File;
 
 class BrandingController extends MobileController
 {
@@ -14,20 +14,18 @@ class BrandingController extends MobileController
 
     public function __construct(
         private readonly WorkspaceContext $workspaceContext,
+        private readonly PlatformBranding $platformBranding,
     ) {}
 
     public function show(): JsonResponse
     {
         $workspace = $this->requireWorkspace($this->workspaceContext);
 
-        $logoPath = public_path('images/hasim-logo.png');
-        $logoUrl = File::exists($logoPath) ? asset('images/hasim-logo.png') : null;
-
         return $this->ok([
             'platform' => [
-                'name' => 'حاسم',
+                'name' => $this->platformBranding->siteName(),
                 'primary_color' => '#06C2A4',
-                'logo_url' => $logoUrl,
+                'logo_url' => $this->platformBranding->logoUrl(),
             ],
             'workspace' => [
                 'id' => $workspace->id,

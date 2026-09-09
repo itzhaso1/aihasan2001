@@ -10,7 +10,10 @@
 <body class="bg-gray-50 text-gray-900 antialiased">
     <header class="border-b bg-white">
         <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
-            <h1 class="text-lg font-semibold">منصة الإدارة</h1>
+            <a href="{{ route('platform.dashboard') }}" class="flex items-center gap-2">
+                <x-platform-logo class="h-9 w-auto max-w-[160px]" />
+                <h1 class="text-lg font-semibold">منصة الإدارة</h1>
+            </a>
             @if(auth('platform_admin')->check())
                 <div class="flex items-center gap-3 text-sm">
                     <span>{{ auth('platform_admin')->user()->name }}</span>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ config('app.name', 'HASEM') }} | منصة حاسم</title>
+    <title>{{ app(\App\Services\Platform\PlatformBranding::class)->siteName() }} | منصة حاسم</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="bg-[#F7FCFB] text-gray-900 antialiased">
@@ -16,8 +16,8 @@
         <header class="sticky top-0 z-30 border-b border-gray-200 bg-white/95 backdrop-blur">
             <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
                 <a href="/" class="flex items-center gap-3">
-                    <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#06C2A4] text-sm font-extrabold text-white">HA</span>
-                    <span class="text-xl font-extrabold tracking-tight text-[#06C2A4]">حاسم</span>
+                    <x-platform-logo class="h-10 w-auto max-w-[180px]" />
+                    <span class="text-xl font-extrabold tracking-tight text-[#06C2A4]">{{ app(\App\Services\Platform\PlatformBranding::class)->siteName() }}</span>
                 </a>
                 <nav class="hidden items-center gap-6 text-sm text-gray-600 md:flex">
                     <a href="#features" class="hover:text-[#06C2A4]">الميزات</a>

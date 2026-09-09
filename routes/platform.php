@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Platform\AuthController;
 use App\Http\Controllers\Platform\DashboardController;
+use App\Http\Controllers\Platform\SettingsController;
 use App\Http\Controllers\Platform\MerchantVerificationController;
 use App\Http\Controllers\Platform\PlanController;
 use App\Http\Controllers\Platform\SubscriptionController;
@@ -17,6 +18,9 @@ Route::middleware('guest:platform_admin')->group(function (): void {
 Route::middleware('platform.admin')->group(function (): void {
     Route::post('/logout', [AuthController::class, 'logout'])->name('platform.logout');
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('platform.dashboard');
+
+    Route::get('/settings', [SettingsController::class, 'edit'])->name('platform.settings.edit');
+    Route::put('/settings', [SettingsController::class, 'update'])->name('platform.settings.update');
 
     Route::get('/users', [UserController::class, 'index'])->name('platform.users.index');
     Route::get('/users/{user}/edit', [UserController::class, 'edit'])->name('platform.users.edit');
