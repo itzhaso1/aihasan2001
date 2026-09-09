@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
@@ -552,6 +553,44 @@ class TablesRepository {
           ..where((t) => t.workspaceId.equals(workspaceId)))
         .watch()
         .asyncMap((_) => listTables(workspaceId));
+  }
+
+  /// Emits whenever the table row, its sessions, or any order attached to it
+  /// changes in SQLite (local action or sync pull). Consumers reload the
+  /// detail snapshot so pulled QR orders / remote closes show without leaving
+  /// the screen.
+  Stream<void> watchTableActivity(int workspaceId, int tableServerId) {
+    final table = (_db.select(_db.localTables)..where(
+          (t) =>
+              t.workspaceId.equals(workspaceId) &
+              t.serverId.equals(tableServerId),
+        ))
+        .watch();
+    final orders = (_db.select(_db.localOrders)..where(
+          (t) =>
+              t.workspaceId.equals(workspaceId) &
+              t.tableServerId.equals(tableServerId),
+        ))
+        .watch();
+    // Sessions key on the table's local id, which may be device-generated for
+    // tables created offline; the workspace-level watch is cheap and the
+    // caller debounces.
+    final sessions = (_db.select(_db.localSessions)..where(
+          (t) => t.workspaceId.equals(workspaceId),
+        ))
+        .watch();
+    final controller = StreamController<void>.broadcast();
+    final subs = <StreamSubscription<dynamic>>[
+      table.listen((_) => controller.add(null)),
+      orders.listen((_) => controller.add(null)),
+      sessions.listen((_) => controller.add(null)),
+    ];
+    controller.onCancel = () async {
+      for (final sub in subs) {
+        await sub.cancel();
+      }
+    };
+    return controller.stream;
   }
 
   /// Local-first close + payment + invoice draft. Queues sync; no online required.

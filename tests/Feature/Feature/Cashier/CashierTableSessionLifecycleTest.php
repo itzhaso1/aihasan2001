@@ -211,6 +211,64 @@ class CashierTableSessionLifecycleTest extends TestCase
         $this->assertSame(1, Order::query()->where('source', 'qr_menu')->count());
     }
 
+    public function test_session_open_and_close_without_table_row_change_reach_pull_log(): void
+    {
+        [$token, $workspace, $item, $table] = $this->bootTable();
+        unset($item);
+        $this->registerDevice($token, $workspace, 'POS-WATCH');
+
+        $before = (int) PosSyncChange::withoutGlobalScopes()->max('id');
+
+        // Laravel-side open with no orders: dining_tables.status stays
+        // "available", so only the TableSession row changes.
+        $service = app(\App\Services\Pos\PosOrderService::class);
+        $session = $service->openSession($table->fresh());
+        $table->refresh();
+        $this->assertSame('available', $table->status);
+
+        $pull = $this->pullSince($token, $workspace, 'POS-WATCH', $before);
+        $openChange = collect($pull['changes'])
+            ->where('entity', 'table')
+            ->filter(fn ($change) => (int) $change['id'] === (int) $table->id)
+            ->last();
+        $this->assertNotNull($openChange, 'session open must surface as a table change');
+        $this->assertSame((int) $session->id, (int) ($openChange['data']['session_id'] ?? 0));
+        $this->assertTrue((bool) $openChange['data']['session_open']);
+        $this->assertNotEmpty($openChange['data']['opened_at']);
+
+        $cursor = (int) $pull['cursor'];
+        $service->closeSession($session->fresh(), (int) $workspace->owner_user_id);
+
+        $pull = $this->pullSince($token, $workspace, 'POS-WATCH', $cursor);
+        $closeChange = collect($pull['changes'])
+            ->where('entity', 'table')
+            ->filter(fn ($change) => (int) $change['id'] === (int) $table->id)
+            ->last();
+        $this->assertNotNull($closeChange, 'session close must surface as a table change');
+        $this->assertNull($closeChange['data']['session_id']);
+        $this->assertFalse((bool) $closeChange['data']['session_open']);
+        $this->assertSame('available', $closeChange['data']['status']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function pullSince(string $token, Workspace $workspace, string $deviceId, int $cursor): array
+    {
+        return $this->withToken($token)
+            ->withHeaders([
+                'X-Workspace-Id' => (string) $workspace->id,
+                'X-Device-Id' => $deviceId,
+            ])
+            ->postJson('/api/cashier/v1/sync/pull', [
+                'device_id' => $deviceId,
+                'cursor' => $cursor,
+                'limit' => 200,
+            ])
+            ->assertOk()
+            ->json('data');
+    }
+
     /**
      * @return array{0: string, 1: Workspace, 2: PosMenuItem, 3: DiningTable}
      */

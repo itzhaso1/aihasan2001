@@ -314,12 +314,24 @@ class SyncPullApplier {
         (remoteSessionId != null && remoteSessionId > 0);
     final pendingLocalClose = existing != null &&
         await _hasPendingSessionClose(workspaceId, existing.localId);
+    final pendingLocalOpen = existing != null &&
+        await _hasPendingSessionOpen(workspaceId, existing.localId);
+    // A local sitting Laravel has not acknowledged yet (open still queued, or
+    // no server session id) must survive a pull that says "available" —
+    // otherwise offline opens get clobbered. Once the server knows the
+    // sitting (session_server_id set, open drained), Laravel is authoritative:
+    // "no open session" means it was closed there and must close here too.
+    final localOpenUnacked = existing != null &&
+        (pendingLocalOpen ||
+            existing.sessionServerId == null ||
+            existing.sessionServerId! <= 0);
     // Laravel can keep status=available while a TableSession is still open
     // (QR guest visit with no billable order yet). Occupancy follows the
     // session, not the dining-table status flag alone.
     final preserveLocalOpen = existing != null &&
         existing.status == 'occupied' &&
         localClient.isNotEmpty &&
+        localOpenUnacked &&
         !remoteSessionOpen &&
         !pendingLocalClose &&
         (data['status'] == 'available' ||
@@ -1095,6 +1107,19 @@ class SyncPullApplier {
   Future<bool> _hasPendingSessionClose(
     int workspaceId,
     String tableLocalId,
+  ) =>
+      _hasPendingSessionOp(workspaceId, tableLocalId, 'close');
+
+  Future<bool> _hasPendingSessionOpen(
+    int workspaceId,
+    String tableLocalId,
+  ) =>
+      _hasPendingSessionOp(workspaceId, tableLocalId, 'open');
+
+  Future<bool> _hasPendingSessionOp(
+    int workspaceId,
+    String tableLocalId,
+    String operation,
   ) async {
     final rows = await (_db.select(_db.syncQueueItems)
           ..where(
@@ -1102,7 +1127,7 @@ class SyncPullApplier {
                 t.workspaceId.equals(workspaceId) &
                 t.entityType.equals('table_session') &
                 t.entityId.equals(tableLocalId) &
-                t.operation.equals('close') &
+                t.operation.equals(operation) &
                 (t.status.equals('pending') |
                     t.status.equals('failed') |
                     t.status.equals('syncing')),
