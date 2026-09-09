@@ -3,16 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ config('app.name', 'HASEM') }}</title>
+    <title>{{ app(\App\Services\Platform\PlatformBranding::class)->siteName() }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="bg-white text-gray-900 font-sans">
     <div class="min-h-screen">
         <header class="border-b border-gray-100">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-                <div>
-                    <h1 class="text-2xl font-bold text-[#06C2A4]">حاسم</h1>
-                    <p class="text-sm text-gray-600">منصة SaaS لإدارة المحادثات والذكاء الاصطناعي والتجارة</p>
+                <div class="flex items-center gap-3">
+                    <x-platform-logo class="h-12 w-auto max-w-[180px] fill-current text-[#06C2A4]" />
+                    <div>
+                        <h1 class="text-2xl font-bold text-[#06C2A4]">{{ app(\App\Services\Platform\PlatformBranding::class)->siteName() }}</h1>
+                        <p class="text-sm text-gray-600">منصة SaaS لإدارة المحادثات والذكاء الاصطناعي والتجارة</p>
+                    </div>
                 </div>
                 <div class="flex items-center gap-2">
                     @auth

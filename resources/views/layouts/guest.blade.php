@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>{{ config('app.name', 'HASEM') }}</title>
+        <title>{{ app(\App\Services\Platform\PlatformBranding::class)->siteName() }}</title>
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
@@ -18,8 +18,8 @@
         <div class="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-[#E8FAF6] via-slate-50 to-white px-4 py-8">
             <div class="text-center">
                 <a href="/" class="inline-flex flex-col items-center">
-                    <x-application-logo class="h-16 w-16 fill-current text-[#06C2A4]" />
-                    <span class="mt-3 text-2xl font-extrabold tracking-tight text-[#06C2A4]">حاسم</span>
+                    <x-platform-logo class="h-16 w-auto max-w-[220px] fill-current text-[#06C2A4]" />
+                    <span class="mt-3 text-2xl font-extrabold tracking-tight text-[#06C2A4]">{{ app(\App\Services\Platform\PlatformBranding::class)->siteName() }}</span>
                 </a>
             </div>
 
