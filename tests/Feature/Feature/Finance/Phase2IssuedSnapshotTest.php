@@ -3,7 +3,6 @@
 namespace Tests\Feature\Feature\Finance;
 
 use App\Models\Customer;
-use App\Models\Finance\FinanceCreditNote;
 use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\FinanceJournalEntry;
 use App\Models\Finance\FinanceSetting;
@@ -124,6 +123,8 @@ class Phase2IssuedSnapshotTest extends TestCase
             'price' => 100,
             'currency' => 'SAR',
             'status' => 'active',
+            'inventory_tracking' => false,
+            'stock' => 0,
         ]);
         $this->updateCompany($workspace, ['company_name' => 'Original Co', 'vat_number' => '310000000000003']);
 
@@ -135,6 +136,7 @@ class Phase2IssuedSnapshotTest extends TestCase
             'invoice_status' => 'issued',
             'tax_profile_type' => 'standard',
             'tax_rate' => 15,
+            'skip_inventory' => true,
             'items' => [[
                 'product_id' => $product->id,
                 'product_name' => 'Original Product',
@@ -246,15 +248,15 @@ class Phase2IssuedSnapshotTest extends TestCase
     public function test_cross_workspace_snapshot_creation_is_rejected(): void
     {
         [$ownerA, $workspaceA] = $this->createWorkspaceOwner();
-        [, $workspaceB] = $this->createWorkspaceOwner();
         $customer = $this->makeCustomer($workspaceA, 'Workspace A Buyer');
         $invoice = $this->issueInvoice($workspaceA, $customer, (int) $ownerA->id);
-
-        app(WorkspaceContext::class)->set($workspaceB);
+        $this->createWorkspaceOwner();
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Cross-workspace snapshot creation is not allowed.');
-        app(IssuedSnapshotBuilder::class)->captureInvoice($invoice->fresh(['items']));
+        app(IssuedSnapshotBuilder::class)->captureInvoice(
+            FinanceInvoice::withoutGlobalScopes()->with('items')->findOrFail($invoice->id)
+        );
     }
 
     public function test_snapshot_failure_rolls_back_issue(): void
@@ -326,6 +328,7 @@ class Phase2IssuedSnapshotTest extends TestCase
             'status' => 'active',
             'joined_at' => now(),
         ]);
+        app(WorkspaceContext::class)->set($workspace);
 
         foreach (['finance', 'products', 'orders', 'customers'] as $feature) {
             WorkspaceFeatureFlag::withoutGlobalScopes()->updateOrCreate(
