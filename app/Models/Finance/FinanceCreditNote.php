@@ -9,6 +9,7 @@ use App\Models\WorkspaceScopedModel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Schema;
 
@@ -90,6 +91,15 @@ class FinanceCreditNote extends WorkspaceScopedModel
     public function issuer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'issued_by');
+    }
+
+    public function issuedSnapshot(): HasOne
+    {
+        return $this->hasOne(IssuedDocumentSnapshot::class, 'source_id')
+            ->whereIn('source_type', [
+                IssuedDocumentSnapshot::SOURCE_FINANCE_CREDIT_NOTE,
+                IssuedDocumentSnapshot::SOURCE_FINANCE_DEBIT_NOTE,
+            ]);
     }
 
     public function isCredit(): bool

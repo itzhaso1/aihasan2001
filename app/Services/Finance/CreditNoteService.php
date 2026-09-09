@@ -23,6 +23,7 @@ class CreditNoteService
         private readonly InvoiceStateService $invoiceStateService,
         private readonly InvoiceService $invoiceService,
         private readonly FinancialPeriodGuardService $financialPeriodGuardService,
+        private readonly IssuedSnapshotBuilder $issuedSnapshotBuilder,
     ) {}
 
     /**
@@ -129,7 +130,10 @@ class CreditNoteService
         return DB::transaction(function () use ($note, $actorUserId): FinanceCreditNote {
             $locked = FinanceCreditNote::withoutGlobalScopes()->whereKey($note->id)->lockForUpdate()->firstOrFail();
             if ($locked->status === FinanceCreditNote::STATUS_ISSUED) {
-                return $locked;
+                $issued = $locked->fresh(['items', 'invoice', 'customer']);
+                $this->issuedSnapshotBuilder->captureCreditNote($issued);
+
+                return $issued;
             }
             if ($locked->status === FinanceCreditNote::STATUS_CANCELLED) {
                 throw new RuntimeException('لا يمكن إصدار إشعار ملغى.');
@@ -154,7 +158,10 @@ class CreditNoteService
 
             $this->applyToInvoice($invoice, $locked);
 
-            return $locked->fresh(['items', 'invoice']);
+            $issued = $locked->fresh(['items', 'invoice', 'customer']);
+            $this->issuedSnapshotBuilder->captureCreditNote($issued);
+
+            return $issued;
         });
     }
 
