@@ -2,8 +2,16 @@
 
 namespace App\Services\Pos;
 
+use App\Events\NewMenuOrderCreated;
+use App\Events\OrderCancelled;
+use App\Events\OrderCreated;
+use App\Events\OrderUpdated;
+use App\Events\TableSessionClosed;
+use App\Events\TableSessionOpened;
+use App\Events\TableUpdated;
 use App\Models\Customer;
 use App\Models\DiningTable;
+use App\Models\Finance\IssuedDocumentSnapshot;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
@@ -15,6 +23,7 @@ use App\Models\TableSession;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Audit\AuditLogService;
+use App\Services\Finance\IssuedSnapshotBuilder;
 use App\Services\Inventory\InventoryService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentService;
@@ -31,6 +40,7 @@ class PosOrderService
         private readonly OrderService $orderService,
         private readonly PaymentService $paymentService,
         private readonly InventoryService $inventoryService,
+        private readonly IssuedSnapshotBuilder $issuedSnapshotBuilder,
     ) {}
 
     /**
@@ -152,7 +162,7 @@ class PosOrderService
                     placedAt: $offlineSale ? $this->parseOfflineTimestamp($payload['placed_at'] ?? null) : null,
                 );
 
-                event(new \App\Events\OrderCreated($order));
+                event(new OrderCreated($order));
             }
 
             $this->auditPosAction('pos.order.created', $order, $actor, [
@@ -248,11 +258,11 @@ class PosOrderService
                     clientReference: $clientReference,
                 );
 
-                event(new \App\Events\OrderCreated($order));
+                event(new OrderCreated($order));
             }
 
             $fresh = $order->fresh(['items', 'customer', 'table', 'tableSession']);
-            event(new \App\Events\NewMenuOrderCreated($fresh));
+            event(new NewMenuOrderCreated($fresh));
 
             return $fresh;
         });
@@ -287,7 +297,7 @@ class PosOrderService
             }
 
             $fresh = $cancelled->fresh(['items', 'customer', 'table', 'tableSession']);
-            event(new \App\Events\OrderCancelled($fresh));
+            event(new OrderCancelled($fresh));
             $this->auditPosAction('pos.order.cancelled', $fresh, $actor);
 
             return $fresh;
@@ -307,7 +317,7 @@ class PosOrderService
         $order->update($attributes);
 
         $fresh = $order->fresh(['items', 'customer', 'table', 'tableSession']);
-        event(new \App\Events\OrderUpdated($fresh));
+        event(new OrderUpdated($fresh));
 
         return $fresh;
     }
@@ -394,6 +404,7 @@ class PosOrderService
                         'discount_amount' => 0,
                         'total_amount' => $normalized['total_amount'],
                     ]);
+
                     continue;
                 }
 
@@ -403,6 +414,7 @@ class PosOrderService
 
                 if ($remove) {
                     OrderItem::query()->where('order_id', $order->id)->whereKey($itemId)->delete();
+
                     continue;
                 }
 
@@ -460,7 +472,7 @@ class PosOrderService
             $order->update($attributes);
 
             $fresh = $order->fresh(['items', 'table', 'tableSession', 'customer']);
-            event(new \App\Events\OrderUpdated($fresh));
+            event(new OrderUpdated($fresh));
             $this->auditPosAction('pos.order.items_updated', $fresh, null);
 
             return $fresh;
@@ -504,7 +516,7 @@ class PosOrderService
         $this->refreshTableStatus($table);
 
         if ($wasNew || $session->wasRecentlyCreated) {
-            event(new \App\Events\TableSessionOpened($session));
+            event(new TableSessionOpened($session));
         }
 
         return $session;
@@ -560,6 +572,8 @@ class PosOrderService
                         'status' => 'completed',
                         'fulfillment_status' => 'fulfilled',
                     ]);
+
+                $this->ensureIssuedSnapshot($invoice);
             }
 
             $session->update([
@@ -572,10 +586,10 @@ class PosOrderService
             $table = $session->table;
             if ($table) {
                 $this->refreshTableStatus($table, $session->id);
-                event(new \App\Events\TableUpdated($table->fresh()));
+                event(new TableUpdated($table->fresh()));
             }
 
-            event(new \App\Events\TableSessionClosed($session->fresh()));
+            event(new TableSessionClosed($session->fresh()));
             $this->auditPosAction('pos.table_session.closed', $session, User::query()->find($actorUserId), [
                 'invoice_id' => $invoice?->id,
                 'orders_count' => $orders->count(),
@@ -711,12 +725,12 @@ class PosOrderService
             ]);
 
             $targetTable->update(['status' => 'occupied']);
-            event(new \App\Events\TableUpdated($targetTable->fresh()));
-            event(new \App\Events\TableSessionClosed($session->fresh()));
+            event(new TableUpdated($targetTable->fresh()));
+            event(new TableSessionClosed($session->fresh()));
 
             if ($sourceTable) {
                 $this->refreshTableStatus($sourceTable, $session->id);
-                event(new \App\Events\TableUpdated($sourceTable->fresh()));
+                event(new TableUpdated($sourceTable->fresh()));
             }
 
             $this->auditPosAction('pos.table_session.transferred', $targetSession, null, [
@@ -769,12 +783,12 @@ class PosOrderService
             ]);
 
             $targetTable->update(['status' => 'occupied']);
-            event(new \App\Events\TableUpdated($targetTable->fresh()));
-            event(new \App\Events\TableSessionClosed($sourceSession->fresh()));
+            event(new TableUpdated($targetTable->fresh()));
+            event(new TableSessionClosed($sourceSession->fresh()));
 
             if ($sourceTable) {
                 $this->refreshTableStatus($sourceTable, $sourceSession->id);
-                event(new \App\Events\TableUpdated($sourceTable->fresh()));
+                event(new TableUpdated($sourceTable->fresh()));
             }
 
             $this->auditPosAction('pos.table_session.merged', $targetSession, null, [
@@ -952,6 +966,8 @@ class PosOrderService
         if ($order->pos_cashier_invoice_id) {
             $existing = PosCashierInvoice::withoutGlobalScopes()->whereKey($order->pos_cashier_invoice_id)->first();
             if ($existing) {
+                $this->ensureIssuedSnapshot($existing);
+
                 return $existing;
             }
         }
@@ -996,8 +1012,26 @@ class PosOrderService
                 'fulfillment_status' => 'fulfilled',
             ]);
 
+            $this->ensureIssuedSnapshot($invoice);
+
             return $invoice;
         });
+    }
+
+    public function ensureIssuedSnapshot(PosCashierInvoice $invoice): IssuedDocumentSnapshot
+    {
+        $fresh = PosCashierInvoice::withoutGlobalScopes()
+            ->with([
+                'items',
+                'orders.customer',
+                'closer',
+                'session',
+                'table',
+            ])
+            ->whereKey($invoice->id)
+            ->firstOrFail();
+
+        return $this->issuedSnapshotBuilder->capturePosCashierInvoice($fresh);
     }
 
     /**
@@ -1008,7 +1042,12 @@ class PosOrderService
     public function issueWebPosDirectInvoice(Order $order, int $actorUserId): ?PosCashierInvoice
     {
         if ($order->pos_cashier_invoice_id) {
-            return PosCashierInvoice::withoutGlobalScopes()->find($order->pos_cashier_invoice_id);
+            $existing = PosCashierInvoice::withoutGlobalScopes()->find($order->pos_cashier_invoice_id);
+            if ($existing) {
+                $this->ensureIssuedSnapshot($existing);
+            }
+
+            return $existing;
         }
 
         if ($order->source !== 'pos') {
@@ -1109,7 +1148,7 @@ class PosOrderService
                         'tax_amount' => 0,
                         'total_amount' => 0,
                     ]);
-                    event(new \App\Events\OrderCancelled($fresh->fresh(['items', 'table', 'tableSession', 'customer'])));
+                    event(new OrderCancelled($fresh->fresh(['items', 'table', 'tableSession', 'customer'])));
 
                     return null;
                 }
@@ -1179,7 +1218,7 @@ class PosOrderService
             $this->rebuildCashierInvoiceItems($locked, $orders);
 
             foreach ($orders as $order) {
-                event(new \App\Events\OrderUpdated($order->fresh(['items', 'table', 'tableSession', 'customer'])));
+                event(new OrderUpdated($order->fresh(['items', 'table', 'tableSession', 'customer'])));
             }
 
             $this->auditPosAction('pos.cashier_invoice.updated', $locked->fresh(['items']), $actor, [
@@ -1533,6 +1572,7 @@ class PosOrderService
             if ($existingLine) {
                 $this->increaseOrderItemQuantity($existingLine, (int) $item['quantity'], $workspace);
                 $lastTouched = $existingLine->order()->with(['items', 'customer', 'table', 'tableSession'])->first();
+
                 continue;
             }
 
@@ -1555,7 +1595,7 @@ class PosOrderService
                 clientReference: $clientReference,
             );
 
-            event(new \App\Events\OrderCreated($lastTouched));
+            event(new OrderCreated($lastTouched));
         } elseif ($notes && $lastTouched && blank($lastTouched->notes)) {
             $lastTouched->update(['notes' => $notes]);
         }
@@ -1570,7 +1610,7 @@ class PosOrderService
         }
 
         $table->update(['status' => 'occupied']);
-        event(new \App\Events\TableUpdated($table->fresh()));
+        event(new TableUpdated($table->fresh()));
 
         return $lastTouched->fresh(['items', 'customer', 'table', 'tableSession']);
     }
@@ -1893,7 +1933,7 @@ class PosOrderService
     }
 
     /**
-     * @param Collection<int,array<string,mixed>> $items
+     * @param  Collection<int,array<string,mixed>>  $items
      */
     private function resolveOrderCurrency(Collection $items): string
     {
@@ -1912,7 +1952,7 @@ class PosOrderService
     }
 
     /**
-     * @param Collection<int,Order> $orders
+     * @param  Collection<int,Order>  $orders
      */
     private function resolveCurrencyFromOrders(Collection $orders): string
     {
@@ -1931,7 +1971,7 @@ class PosOrderService
     }
 
     /**
-     * @param array<string,mixed> $payload
+     * @param  array<string,mixed>  $payload
      */
     private function normalizePaymentMethod(array $payload): string
     {

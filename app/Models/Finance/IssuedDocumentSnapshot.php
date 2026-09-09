@@ -3,6 +3,7 @@
 namespace App\Models\Finance;
 
 use App\Models\Concerns\BelongsToWorkspace;
+use App\Models\PosCashierInvoice;
 use App\Models\WorkspaceScopedModel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,6 +28,8 @@ class IssuedDocumentSnapshot extends WorkspaceScopedModel
     public const SOURCE_FINANCE_CREDIT_NOTE = 'finance_credit_note';
 
     public const SOURCE_FINANCE_DEBIT_NOTE = 'finance_debit_note';
+
+    public const SOURCE_POS_CASHIER_INVOICE = 'pos_cashier_invoice';
 
     public const SCHEMA_VERSION = 1;
 
@@ -60,6 +63,11 @@ class IssuedDocumentSnapshot extends WorkspaceScopedModel
     public function creditNote(): BelongsTo
     {
         return $this->belongsTo(FinanceCreditNote::class, 'source_id');
+    }
+
+    public function posCashierInvoice(): BelongsTo
+    {
+        return $this->belongsTo(PosCashierInvoice::class, 'source_id');
     }
 
     /**
