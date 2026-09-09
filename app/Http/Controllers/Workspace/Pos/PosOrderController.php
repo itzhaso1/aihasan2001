@@ -2,20 +2,31 @@
 
 namespace App\Http\Controllers\Workspace\Pos;
 
-use App\Http\Requests\Pos\UpdatePosOrderStatusRequest;
-use App\Http\Requests\Pos\UpdateTableOrderRequest;
 use App\Models\Order;
-use App\Services\Pos\PosOrderService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
-use RuntimeException;
 
 class PosOrderController extends PosBaseController
 {
-    public function __construct(
-        private readonly PosOrderService $posOrderService,
-    ) {}
+
+    public function qrOrders(Request $request): View
+    {
+        $this->authorizePos($request, 'orders.manage');
+
+        $orders = Order::query()
+            ->with(['table:id,name', 'tableSession:id,dining_table_id,opened_at,status', 'items'])
+            ->where('source', 'qr_menu')
+            ->latest('id')
+            ->paginate(30)
+            ->withQueryString();
+
+        return view('workspace.pos.orders.running', [
+            'orders' => $orders,
+            'posStatuses' => $this->posStatusLabels(),
+            'pageTitle' => 'طلبات QR Menu',
+        ]);
+    }
 
     public function running(Request $request): View
     {
@@ -42,64 +53,24 @@ class PosOrderController extends PosBaseController
         ]);
     }
 
-    public function updateStatus(UpdatePosOrderStatusRequest $request, Order $order): RedirectResponse
+    public function updateStatus(Request $request, Order $order): RedirectResponse
     {
-        $this->authorizePos($request, 'orders.manage');
-        $this->authorize('update', $order);
-        $this->ensurePosOrder($order);
-
-        try {
-            $this->posOrderService->updatePosStatus($order, $request->string('pos_status')->toString(), $request->user());
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return back()->with('success', 'تم تحديث حالة الطلب.');
+        $this->abortWebPosOperation();
     }
 
-    public function updateItems(UpdateTableOrderRequest $request, Order $order): RedirectResponse
+    public function updateItems(Request $request, Order $order): RedirectResponse
     {
-        $this->authorizePos($request, 'orders.manage');
-        $this->authorize('update', $order);
-        $this->ensurePosOrder($order);
-
-        try {
-            $this->posOrderService->updateOrderItems($order, $request->validated());
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return back()->with('success', 'تم تعديل الفاتورة داخل الجلسة.');
+        $this->abortWebPosOperation();
     }
 
     public function createInvoice(Request $request, Order $order): RedirectResponse
     {
-        $this->authorizePos($request, 'orders.manage');
-        $this->authorize('update', $order);
-        $this->ensurePosOrder($order);
-
-        try {
-            $invoice = $this->posOrderService->createInvoiceFromOrder($order, (int) $request->user()?->id);
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return redirect()->route('workspace.pos.invoices.show', $invoice)->with('success', 'تم إنشاء فاتورة كاشير بنجاح.');
+        $this->abortWebPosOperation();
     }
 
     public function createPaymentLink(Request $request, Order $order): RedirectResponse
     {
-        $this->authorizePos($request, 'orders.manage');
-        $this->authorize('update', $order);
-        $this->ensurePosOrder($order);
-
-        try {
-            $payment = $this->posOrderService->createPaymentLinkForOrder($order);
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return back()->with('success', 'تم إنشاء رابط الدفع.')->with('payment_link', $payment->payment_link);
+        $this->abortWebPosOperation();
     }
 
     public function printOrder(Request $request, Order $order): View

@@ -77,3 +77,11 @@ class Forbidden extends PosException {
   const Forbidden()
     : super('Forbidden', 'ليست لديك صلاحية لتنفيذ هذه العملية.');
 }
+
+class UnsyncedWipeBlocked extends PosException {
+  const UnsyncedWipeBlocked()
+    : super(
+        'UnsyncedWipeBlocked',
+        'لا يمكن تنظيف البيانات المحلية لوجود عمليات غير متزامنة أو فاشلة. أتمم المزامنة أولاً حتى لا تُفقد بيانات البيع.',
+      );
+}

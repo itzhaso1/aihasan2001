@@ -42,21 +42,21 @@ class PosProductizationArchitectureTest extends TestCase
                 'pos_menu_item_id' => $item->id,
                 'quantity' => 2,
             ])
-            ->assertOk()
-            ->assertJsonPath('cart.item_count', 1)
-            ->assertJsonPath('cart.subtotal', 7);
+            ->assertForbidden();
 
-        $response = $this->actingAs($owner)
+        $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
             ->postJson(route('workspace.pos.cart.checkout'), [
                 'discount_amount' => 0.5,
             ])
-            ->assertCreated();
+            ->assertForbidden();
 
-        $orderId = $response->json('order_id');
-        $this->assertNotNull($orderId);
-
-        $order = Order::withoutGlobalScopes()->findOrFail($orderId);
+        $order = $this->placePosOrder($workspace, $owner, [
+            'items' => [
+                ['pos_menu_item_id' => $item->id, 'quantity' => 2],
+            ],
+            'discount_amount' => 0.5,
+        ]);
         $this->assertSame('pos', $order->source);
         $this->assertSame(7.0, (float) $order->subtotal);
         $this->assertSame(0.5, (float) $order->discount_amount);
@@ -77,32 +77,25 @@ class PosProductizationArchitectureTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.store'), [
-                'items' => [
-                    ['pos_menu_item_id' => $item->id, 'quantity' => 2],
-                ],
-            ])
-            ->assertRedirect();
-
-        $order = Order::query()->where('source', 'pos')->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'items' => [
+                ['pos_menu_item_id' => $item->id, 'quantity' => 2],
+            ],
+        ]);
         $order->update(['payment_status' => 'paid']);
         $orderItem = OrderItem::query()->where('order_id', $order->id)->firstOrFail();
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.returns.store', $order), [
-                'reason' => 'إرجاع عميل',
-                'mark_refunded' => 1,
-                'items' => [
-                    [
-                        'order_item_id' => $orderItem->id,
-                        'qty' => 2,
-                    ],
+        $returns = app(\App\Services\Pos\PosReturnService::class);
+        $return = $returns->createReturn($workspace, $order, [
+            'reason' => 'إرجاع عميل',
+            'items' => [
+                [
+                    'order_item_id' => $orderItem->id,
+                    'qty' => 2,
                 ],
-            ])
-            ->assertRedirect();
+            ],
+        ], $owner);
+        $returns->markRefunded($return, $owner);
 
         $return = PosOrderReturn::query()->where('order_id', $order->id)->firstOrFail();
         $this->assertSame('refunded', $return->status);

@@ -124,6 +124,8 @@ void main() {
             orderType: 'table',
             tableLocalId: const Value('table-10'),
             posStatus: const Value('new'),
+            serverId: const Value(4010),
+            syncStatus: const Value('synced'),
             createdAt: now,
             updatedAt: now,
           ),
@@ -166,6 +168,8 @@ void main() {
             invoiceNumber: const Value('INV-10'),
             orderLocalId: const Value('ord-active'),
             totalAmount: const Value(500),
+            serverId: const Value(5010),
+            syncStatus: const Value('synced'),
             createdAt: now,
           ),
         );
@@ -227,6 +231,9 @@ void main() {
       payload: const {'client_reference': 'inv-10'},
       clientReference: 'inv-10',
     );
+    for (final row in await queue.pendingForWorkspace(ws)) {
+      await queue.markSynced(row.id);
+    }
   });
 
   tearDown(() async {
@@ -249,7 +256,7 @@ void main() {
     final invoiceOps = await (db.select(
       db.syncQueueItems,
     )..where((t) => t.entityType.equals('invoice'))).get();
-    expect(invoiceOps.single.status, 'cancelled');
+    expect(invoiceOps.single.status, 'synced');
   });
 
   test(
@@ -315,7 +322,7 @@ void main() {
     final orderOps = await (db.select(
       db.syncQueueItems,
     )..where((t) => t.entityType.equals('order'))).get();
-    expect(orderOps.single.status, 'cancelled');
+    expect(orderOps.single.status, 'synced');
     expect(await finance.listInvoices(workspaceId: ws), hasLength(1));
   });
 
@@ -330,6 +337,8 @@ void main() {
             clientReference: 'ref-custom',
             orderType: 'takeaway',
             posStatus: const Value('queued'),
+            serverId: const Value(4099),
+            syncStatus: const Value('synced'),
             createdAt: now,
             updatedAt: now,
           ),
@@ -357,6 +366,27 @@ void main() {
       )..where((t) => t.workspaceId.equals(otherWs))).get()).single.localId,
       'ord-odd',
     );
+  });
+
+  test('pending sync blocks local wipe', () async {
+    await queue.enqueue(
+      workspaceId: ws,
+      deviceId: 'dev-1',
+      entityType: 'order',
+      entityId: 'ord-pending',
+      operation: 'create',
+      payload: const {'order_type': 'table'},
+      clientReference: 'ord-pending',
+    );
+    await expectLater(
+      wipe.deleteAllOrders(workspaceId: ws, permissions: admin),
+      throwsA(isA<UnsyncedWipeBlocked>()),
+    );
+    await expectLater(
+      wipe.deleteAllInvoices(workspaceId: ws, permissions: admin),
+      throwsA(isA<UnsyncedWipeBlocked>()),
+    );
+    expect(await finance.listInvoices(workspaceId: ws), hasLength(1));
   });
 
   test('cashier cannot wipe invoices or catalog', () async {

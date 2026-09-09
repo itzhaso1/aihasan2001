@@ -34,8 +34,8 @@ use Throwable;
  *   menu (categories / products / prices) → Flutter then Laravel
  *   table master data (create / rename / delete) → Flutter then Laravel
  *
- * Out of scope on this path: table sessions, stock, shifts, cash drawer,
- * returns, QR, billing, chat, payment.created / gateways.
+ * Table sessions and non-sale stock movements are accepted on this path.
+ * Sale stock.movement is skipped so order.created is the only sale deduct.
  */
 class PosSyncPushService
 {
@@ -174,7 +174,7 @@ class PosSyncPushService
             return $this->ack($row, 'duplicate');
         }
 
-        $handled = $this->dispatch($workspace, $user, $type, $data, $uuid);
+                $handled = $this->dispatch($workspace, $user, $device, $type, $data, $uuid);
         $row->fill([
             'status' => PosSyncOperation::STATUS_ACCEPTED,
             'entity_type' => $handled['entity_type'] ?? null,
@@ -220,14 +220,14 @@ class PosSyncPushService
      * @param  array<string, mixed>  $data
      * @return array{entity_type: ?string, entity_id: ?int, result: array<string, mixed>}
      */
-    private function dispatch(Workspace $workspace, User $user, string $type, array $data, string $uuid): array
+    private function dispatch(Workspace $workspace, User $user, PosDevice $device, string $type, array $data, string $uuid): array
     {
         return match ($type) {
             'order.created' => $this->orderCreated($workspace, $user, $data, $uuid),
             'order.updated' => $this->orderUpdated($workspace, $data),
             'order.deleted' => $this->orderDeleted($workspace, $user, $data),
             'customer.created' => $this->customerCreated($workspace, $data, $uuid),
-            'table_session.open' => $this->sessionOpen($workspace, $data),
+            'table_session.open' => $this->sessionOpen($workspace, $device, $data),
             'table_session.close' => $this->sessionClose($workspace, $user, $data),
             'table_session.cancel' => $this->sessionCancel($workspace, $user, $data),
             'table_session.note' => $this->sessionNote($workspace, $data),
@@ -401,21 +401,124 @@ class PosSyncPushService
      * @param  array<string, mixed>  $data
      * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
      */
-    private function sessionOpen(Workspace $workspace, array $data): array
+    /**
+     * Open a table session from a Flutter device.
+     *
+     * QR Menu / guest bootstrap may already have an open session with no
+     * opener device — those are joined (existing domain). Two Flutter
+     * devices that each opened the same table offline are never merged.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function sessionOpen(Workspace $workspace, PosDevice $device, array $data): array
     {
         $table = $this->resolveTable($workspace, $data);
+        $localSessionId = trim((string) ($data['session_client_id'] ?? $data['client_reference'] ?? ''));
+        $existing = TableSession::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->where('dining_table_id', $table->id)
+            ->where('status', 'open')
+            ->latest('id')
+            ->first();
+
+        if ($existing) {
+            $opener = $this->sessionOpener($workspace, $existing);
+            $ownerDevice = $opener?->device_id;
+            $ownerLocal = $this->sessionClientIdFromOperation($opener);
+
+            $sameClient = $localSessionId !== '' && $ownerLocal !== '' && hash_equals($ownerLocal, $localSessionId);
+            $sameDevice = is_string($ownerDevice)
+                && $ownerDevice !== ''
+                && hash_equals((string) $ownerDevice, (string) $device->device_id);
+
+            if ($sameClient || ($sameDevice && $ownerLocal === $localSessionId)) {
+                return $this->sessionOpenResult($table, $existing, $localSessionId, $device->device_id);
+            }
+
+            if ($opener && $ownerDevice && ! $sameDevice) {
+                $session = TableSession::query()->create([
+                    'workspace_id' => $table->workspace_id,
+                    'dining_table_id' => $table->id,
+                    'status' => 'open',
+                    'opened_at' => now(),
+                ]);
+                $table->update(['status' => 'occupied']);
+
+                return $this->sessionOpenResult(
+                    $table,
+                    $session,
+                    $localSessionId,
+                    $device->device_id,
+                    conflict: true,
+                    conflictingSessionId: (int) $existing->id,
+                    reason: 'table_session_open_conflict_other_device',
+                );
+            }
+        }
+
         $session = $this->orders->openSession($table);
+
+        return $this->sessionOpenResult($table, $session, $localSessionId, $device->device_id);
+    }
+
+    /**
+     * @return array{entity_type: string, entity_id: int, result: array<string, mixed>}
+     */
+    private function sessionOpenResult(
+        DiningTable $table,
+        TableSession $session,
+        string $localSessionId,
+        string $deviceId,
+        bool $conflict = false,
+        ?int $conflictingSessionId = null,
+        ?string $reason = null,
+    ): array {
+        $result = [
+            'session_id' => $session->id,
+            'table_id' => $table->id,
+            'status' => $session->status,
+            'opened_at' => optional($session->opened_at)?->toIso8601String(),
+            'local_session_id' => $localSessionId !== '' ? $localSessionId : null,
+            'server_session_id' => $conflict ? $conflictingSessionId : (int) $session->id,
+            'device_id' => $deviceId,
+            'conflict' => $conflict,
+            'conflict_status' => $conflict ? 'conflict' : 'accepted',
+        ];
+        if ($conflict) {
+            $result['accepted_session_id'] = (int) $session->id;
+            $result['reason'] = $reason;
+        }
 
         return [
             'entity_type' => 'table_session',
             'entity_id' => (int) $session->id,
-            'result' => [
-                'session_id' => $session->id,
-                'table_id' => $table->id,
-                'status' => $session->status,
-                'opened_at' => optional($session->opened_at)?->toIso8601String(),
-            ],
+            'result' => $result,
         ];
+    }
+
+    private function sessionOpener(Workspace $workspace, TableSession $session): ?PosSyncOperation
+    {
+        return PosSyncOperation::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->where('type', 'table_session.open')
+            ->where('status', PosSyncOperation::STATUS_ACCEPTED)
+            ->where('entity_type', 'table_session')
+            ->where('entity_id', $session->id)
+            ->latest('id')
+            ->first();
+    }
+
+    private function sessionClientIdFromOperation(?PosSyncOperation $operation): string
+    {
+        if (! $operation) {
+            return '';
+        }
+
+        $request = is_array($operation->request_payload) ? $operation->request_payload : [];
+        $payload = is_array($request['data'] ?? null) ? $request['data'] : $request;
+
+        return trim((string) ($payload['session_client_id'] ?? $payload['client_reference'] ?? ''));
     }
 
     /**
@@ -1171,6 +1274,30 @@ class PosSyncPushService
                 ->first();
             if ($session) {
                 return $session;
+            }
+        }
+
+        $localSessionId = trim((string) ($data['session_client_id'] ?? $data['client_reference'] ?? ''));
+        if ($localSessionId !== '') {
+            $ops = PosSyncOperation::withoutGlobalScopes()
+                ->where('workspace_id', $workspace->id)
+                ->where('type', 'table_session.open')
+                ->where('status', PosSyncOperation::STATUS_ACCEPTED)
+                ->where('entity_type', 'table_session')
+                ->get();
+            foreach ($ops as $op) {
+                if ($this->sessionClientIdFromOperation($op) !== $localSessionId) {
+                    continue;
+                }
+                if ($op->entity_id) {
+                    $byClient = TableSession::withoutGlobalScopes()
+                        ->where('workspace_id', $workspace->id)
+                        ->whereKey((int) $op->entity_id)
+                        ->first();
+                    if ($byClient) {
+                        return $byClient;
+                    }
+                }
             }
         }
 

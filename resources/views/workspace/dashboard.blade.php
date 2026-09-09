@@ -34,11 +34,11 @@
                         ],
                     ],
                     [
-                        'title' => 'POS / Cashier',
-                        'description' => 'واجهة الكاشير، إدارة الطاولات، وطلبات QR Menu.',
+                        'title' => 'POS / الإدارة',
+                        'description' => 'إدارة الطاولات وQR Menu والفواتير. التشغيل اليومي من تطبيق الكاشير.',
                         'icon' => 'wallet',
                         'links' => [
-                            ['label' => 'POS / Cashier', 'route' => 'workspace.pos.cashier.index', 'active' => 'workspace.pos.*'],
+                            ['label' => 'الطاولات / QR', 'route' => 'workspace.pos.tables.index', 'active' => 'workspace.pos.*'],
                         ],
                     ],
                     [

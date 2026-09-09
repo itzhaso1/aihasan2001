@@ -1,6 +1,10 @@
 /// Granular staff ACL. Role defaults are a starting point; admin overrides
 /// are stored per user and merged on login. UI hiding is never sufficient —
 /// callers must [require] these keys in services.
+///
+/// Laravel currently maps cashier `pos.use` to `orders.manage` and does
+/// not expose `kitchen.use` / `shifts.manage`. Flutter still enforces those
+/// local keys; do not invent extra server permissions.
 class StaffPermissions {
   const StaffPermissions._();
 

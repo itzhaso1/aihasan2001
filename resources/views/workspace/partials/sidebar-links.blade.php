@@ -24,11 +24,11 @@
         ],
         [
             'key' => 'pos-cashier',
-            'title' => 'POS / الكاشير',
-            'description' => 'الكاشير، الطاولات، وطلبات QR.',
+            'title' => 'POS / الإدارة',
+            'description' => 'الطاولات، QR Menu، والفواتير السحابية.',
             'icon' => 'wallet',
             'links' => [
-                ['label' => 'POS / الكاشير', 'route' => 'workspace.pos.cashier.index', 'active' => 'workspace.pos.*'],
+                ['label' => 'الطاولات / QR', 'route' => 'workspace.pos.tables.index', 'active' => 'workspace.pos.*'],
             ],
         ],
         [

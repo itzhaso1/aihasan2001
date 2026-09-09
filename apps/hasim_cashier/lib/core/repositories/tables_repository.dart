@@ -1282,6 +1282,17 @@ class TablesRepository {
           updatedAt: Value(now),
         ),
       );
+      await (_db.update(_db.localSessions)
+            ..where(
+              (t) =>
+                  t.tableLocalId.equals(fromLocalId) & t.status.equals('open'),
+            ))
+          .write(
+            LocalSessionsCompanion(
+              tableLocalId: Value(toLocalId),
+              updatedAt: Value(now),
+            ),
+          );
       await _queue.enqueue(
         workspaceId: workspaceId,
         deviceId: deviceId.trim(),
@@ -1390,6 +1401,7 @@ class TablesRepository {
           updatedAt: Value(now),
         ),
       );
+      await _closeOpenLocalSessions(fromLocalId, now);
       await _queue.enqueue(
         workspaceId: workspaceId,
         deviceId: deviceId.trim(),
@@ -1620,16 +1632,36 @@ class TablesRepository {
     return '${payload['session_client_id'] ?? ''}'.trim().isNotEmpty;
   }
 
+  /// Open [LocalSessions] is the source of truth. Legacy occupied rows
+  /// without a session row stay occupied for compatibility.
+  bool _isOccupiedFromSession({
+    required LocalTable row,
+    required Map<String, dynamic> payload,
+    required String currentSessionLocalId,
+    required bool hasLiveOrders,
+  }) {
+    if (currentSessionLocalId.trim().isNotEmpty) return true;
+    if (hasLiveOrders) return true;
+    if (row.status == 'occupied' && _payloadSessionOpen(payload)) return true;
+    if (row.status == 'occupied' &&
+        '${payload['session_id'] ?? ''}'.trim().isNotEmpty) {
+      return true;
+    }
+    return false;
+  }
+
   Map<String, dynamic> _rowToBoardMap(
     LocalTable row, {
     List<LocalOrder> sessionOrders = const [],
     String currentSessionLocalId = '',
   }) {
     final payload = _safeMap(row.payloadJson);
-    final occupied =
-        sessionOrders.isNotEmpty ||
-        row.status == 'occupied' ||
-        _payloadSessionOpen(payload);
+    final occupied = _isOccupiedFromSession(
+      row: row,
+      payload: payload,
+      currentSessionLocalId: currentSessionLocalId,
+      hasLiveOrders: sessionOrders.isNotEmpty,
+    );
     final sessionClientId = currentSessionLocalId.trim().isNotEmpty
         ? currentSessionLocalId.trim()
         : '${payload['session_client_id'] ?? ''}'.trim();
@@ -1695,10 +1727,12 @@ class TablesRepository {
     String currentSessionLocalId = '',
   }) {
     final payload = _safeMap(row.payloadJson);
-    final occupied =
-        liveOrders.isNotEmpty ||
-        row.status == 'occupied' ||
-        _payloadSessionOpen(payload);
+    final occupied = _isOccupiedFromSession(
+      row: row,
+      payload: payload,
+      currentSessionLocalId: currentSessionLocalId,
+      hasLiveOrders: liveOrders.isNotEmpty,
+    );
     final sessionClientId = currentSessionLocalId.trim().isNotEmpty
         ? currentSessionLocalId.trim()
         : '${payload['session_client_id'] ?? ''}'.trim();

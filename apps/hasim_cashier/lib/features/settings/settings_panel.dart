@@ -1251,7 +1251,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           style: const TextStyle(fontSize: 12, color: HasimColors.muted),
         ),
         Text(
-          'فشل دائم: $_failedSync · عمليات جلسة/أخرى خارج العقد: $_unsupportedSync',
+          'فشل دائم: $_failedSync · عمليات خارج العقد: $_unsupportedSync',
           style: const TextStyle(fontSize: 12, color: HasimColors.muted),
         ),
         if (_failedHint != null && _failedHint!.trim().isNotEmpty)

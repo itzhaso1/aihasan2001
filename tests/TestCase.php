@@ -15,6 +15,25 @@ abstract class TestCase extends BaseTestCase
         $this->withoutVite();
     }
 
+    /**
+     * Operational POS sales go through the domain service, not Web POS.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    protected function placePosOrder(\App\Models\Workspace $workspace, \App\Models\User $actor, array $payload): \App\Models\Order
+    {
+        $order = app(\App\Services\Pos\PosOrderService::class)->createPosOrder($workspace, $payload, $actor);
+        $isTable = ($payload['order_type'] ?? '') === 'table' || ! empty($payload['dining_table_id']);
+        if (! $isTable) {
+            try {
+                app(\App\Services\Pos\PosOrderService::class)->issueWebPosDirectInvoice($order, (int) $actor->id);
+            } catch (\RuntimeException) {
+            }
+        }
+
+        return $order->fresh(['items', 'table', 'tableSession']) ?? $order;
+    }
+
     protected function enableWorkspaceFeature(Workspace $workspace, string $feature, bool $enabled = true): void
     {
         WorkspaceFeatureFlag::withoutGlobalScopes()->updateOrCreate(

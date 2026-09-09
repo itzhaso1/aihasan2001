@@ -380,6 +380,123 @@ class CashierSyncPushApiTest extends TestCase
         $this->assertSame(2, PosSyncOperation::withoutGlobalScopes()->count());
     }
 
+    public function test_two_devices_opening_same_table_record_conflict_without_merge(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        [$owner, $workspace] = $this->createWorkspaceOwner('store');
+        $table = \App\Models\DiningTable::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'طاولة 5',
+            'status' => 'available',
+            'qr_token' => 'qr-conflict-5',
+        ]);
+        $token = $this->loginToken($owner);
+        $this->registerDevice($token, $workspace, 'POS-A');
+        $this->registerDevice($token, $workspace, 'POS-B');
+
+        $openA = [
+            'id' => 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+            'type' => 'table_session.open',
+            'data' => [
+                'table_server_id' => $table->id,
+                'session_client_id' => 'session-a',
+            ],
+        ];
+        $openB = [
+            'id' => 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb',
+            'type' => 'table_session.open',
+            'data' => [
+                'table_server_id' => $table->id,
+                'session_client_id' => 'session-b',
+            ],
+        ];
+
+        $first = $this->withToken($token)
+            ->withHeaders([
+                'X-Workspace-Id' => (string) $workspace->id,
+                'X-Device-Id' => 'POS-A',
+            ])
+            ->postJson('/api/cashier/v1/sync/push', [
+                'device_id' => 'POS-A',
+                'operations' => [$openA],
+            ])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertTrue($first['success']);
+        $this->assertFalse($first['accepted'][0]['result']['conflict'] ?? false);
+
+        $second = $this->withToken($token)
+            ->withHeaders([
+                'X-Workspace-Id' => (string) $workspace->id,
+                'X-Device-Id' => 'POS-B',
+            ])
+            ->postJson('/api/cashier/v1/sync/push', [
+                'device_id' => 'POS-B',
+                'operations' => [$openB],
+            ])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertTrue($second['success']);
+        $result = $second['accepted'][0]['result'];
+        $this->assertTrue($result['conflict']);
+        $this->assertSame('conflict', $result['conflict_status']);
+        $this->assertSame('session-b', $result['local_session_id']);
+        $this->assertSame('POS-B', $result['device_id']);
+        $this->assertSame($table->id, $result['table_id']);
+        $this->assertNotSame($result['accepted_session_id'], $result['server_session_id']);
+
+        $this->assertSame(
+            2,
+            \App\Models\TableSession::query()->where('dining_table_id', $table->id)->where('status', 'open')->count()
+        );
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_duplicate_table_session_open_does_not_create_second_session(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        [$owner, $workspace] = $this->createWorkspaceOwner('store');
+        $table = \App\Models\DiningTable::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'طاولة 7',
+            'status' => 'available',
+            'qr_token' => 'qr-dup-7',
+        ]);
+        $token = $this->loginToken($owner);
+        $this->registerDevice($token, $workspace, 'POS-DUP');
+
+        $operation = [
+            'id' => 'cccccccc-1111-4111-8111-cccccccccccc',
+            'type' => 'table_session.open',
+            'data' => [
+                'table_server_id' => $table->id,
+                'session_client_id' => 'session-dup',
+            ],
+        ];
+
+        foreach (range(1, 2) as $ignored) {
+            $this->withToken($token)
+                ->withHeaders([
+                    'X-Workspace-Id' => (string) $workspace->id,
+                    'X-Device-Id' => 'POS-DUP',
+                ])
+                ->postJson('/api/cashier/v1/sync/push', [
+                    'device_id' => 'POS-DUP',
+                    'operations' => [$operation],
+                ])
+                ->assertOk()
+                ->assertJsonPath('data.success', true);
+        }
+
+        $this->assertSame(
+            1,
+            \App\Models\TableSession::query()->where('dining_table_id', $table->id)->count()
+        );
+        $this->assertSame(1, PosSyncOperation::withoutGlobalScopes()->count());
+    }
+
     private function registerDevice(string $token, Workspace $workspace, string $deviceId): void
     {
         $this->withToken($token)
