@@ -240,7 +240,10 @@ class Phase1CriticalFixesTest extends TestCase
             ]],
         ], (int) $owner->id);
 
-        $summary = app(ReportService::class)->summary(now()->toDateString(), now()->toDateString());
+        $summary = app(ReportService::class)->summary(
+            now()->startOfMonth()->toDateString(),
+            now()->endOfMonth()->toDateString()
+        );
         $this->assertSame(12.0, $summary['vat']['output']);
         $this->assertSame(12.0, $summary['vat']['net']);
     }
@@ -266,7 +269,10 @@ class Phase1CriticalFixesTest extends TestCase
             ]],
         ], (int) $owner->id);
 
-        $summary = app(ReportService::class)->summary(now()->toDateString(), now()->toDateString());
+        $summary = app(ReportService::class)->summary(
+            now()->startOfMonth()->toDateString(),
+            now()->endOfMonth()->toDateString()
+        );
         $this->assertSame(18.0, $summary['vat']['output']);
         $this->assertSame(18.0, $summary['vat']['net']);
     }
