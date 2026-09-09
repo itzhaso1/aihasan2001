@@ -13,7 +13,7 @@ class HsCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(HasimSpacing.md),
-    this.color = HasimColors.surface,
+    this.color = HasimColors.card,
     this.borderColor = HasimColors.border,
   });
 
@@ -31,9 +31,9 @@ class HsCard extends StatelessWidget {
         border: Border.all(color: borderColor),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x0A0F172A),
-            blurRadius: 8,
-            offset: Offset(0, 1),
+            color: Color(0x140F172A),
+            blurRadius: 16,
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -90,7 +90,7 @@ class HsSoftGrid extends StatelessWidget {
   }
 }
 
-const double _kHsButtonHeight = 44;
+const double _kHsButtonHeight = 48;
 
 class _HsPressSurface extends StatefulWidget {
   const _HsPressSurface({
@@ -211,14 +211,14 @@ class HsOutlineButton extends StatelessWidget {
       enabled: enabled,
       onTap: onPressed,
       builder: (pressed) {
-        final bg = pressed ? HasimColors.ctaSoft : HasimColors.surface;
+        final bg = pressed ? HasimColors.ctaSoft : HasimColors.card;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 80),
           height: _kHsButtonHeight,
           alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: enabled ? bg : HasimColors.surface,
+            color: enabled ? bg : HasimColors.surfaceSoft,
             borderRadius: BorderRadius.circular(HasimRadius.sm),
             border: Border.all(
               color: enabled ? border : HasimColors.border,
@@ -279,6 +279,7 @@ class HsSectionCard extends StatelessWidget {
     required this.title,
     required this.children,
     this.subtitle,
+    this.badge,
     this.iconBackground = HasimColors.ctaSoft,
     this.iconColor = HasimColors.ctaDark,
     this.highlight = false,
@@ -287,6 +288,7 @@ class HsSectionCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
+  final Widget? badge;
   final List<Widget> children;
   final Color iconBackground;
   final Color iconColor;
@@ -295,10 +297,10 @@ class HsSectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return HsCard(
-      padding: const EdgeInsets.all(HasimSpacing.md),
-      color: highlight ? HasimColors.ctaSoft : HasimColors.surface,
+      padding: const EdgeInsets.all(HasimSpacing.lg),
+      color: highlight ? HasimColors.ctaSoft : HasimColors.card,
       borderColor: highlight
-          ? HasimColors.cta.withValues(alpha: 0.38)
+          ? HasimColors.cta.withValues(alpha: 0.28)
           : HasimColors.border,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -307,37 +309,46 @@ class HsSectionCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: highlight ? Colors.white : iconBackground,
-                  shape: BoxShape.circle,
+                  borderRadius: BorderRadius.circular(HasimRadius.md),
                 ),
                 alignment: Alignment.center,
-                child: Icon(icon, size: 18, color: iconColor),
+                child: Icon(icon, size: 20, color: iconColor),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 14,
+                        fontSize: 15,
                         fontWeight: FontWeight.w800,
                         color: HasimColors.ink,
                       ),
                     ),
                     if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 3),
                       Text(
                         subtitle!,
                         style: const TextStyle(
                           fontSize: 12,
-                          height: 1.35,
+                          height: 1.4,
                           color: HasimColors.muted,
                         ),
+                      ),
+                    ],
+                    if (badge != null) ...[
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: badge,
                       ),
                     ],
                   ],
@@ -345,7 +356,7 @@ class HsSectionCard extends StatelessWidget {
               ),
             ],
           ),
-          if (children.isNotEmpty) const SizedBox(height: 10),
+          if (children.isNotEmpty) const SizedBox(height: 14),
           for (var i = 0; i < children.length; i++) ...[
             if (i > 0) const SizedBox(height: HasimSpacing.sm),
             children[i],
@@ -546,6 +557,97 @@ class HsInvoiceSuccessDialog extends StatelessWidget {
                 onPressed: onClose,
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact acknowledgement dialog (no [Dialog]/[AlertDialog] intrinsic width).
+class HsAckDialog extends StatelessWidget {
+  const HsAckDialog({
+    super.key,
+    required this.title,
+    required this.onClose,
+    this.message,
+    this.closeLabel = 'إغلاق',
+  });
+
+  final String title;
+  final String? message;
+  final String closeLabel;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Material(
+        color: HasimColors.card,
+        elevation: 2,
+        shadowColor: const Color(0x140F172A),
+        borderRadius: BorderRadius.circular(HasimRadius.lg),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: HasimColors.cta,
+                  size: 36,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: HasimColors.ink,
+                  ),
+                ),
+                if (message != null && message!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    message!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      color: HasimColors.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: 200,
+                  height: 44,
+                  child: GestureDetector(
+                    onTap: onClose,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: HasimColors.cta,
+                        borderRadius: BorderRadius.circular(HasimRadius.sm),
+                      ),
+                      child: Center(
+                        child: Text(
+                          closeLabel,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -913,11 +1015,13 @@ class HsNavPill extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onTap,
+    this.icon,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -926,21 +1030,282 @@ class HsNavPill extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         decoration: BoxDecoration(
           color: selected ? HasimColors.navActiveBg : HasimColors.navIdleBg,
-          borderRadius: BorderRadius.circular(HasimRadius.sm),
+          borderRadius: BorderRadius.circular(HasimRadius.md),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: selected ? Colors.white : HasimColors.ink,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 16,
+                color: selected ? Colors.white : HasimColors.muted,
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: selected ? Colors.white : HasimColors.ink,
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class HsStatusBadge extends StatelessWidget {
+  const HsStatusBadge({
+    super.key,
+    required this.label,
+    this.tone = HsStatusTone.neutral,
+  });
+
+  final String label;
+  final HsStatusTone tone;
+
+  factory HsStatusBadge.connected([String label = 'متصل']) =>
+      HsStatusBadge(label: label, tone: HsStatusTone.success);
+
+  factory HsStatusBadge.disconnected([String label = 'غير متصل']) =>
+      HsStatusBadge(label: label, tone: HsStatusTone.warning);
+
+  factory HsStatusBadge.linked([String label = 'مرتبط']) =>
+      HsStatusBadge(label: label, tone: HsStatusTone.success);
+
+  factory HsStatusBadge.ready([String label = 'جاهز']) =>
+      HsStatusBadge(label: label, tone: HsStatusTone.success);
+
+  factory HsStatusBadge.pending([String label = 'بانتظار المزامنة']) =>
+      HsStatusBadge(label: label, tone: HsStatusTone.warning);
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = switch (tone) {
+      HsStatusTone.success => (
+        background: HasimColors.ctaSoft,
+        foreground: HasimColors.ctaDark,
+        dot: HasimColors.cta,
+      ),
+      HsStatusTone.warning => (
+        background: HasimColors.warningSoft,
+        foreground: HasimColors.warning,
+        dot: HasimColors.warning,
+      ),
+      HsStatusTone.danger => (
+        background: HasimColors.dangerSoft,
+        foreground: HasimColors.danger,
+        dot: HasimColors.danger,
+      ),
+      HsStatusTone.neutral => (
+        background: HasimColors.surfaceSoft,
+        foreground: HasimColors.muted,
+        dot: HasimColors.muted,
+      ),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: colors.background,
+        borderRadius: BorderRadius.circular(HasimRadius.pill),
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.center,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: colors.dot,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: colors.foreground,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+enum HsStatusTone { success, warning, danger, neutral }
+
+class HsWelcomeBanner extends StatelessWidget {
+  const HsWelcomeBanner({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    this.badge,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        color: HasimColors.cta,
+        borderRadius: BorderRadius.circular(HasimRadius.lg),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final texts = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: Color(0xE6FFFFFF),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          );
+          if (badge == null) return texts;
+          final stack =
+              !constraints.maxWidth.isFinite || constraints.maxWidth < 460;
+          if (stack) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [texts, const SizedBox(height: 10), badge!],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: texts),
+              const SizedBox(width: 12),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: badge!,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class HsPageHeader extends StatelessWidget {
+  const HsPageHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.icon,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (icon != null) ...[
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: HasimColors.ctaSoft,
+              borderRadius: BorderRadius.circular(HasimRadius.md),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 20, color: HasimColors.ctaDark),
+          ),
+          const SizedBox(width: 12),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: HasimColors.ink,
+                ),
+              ),
+              if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  subtitle!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: HasimColors.muted,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (trailing != null) ...[
+          const SizedBox(width: 8),
+          Flexible(
+            child: Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: AlignmentDirectional.centerEnd,
+                child: trailing!,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -1059,9 +1424,16 @@ class ProductCard extends StatelessWidget {
               height: h,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: HasimColors.surface,
-                  borderRadius: BorderRadius.circular(HasimRadius.md),
+                  color: HasimColors.card,
+                  borderRadius: BorderRadius.circular(HasimRadius.lg),
                   border: Border.all(color: HasimColors.border),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x0F0F172A),
+                      blurRadius: 10,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(HasimRadius.md),

@@ -7,21 +7,13 @@ import '../theme/hasim_radius.dart';
 void showHasimTopNotice(BuildContext context, String text) {
   final messenger = ScaffoldMessenger.of(context);
   messenger.hideCurrentSnackBar();
-  final media = MediaQuery.of(context);
-  const barHeight = 56.0;
-  final top = media.padding.top + 8;
   messenger.showSnackBar(
     SnackBar(
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 4),
       elevation: 1,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      margin: EdgeInsets.fromLTRB(
-        72,
-        top,
-        72,
-        media.size.height - top - barHeight,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.fromLTRB(24, 12, 24, 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(HasimRadius.sm),
         side: const BorderSide(color: Color(0xFFA7F3D0)),
@@ -30,11 +22,11 @@ void showHasimTopNotice(BuildContext context, String text) {
       content: Text(
         text,
         textAlign: TextAlign.center,
-        maxLines: 2,
+        maxLines: 6,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
-          fontSize: 11,
-          height: 1.25,
+          fontSize: 12,
+          height: 1.35,
           fontWeight: FontWeight.w700,
           color: HasimColors.ctaDark,
         ),

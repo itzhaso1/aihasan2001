@@ -397,6 +397,7 @@ final cartControllerProvider = StateNotifierProvider<CartController, CartState>(
 final catalogItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
+  ref.watch(catalogRevisionProvider);
   final workspaceId = ref.watch(workspaceIdProvider);
   if (workspaceId == null || workspaceId <= 0) return const [];
   final catalog = ref.read(catalogRepositoryProvider);
@@ -406,6 +407,7 @@ final catalogItemsProvider = FutureProvider<List<Map<String, dynamic>>>((
 final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
 ) async {
+  ref.watch(catalogRevisionProvider);
   final workspaceId = ref.watch(workspaceIdProvider);
   if (workspaceId == null || workspaceId <= 0) return const [];
   final catalog = ref.read(catalogRepositoryProvider);

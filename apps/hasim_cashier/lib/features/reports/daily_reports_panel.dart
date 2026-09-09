@@ -271,63 +271,37 @@ class _DailyReportsPanelState extends ConsumerState<DailyReportsPanel> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'التقارير اليومية',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      'ملخص يومي من المبيعات والفواتير المحلية',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: HasimColors.muted),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              PosTap(
-                onTap: _pickDate,
-                child: ConstrainedBox(
-                  key: const ValueKey('reports-date-chip'),
-                  constraints: const BoxConstraints(
-                    minWidth: 88,
-                    minHeight: 36,
+          HsPageHeader(
+            icon: Icons.bar_chart_outlined,
+            title: 'التقارير اليومية',
+            subtitle: 'ملخص يومي من المبيعات والفواتير المحلية',
+            trailing: PosTap(
+              onTap: _pickDate,
+              child: ConstrainedBox(
+                key: const ValueKey('reports-date-chip'),
+                constraints: const BoxConstraints(minWidth: 88, minHeight: 36),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: HasimColors.surface,
+                    borderRadius: BorderRadius.circular(HasimRadius.sm),
+                    border: Border.all(color: HasimColors.border),
                   ),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: HasimColors.surface,
-                      borderRadius: BorderRadius.circular(HasimRadius.sm),
-                      border: Border.all(color: HasimColors.border),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Text(
-                        _q,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: HasimColors.ink,
-                        ),
+                    child: Text(
+                      _q,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: HasimColors.ink,
                       ),
                     ),
                   ),
                 ),
               ),
-            ],
+            ),
           ),
           const SizedBox(height: 12),
           const Text(

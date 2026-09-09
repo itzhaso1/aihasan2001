@@ -50,6 +50,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
   var _ready = false;
   var _savingPos = false;
   var _syncing = false;
+  var _wiping = false;
   var _pendingSync = 0;
   var _failedSync = 0;
   var _unsupportedSync = 0;
@@ -153,7 +154,8 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       final counts = await classifier.counts(workspaceId);
       pending = counts.scopedPending;
       failed = counts.failed;
-      unsupported = counts.unsupported +
+      unsupported =
+          counts.unsupported +
           counts.standalone +
           counts.blocked +
           counts.alreadyApplied;
@@ -179,12 +181,22 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     if (_syncing) return;
     setState(() => _syncing = true);
     try {
-      await ref.read(authControllerProvider.notifier).hydrateCloudLinkSession();
+      try {
+        await ref
+            .read(authControllerProvider.notifier)
+            .hydrateCloudLinkSession()
+            .timeout(const Duration(milliseconds: 400));
+      } catch (_) {
+        // Secure storage can stall in tests; in-memory link is enough to decide.
+      }
       var cloud = CashierRequestAuth.activeLink(
         ref.read(cloudLinkSessionProvider),
       );
       final sessionToken = ref.read(authControllerProvider).valueOrNull?.token;
-      if (!CashierRequestAuth.canSync(sessionToken: sessionToken, cloud: cloud)) {
+      if (!CashierRequestAuth.canSync(
+        sessionToken: sessionToken,
+        cloud: cloud,
+      )) {
         _showSyncMessage(
           'اربط الحساب السحابي أولاً من شاشة الدخول (وضع السحابة)، ثم ادخل بالـ PIN. تشغيل Laravel وحده لا يكفي.',
         );
@@ -261,11 +273,13 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       }
       final classifier = SyncQueueClassifier(ref.read(appDatabaseProvider));
       final counts = await classifier.counts(workspaceId);
-      final leftovers = counts.unsupported +
+      final leftovers =
+          counts.unsupported +
           counts.standalone +
           counts.blocked +
           counts.alreadyApplied;
-      final lastError = await classifier.firstReadyLastError(workspaceId) ??
+      final lastError =
+          await classifier.firstReadyLastError(workspaceId) ??
           await classifier.firstFailedHint(workspaceId);
       _showSyncMessage(
         SyncNowCopy.afterFlush(
@@ -281,9 +295,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         ),
       );
     } catch (e) {
-      _showSyncMessage(
-        e is PosException ? e.messageAr : 'تعذر المزامنة: $e',
-      );
+      _showSyncMessage(e is PosException ? e.messageAr : 'تعذر المزامنة: $e');
     } finally {
       if (mounted) setState(() => _syncing = false);
     }
@@ -329,8 +341,9 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
   }
 
   Future<void> _refreshUsers() async {
-    final workspaceId =
-        await ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
+    final workspaceId = await ref
+        .read(localAuthServiceProvider)
+        .localUnlockWorkspaceId();
     if (workspaceId == null || workspaceId <= 0) return;
     try {
       final users = await ref
@@ -588,11 +601,9 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
           );
       ref.invalidate(localTablesProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تمت إضافة الطاولة. افتح تبويب الطاولات لعرضها.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('تمت إضافة الطاولة.')));
     } catch (e) {
       if (!mounted) return;
       final message = e is PosException ? e.messageAr : '$e';
@@ -737,8 +748,9 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       );
       return;
     }
-    final workspaceId =
-        await ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
+    final workspaceId = await ref
+        .read(localAuthServiceProvider)
+        .localUnlockWorkspaceId();
     if (workspaceId == null || workspaceId <= 0) return;
     final name = TextEditingController();
     final username = TextEditingController();
@@ -848,6 +860,168 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     return DateFormat('yyyy/MM/dd  HH:mm').format(at.toLocal());
   }
 
+  Future<int?> _wipeWorkspaceId() async {
+    final cloud = CashierRequestAuth.activeLink(
+      ref.read(cloudLinkSessionProvider),
+    );
+    final fromSession = CashierRequestAuth.workspaceId(
+      sessionWorkspaceId: ref.read(workspaceIdProvider),
+      cloud: cloud,
+    );
+    if (fromSession != null && fromSession > 0) return fromSession;
+    return ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
+  }
+
+  Future<void> _confirmLocalWipe({
+    required String title,
+    required String body,
+    required Future<int> Function(int workspaceId) wipe,
+    required void Function() onDone,
+    required String doneLabel,
+  }) async {
+    if (_wiping) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 48, vertical: 24),
+        backgroundColor: HasimColors.surface,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  body,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: HasimColors.muted,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                HsPrimaryButton(
+                  label: 'حذف الكل',
+                  onPressed: () => Navigator.pop(ctx, true),
+                ),
+                const SizedBox(height: 8),
+                HsOutlineButton(
+                  label: 'إلغاء',
+                  onPressed: () => Navigator.pop(ctx, false),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (ok != true) return;
+    final workspaceId = await _wipeWorkspaceId();
+    if (workspaceId == null || workspaceId <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('لا توجد مساحة عمل محلية.')));
+      return;
+    }
+    setState(() => _wiping = true);
+    try {
+      final count = await wipe(workspaceId);
+      onDone();
+      await _refreshSyncStatus();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$doneLabel ($count)')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e is PosException ? e.messageAr : '$e')),
+      );
+    } finally {
+      if (mounted) setState(() => _wiping = false);
+    }
+  }
+
+  Future<void> _wipeAllInvoices() {
+    return _confirmLocalWipe(
+      title: 'حذف جميع الفواتير',
+      body:
+          'سيتم حذف كل الفواتير والمدفوعات والمرتجعات المرتبطة بها من هذا الجهاز فقط. الطلبات والحسابات والطاولات تبقى.',
+      doneLabel: 'تم حذف الفواتير محلياً',
+      wipe: (workspaceId) => ref
+          .read(localDataWipeServiceProvider)
+          .deleteAllInvoices(workspaceId: workspaceId, permissions: _perms),
+      onDone: () {
+        ref.read(invoicesRevisionProvider.notifier).state++;
+      },
+    );
+  }
+
+  Future<void> _wipeAllProducts() {
+    return _confirmLocalWipe(
+      title: 'حذف جميع الأصناف',
+      body:
+          'سيتم حذف كل الأصناف والتصنيفات من منيو هذا الجهاز. السلة الحالية تُفرَّغ. إن كان الجهاز مرتبطاً بالسحابة قد تعود الأصناف بعد المزامنة.',
+      doneLabel: 'تم حذف الأصناف محلياً',
+      wipe: (workspaceId) => ref
+          .read(localDataWipeServiceProvider)
+          .deleteAllProducts(workspaceId: workspaceId, permissions: _perms),
+      onDone: () {
+        ref.read(catalogRevisionProvider.notifier).state++;
+        ref.invalidate(catalogItemsProvider);
+        ref.invalidate(categoriesProvider);
+        ref.read(cartControllerProvider.notifier).clear();
+      },
+    );
+  }
+
+  Future<void> _wipeAllOrders() {
+    return _confirmLocalWipe(
+      title: 'حذف جميع الطلبات',
+      body:
+          'سيتم حذف كل الطلبات المحلية واستعلامات المطبخ المرتبطة بها من هذا الجهاز. الفواتير تبقى إن وُجدت، والطاولات المشغولة بلا طلبات تُفتح.',
+      doneLabel: 'تم حذف الطلبات محلياً',
+      wipe: (workspaceId) => ref
+          .read(localDataWipeServiceProvider)
+          .deleteAllOrders(workspaceId: workspaceId, permissions: _perms),
+      onDone: () {
+        ref.read(ordersRevisionProvider.notifier).state++;
+        ref.read(tablesRevisionProvider.notifier).state++;
+      },
+    );
+  }
+
+  Future<void> _wipeAllKitchenTickets() {
+    return _confirmLocalWipe(
+      title: 'حذف جميع استعلامات المطبخ',
+      body:
+          'سيتم حذف تذاكر المطبخ المحلية (الجديدة والمكتملة والملغاة) من هذا الجهاز. الطاولات بلا طلبات متبقية تُفتح.',
+      doneLabel: 'تم حذف استعلامات المطبخ محلياً',
+      wipe: (workspaceId) => ref
+          .read(localDataWipeServiceProvider)
+          .deleteAllKitchenTickets(
+            workspaceId: workspaceId,
+            permissions: _perms,
+          ),
+      onDone: () {
+        ref.read(ordersRevisionProvider.notifier).state++;
+        ref.read(tablesRevisionProvider.notifier).state++;
+      },
+    );
+  }
+
   ({Color background, Color foreground}) _roleTone(String role) {
     if (LocalAuthService.isKitchenRole(role)) {
       return (
@@ -899,84 +1073,135 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
   }
 
   Widget _headerCard() {
-    return HsCard(
-      color: HasimColors.ctaDark,
-      borderColor: HasimColors.ctaDark,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.14),
-              shape: BoxShape.circle,
+    final now = DateTime.now();
+    const weekdays = [
+      'الاثنين',
+      'الثلاثاء',
+      'الأربعاء',
+      'الخميس',
+      'الجمعة',
+      'السبت',
+      'الأحد',
+    ];
+    const months = [
+      'يناير',
+      'فبراير',
+      'مارس',
+      'أبريل',
+      'مايو',
+      'يونيو',
+      'يوليو',
+      'أغسطس',
+      'سبتمبر',
+      'أكتوبر',
+      'نوفمبر',
+      'ديسمبر',
+    ];
+    final dateLabel =
+        '${weekdays[now.weekday - 1]} ${now.day} ${months[now.month - 1]} ${now.year}';
+    final timeLabel =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 960;
+        final dateTexts = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              dateLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: HasimColors.ink,
+              ),
             ),
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.settings_outlined,
-              color: Colors.white,
-              size: 20,
+            Text(
+              timeLabel,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: HasimColors.ink,
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'لوحة التحكم',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
+            if (_storeName != null && _storeName!.trim().isNotEmpty)
+              Text(
+                _storeName!.trim(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: HasimColors.muted,
                 ),
-                SizedBox(height: 2),
+              ),
+          ],
+        );
+        final dateCard = HsCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            mainAxisSize: wide ? MainAxisSize.min : MainAxisSize.max,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: HasimColors.ctaSoft,
+                  borderRadius: BorderRadius.circular(HasimRadius.md),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.calendar_today_outlined,
+                  color: HasimColors.ctaDark,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              if (wide) dateTexts else Flexible(child: dateTexts),
+            ],
+          ),
+        );
+        final welcome = HsWelcomeBanner(
+          title: 'لوحة التحكم',
+          subtitle: 'إدارة النظام والإعدادات العامة',
+          badge: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(HasimRadius.pill),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.circle, size: 8, color: Colors.white),
+                SizedBox(width: 6),
                 Text(
-                  'إدارة النظام والتفضيلات العامة',
-                  style: TextStyle(fontSize: 12, color: Color(0xD9FFFFFF)),
+                  'النظام يعمل بشكل طبيعي',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ],
             ),
           ),
-          if (_storeName != null && _storeName!.trim().isNotEmpty)
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.storefront_outlined,
-                        size: 16,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          _storeName!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.end,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'نقطة بيع محلية',
-                    style: TextStyle(fontSize: 11, color: Color(0xD9FFFFFF)),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
+        );
+        if (!wide) {
+          return Column(
+            children: [welcome, const SizedBox(height: 12), dateCard],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            dateCard,
+            const SizedBox(width: 12),
+            Expanded(child: welcome),
+          ],
+        );
+      },
     );
   }
 
@@ -996,6 +1221,16 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       title: 'مزامنة السحابة',
       subtitle:
           'إرسال الفواتير وتغييرات المنيو وبيانات الطاولات الأساسية إلى حساب حاسم.',
+      badge: _failedSync > 0
+          ? HsStatusBadge(label: 'فشل $_failedSync', tone: HsStatusTone.danger)
+          : _pendingSync > 0
+          ? const HsStatusBadge(
+              label: 'بانتظار المزامنة',
+              tone: HsStatusTone.warning,
+            )
+          : linked
+          ? const HsStatusBadge(label: 'مرتبط', tone: HsStatusTone.success)
+          : const HsStatusBadge(label: 'غير متصل', tone: HsStatusTone.warning),
       highlight: true,
       children: [
         _infoBanner(
@@ -1121,6 +1356,12 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       iconColor: HasimColors.ctaDark,
       title: 'افتتاح الكاش',
       subtitle: 'يجب افتتاح الكاش قبل بدء البيع.',
+      badge: open != null
+          ? const HsStatusBadge(label: 'جاهز', tone: HsStatusTone.success)
+          : const HsStatusBadge(
+              label: 'بانتظار الافتتاح',
+              tone: HsStatusTone.warning,
+            ),
       highlight: true,
       children: [
         if (open != null) ...[
@@ -1279,19 +1520,75 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     );
   }
 
-  Widget _tablesCard() {
+  Widget _dataWipeCard({
+    required bool canWipeInvoices,
+    required bool canWipeProducts,
+    required bool canWipeOrders,
+    required bool canWipeKitchen,
+  }) {
+    return HsSectionCard(
+      icon: Icons.delete_sweep_outlined,
+      iconBackground: HasimColors.dangerSoft,
+      iconColor: HasimColors.danger,
+      title: 'تنظيف البيانات المحلية',
+      subtitle:
+          'حذف تشغيلي على هذا الجهاز فقط. الحسابات والطاولات والإعدادات تبقى.',
+      children: [
+        if (canWipeInvoices)
+          HsOutlineButton(
+            label: 'حذف جميع الفواتير',
+            icon: Icons.receipt_long_outlined,
+            foreground: HasimColors.danger,
+            borderColor: HasimColors.danger,
+            onPressed: _wiping ? null : _wipeAllInvoices,
+          ),
+        if (canWipeProducts)
+          HsOutlineButton(
+            label: 'حذف جميع الأصناف',
+            icon: Icons.inventory_2_outlined,
+            foreground: HasimColors.danger,
+            borderColor: HasimColors.danger,
+            onPressed: _wiping ? null : _wipeAllProducts,
+          ),
+        if (canWipeOrders)
+          HsOutlineButton(
+            label: 'حذف جميع الطلبات',
+            icon: Icons.shopping_bag_outlined,
+            foreground: HasimColors.danger,
+            borderColor: HasimColors.danger,
+            onPressed: _wiping ? null : _wipeAllOrders,
+          ),
+        if (canWipeKitchen)
+          HsOutlineButton(
+            label: 'حذف جميع استعلامات المطبخ',
+            icon: Icons.soup_kitchen_outlined,
+            foreground: HasimColors.danger,
+            borderColor: HasimColors.danger,
+            onPressed: _wiping ? null : _wipeAllKitchenTickets,
+          ),
+      ],
+    );
+  }
+
+  Widget _tablesCard({required bool canCreate}) {
     return HsSectionCard(
       icon: Icons.table_restaurant_outlined,
       iconBackground: HasimColors.ctaSoft,
       iconColor: HasimColors.ctaDark,
       title: 'الطاولات',
-      subtitle: 'إضافة طاولة محلية لهذا الجهاز.',
+      subtitle: 'إدارة الطاولات المحلية وإضافة طاولة لهذا الجهاز.',
       children: [
-        HsOutlineButton(
-          label: 'إضافة طاولة محلية',
-          icon: Icons.add,
-          onPressed: _addLocalTable,
+        HsPrimaryButton(
+          label: 'فتح الطاولات',
+          icon: Icons.grid_view_outlined,
+          onPressed: () => requestPosShellTab(ref, PosShellTab.tables),
         ),
+        if (canCreate)
+          HsOutlineButton(
+            label: 'إضافة طاولة محلية',
+            icon: Icons.add,
+            onPressed: _addLocalTable,
+          ),
       ],
     );
   }
@@ -1321,6 +1618,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
       title: 'Realtime',
       subtitle:
           'Polling هو المصدر الافتراضي. Pusher/Reverb لن يُفعَّل بدون credentials.',
+      badge: const HsStatusBadge(label: 'جاهز', tone: HsStatusTone.success),
       children: [
         Text(
           'الوضع الحالي: ${ref.watch(posRealtimeModeProvider)}',
@@ -1421,6 +1719,12 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         ref.watch(authControllerProvider).valueOrNull?.permissions,
       ),
     );
+    final canViewTables = CashierPermissions.canViewTables(
+      CashierPermissions.resolve(
+        ref.watch(cashierPermissionsProvider),
+        ref.watch(authControllerProvider).valueOrNull?.permissions,
+      ),
+    );
     final canCreateTables = CashierPermissions.canCreateTables(
       CashierPermissions.resolve(
         ref.watch(cashierPermissionsProvider),
@@ -1439,6 +1743,27 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         ref.watch(authControllerProvider).valueOrNull?.permissions,
       ),
     );
+    final canWipeInvoices = CashierPermissions.canDeleteInvoices(
+      CashierPermissions.resolve(
+        ref.watch(cashierPermissionsProvider),
+        ref.watch(authControllerProvider).valueOrNull?.permissions,
+      ),
+    );
+    final canWipeProducts = canManage;
+    final canWipeOrders = CashierPermissions.canWipeOrders(
+      CashierPermissions.resolve(
+        ref.watch(cashierPermissionsProvider),
+        ref.watch(authControllerProvider).valueOrNull?.permissions,
+      ),
+    );
+    final canWipeKitchen = CashierPermissions.canWipeKitchen(
+      CashierPermissions.resolve(
+        ref.watch(cashierPermissionsProvider),
+        ref.watch(authControllerProvider).valueOrNull?.permissions,
+      ),
+    );
+    final showDataWipe =
+        canWipeInvoices || canWipeProducts || canWipeOrders || canWipeKitchen;
     final cloud = CashierRequestAuth.activeLink(
       ref.watch(cloudLinkSessionProvider),
     );
@@ -1449,8 +1774,9 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         _headerCard(),
         const SizedBox(height: HasimSpacing.md),
         HsSoftGrid(
-          minTileWidth: 300,
+          minTileWidth: 320,
           maxColumns: 3,
+          spacing: 16,
           children: [
             _syncCard(cloud: cloud),
             if (canManageUsers) _usersCard(),
@@ -1462,8 +1788,16 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
                 canUseKitchen: canUseKitchen,
               ),
             _backupCard(),
+            if (showDataWipe)
+              _dataWipeCard(
+                canWipeInvoices: canWipeInvoices,
+                canWipeProducts: canWipeProducts,
+                canWipeOrders: canWipeOrders,
+                canWipeKitchen: canWipeKitchen,
+              ),
             _soundCard(),
-            if (canCreateTables) _tablesCard(),
+            if (canViewTables || canCreateTables)
+              _tablesCard(canCreate: canCreateTables),
             _realtimeCard(),
             _printerCard(),
           ],

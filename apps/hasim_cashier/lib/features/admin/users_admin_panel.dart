@@ -33,9 +33,9 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
   var _saving = false;
 
   Map<String, dynamic> get _actorPerms => CashierPermissions.resolve(
-        ref.read(cashierPermissionsProvider),
-        ref.read(authControllerProvider).valueOrNull?.permissions,
-      );
+    ref.read(cashierPermissionsProvider),
+    ref.read(authControllerProvider).valueOrNull?.permissions,
+  );
 
   @override
   void initState() {
@@ -53,8 +53,9 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
   }
 
   Future<void> _load() async {
-    var workspaceId =
-        await ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
+    var workspaceId = await ref
+        .read(localAuthServiceProvider)
+        .localUnlockWorkspaceId();
     workspaceId ??= ref.read(workspaceIdProvider);
     if (workspaceId == null || workspaceId <= 0) {
       if (!mounted) return;
@@ -103,8 +104,9 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
   }
 
   Future<Map<String, bool>> _flagsFor(LocalUser user) async {
-    final effective =
-        await ref.read(localAuthServiceProvider).effectivePermissions(user);
+    final effective = await ref
+        .read(localAuthServiceProvider)
+        .effectivePermissions(user);
     return {
       for (final item in StaffPermissions.catalog)
         item.key: StaffPermissions.can(effective, item.key),
@@ -126,7 +128,9 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
     if (workspaceId == null || userId == null) return;
     setState(() => _saving = true);
     try {
-      await ref.read(localAuthServiceProvider).writeUserAcl(
+      await ref
+          .read(localAuthServiceProvider)
+          .writeUserAcl(
             workspaceId: workspaceId,
             userLocalId: userId,
             permissions: {
@@ -136,9 +140,9 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
             actorPermissions: _actorPerms,
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم حفظ صلاحيات المستخدم.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('تم حفظ صلاحيات المستخدم.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -156,8 +160,9 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
       );
       return;
     }
-    final workspaceId =
-        await ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
+    final workspaceId = await ref
+        .read(localAuthServiceProvider)
+        .localUnlockWorkspaceId();
     if (workspaceId == null || workspaceId <= 0) return;
     final name = TextEditingController();
     final email = TextEditingController();
@@ -229,13 +234,15 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
     if (ok != true) return;
     if (!mounted) return;
     if (trimmedName.isEmpty || trimmedEmail.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الاسم والإيميل مطلوبان.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('الاسم والإيميل مطلوبان.')));
       return;
     }
     try {
-      await ref.read(localAuthServiceProvider).createUser(
+      await ref
+          .read(localAuthServiceProvider)
+          .createUser(
             workspaceId: workspaceId,
             name: trimmedName,
             username: trimmedEmail,
@@ -295,14 +302,13 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
     password.dispose();
     if (ok != true || trimmed.isEmpty) return;
     try {
-      await ref.read(localAuthServiceProvider).updateUserPassword(
-            userLocalId: user.localId,
-            pin: trimmed,
-          );
+      await ref
+          .read(localAuthServiceProvider)
+          .updateUserPassword(userLocalId: user.localId, pin: trimmed);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم تحديث كلمة المرور.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('تم تحديث كلمة المرور.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -384,31 +390,16 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
   }
 
   Widget _header() {
-    return Row(
-      children: [
-        const Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'المستخدمون والصلاحيات',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'كل كاشير أو شيف له صلاحيات مستقلة. أعطِ أو أزل أي صلاحية ثم احفظ.',
-                style: TextStyle(fontSize: 12, color: HasimColors.muted),
-              ),
-            ],
-          ),
-        ),
-        HsActionChip(
-          label: 'مستخدم جديد',
-          icon: Icons.person_add_alt_1,
-          onTap: _createUser,
-        ),
-      ],
+    return HsPageHeader(
+      icon: Icons.manage_accounts_outlined,
+      title: 'المستخدمون والصلاحيات',
+      subtitle:
+          'كل كاشير أو شيف له صلاحيات مستقلة. أعطِ أو أزل أي صلاحية ثم احفظ.',
+      trailing: HsActionChip(
+        label: 'مستخدم جديد',
+        icon: Icons.person_add_alt_1,
+        onTap: _createUser,
+      ),
     );
   }
 
@@ -473,7 +464,8 @@ class _UsersAdminPanelState extends ConsumerState<UsersAdminPanel> {
                           const SizedBox(width: 8),
                           HsBadge(
                             label: LocalAuthService.roleLabelAr(user.role),
-                            background: LocalAuthService.isKitchenRole(user.role)
+                            background:
+                                LocalAuthService.isKitchenRole(user.role)
                                 ? HasimColors.warningSoft
                                 : HasimColors.navIdleBg,
                             foreground: HasimColors.ink,
