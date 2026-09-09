@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -188,6 +189,12 @@ class FinanceInvoice extends WorkspaceScopedModel
     public function issuer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'issued_by');
+    }
+
+    public function issuedSnapshot(): HasOne
+    {
+        return $this->hasOne(IssuedDocumentSnapshot::class, 'source_id')
+            ->where('source_type', IssuedDocumentSnapshot::SOURCE_FINANCE_INVOICE);
     }
 
     protected static function booted(): void

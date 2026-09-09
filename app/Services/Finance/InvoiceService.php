@@ -31,6 +31,7 @@ class InvoiceService
         private readonly InvoiceStateService $invoiceStateService,
         private readonly FinancialPeriodGuardService $financialPeriodGuardService,
         private readonly InventoryAccountingService $inventoryAccountingService,
+        private readonly IssuedSnapshotBuilder $issuedSnapshotBuilder,
     ) {}
 
     /**
@@ -393,7 +394,10 @@ class InvoiceService
                 ?? $this->invoiceStateService->resolveInvoiceStatus($locked->status);
 
             if ($currentInvoiceStatus === 'issued') {
-                return $locked;
+                $issued = $locked->fresh(['items', 'customer', 'supplier', 'attachments', 'contract']);
+                $this->issuedSnapshotBuilder->captureInvoice($issued);
+
+                return $issued;
             }
             if ($currentInvoiceStatus === 'cancelled') {
                 throw new RuntimeException('لا يمكن إصدار فاتورة ملغاة.');
@@ -465,7 +469,10 @@ class InvoiceService
 
             $this->postInvoiceEntry($locked->fresh(), $actorUserId, $skipInventory);
 
-            return $locked->fresh(['items', 'customer', 'supplier', 'attachments']);
+            $issued = $locked->fresh(['items', 'customer', 'supplier', 'attachments', 'contract']);
+            $this->issuedSnapshotBuilder->captureInvoice($issued);
+
+            return $issued;
         });
     }
 
