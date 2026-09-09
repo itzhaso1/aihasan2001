@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hasim_cashier/core/local_db/app_database.dart';
 import 'package:hasim_cashier/core/local_db/local_ids.dart';
 import 'package:hasim_cashier/core/local_db/workspace_scope.dart';
+import 'package:hasim_cashier/core/pos/table_session_orders.dart';
 import 'package:hasim_cashier/core/repositories/sync_queue_repository.dart';
 import 'package:hasim_cashier/core/sync/sync_engine_v2.dart';
 import 'package:hasim_cashier/core/sync/sync_pull_applier.dart';
@@ -221,5 +224,209 @@ void main() {
     expect(await (db.select(db.localProducts)
           ..where((t) => t.workspaceId.equals(2)))
         .get(), hasLength(1));
+  });
+
+  Map<String, dynamic> qrOrderChange({
+    int version = 1,
+    int orderId = 88,
+    int tableId = 3,
+    int sessionId = 17,
+  }) {
+    return {
+      'version': version,
+      'entity': 'order',
+      'operation': 'create',
+      'id': orderId,
+      'data': {
+        'id': orderId,
+        'client_reference': 'qr-$orderId',
+        'dining_table_id': tableId,
+        'table_session_id': sessionId,
+        'table_name': 'T$tableId',
+        'source': 'qr_menu',
+        'order_type': 'table',
+        'pos_status': 'new',
+        'payment_status': 'unpaid',
+        'order_number': 'QR-$orderId',
+        'subtotal': 12,
+        'tax_amount': 0,
+        'discount_amount': 0,
+        'total_amount': 12,
+        'placed_at': '2026-09-09T12:00:00.000Z',
+        'items': [
+          {
+            'id': 501,
+            'pos_menu_item_id': 9,
+            'product_name': 'شاي',
+            'quantity': 1,
+            'unit_price': 12,
+            'total_amount': 12,
+          },
+        ],
+      },
+    };
+  }
+
+  test('qr menu pull occupies the matching table without duplicating on retry',
+      () async {
+    await db.into(db.localTables).insert(
+          LocalTablesCompanion.insert(
+            localId: LocalIds.table(1, 3),
+            workspaceId: 1,
+            serverId: const Value(3),
+            name: 'T3',
+            status: const Value('available'),
+            payloadJson: Value(jsonEncode({
+              'id': 3,
+              'name': 'T3',
+              'status': 'available',
+            })),
+            updatedAt: DateTime.now(),
+          ),
+        );
+
+    final applier = SyncPullApplier(db);
+    await applier.applyBatch(
+      workspaceId: 1,
+      fromCursor: 0,
+      responseCursor: 1,
+      changes: [qrOrderChange()],
+    );
+
+    final table = await (db.select(db.localTables)
+          ..where((t) => t.localId.equals(LocalIds.table(1, 3))))
+        .getSingle();
+    expect(table.status, 'occupied');
+    expect(table.sessionServerId, 17);
+    final payload = jsonDecode(table.payloadJson) as Map<String, dynamic>;
+    expect(payload['session_open'], isTrue);
+    expect(payload['session_client_id'], isNotEmpty);
+    expect(payload['opened_at'], isNotNull);
+    final orders = (payload['orders'] as List).cast<dynamic>();
+    expect(orders, hasLength(1));
+
+    final localOrder = await (db.select(db.localOrders)
+          ..where((t) => t.clientReference.equals('qr-88')))
+        .getSingle();
+    expect(localOrder.tableServerId, 3);
+    expect(localOrder.sessionLocalId, payload['session_client_id']);
+    expect(
+      isOrderInOpenTableSession(
+        posStatus: localOrder.posStatus,
+        paymentStatus: localOrder.paymentStatus,
+        createdAt: localOrder.createdAt,
+        openedAt: DateTime.parse(payload['opened_at'].toString()),
+        orderSessionLocalId: localOrder.sessionLocalId,
+        currentSessionLocalId: '${payload['session_client_id']}',
+      ),
+      isTrue,
+    );
+
+    await applier.applyBatch(
+      workspaceId: 1,
+      fromCursor: 1,
+      responseCursor: 2,
+      changes: [qrOrderChange(version: 2)],
+    );
+    final again = jsonDecode(
+      (await (db.select(db.localTables)
+            ..where((t) => t.localId.equals(LocalIds.table(1, 3))))
+          .getSingle())
+          .payloadJson,
+    ) as Map<String, dynamic>;
+    expect((again['orders'] as List), hasLength(1));
+    expect(await db.select(db.localOrders).get(), hasLength(1));
+  });
+
+  test('table pull with open session occupies even when Laravel status is available',
+      () async {
+    await SyncPullApplier(db).applyBatch(
+      workspaceId: 1,
+      fromCursor: 0,
+      responseCursor: 1,
+      changes: [
+        {
+          'version': 1,
+          'entity': 'table',
+          'operation': 'update',
+          'id': 9,
+          'data': {
+            'id': 9,
+            'name': 'VIP',
+            'status': 'available',
+            'session_id': 22,
+            'session_open': true,
+            'opened_at': '2026-09-09T11:00:00.000Z',
+          },
+        },
+      ],
+    );
+    final table = await (db.select(db.localTables)
+          ..where((t) => t.localId.equals(LocalIds.table(1, 9))))
+        .getSingle();
+    expect(table.status, 'occupied');
+    expect(table.sessionServerId, 22);
+    final payload = jsonDecode(table.payloadJson) as Map<String, dynamic>;
+    expect(payload['session_open'], isTrue);
+    expect(payload['opened_at'], '2026-09-09T11:00:00.000Z');
+  });
+
+  test('pending local close is not overwritten by a stale occupied table pull',
+      () async {
+    await db.into(db.localTables).insert(
+          LocalTablesCompanion.insert(
+            localId: LocalIds.table(1, 4),
+            workspaceId: 1,
+            serverId: const Value(4),
+            name: 'T4',
+            status: const Value('available'),
+            payloadJson: Value(jsonEncode({
+              'id': 4,
+              'status': 'available',
+              'opened_at': null,
+            })),
+            updatedAt: DateTime.now(),
+          ),
+        );
+    await queue.enqueue(
+      workspaceId: 1,
+      deviceId: 'dev',
+      entityType: 'table_session',
+      entityId: LocalIds.table(1, 4),
+      operation: 'close',
+      payload: {'table_server_id': 4},
+      clientReference: 'close-1',
+    );
+
+    await SyncPullApplier(db).applyBatch(
+      workspaceId: 1,
+      fromCursor: 0,
+      responseCursor: 1,
+      changes: [
+        {
+          'version': 1,
+          'entity': 'table',
+          'operation': 'update',
+          'id': 4,
+          'data': {
+            'id': 4,
+            'name': 'T4',
+            'status': 'occupied',
+            'session_id': 55,
+            'session_open': true,
+            'opened_at': '2026-09-09T08:00:00.000Z',
+          },
+        },
+      ],
+    );
+
+    final table = await (db.select(db.localTables)
+          ..where((t) => t.localId.equals(LocalIds.table(1, 4))))
+        .getSingle();
+    expect(table.status, 'available');
+    expect(table.sessionServerId, isNull);
+    final payload = jsonDecode(table.payloadJson) as Map<String, dynamic>;
+    expect(payload['opened_at'], isNull);
+    expect(payload['session_open'], isFalse);
   });
 }

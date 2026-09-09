@@ -949,6 +949,16 @@ class TablesRepository {
     )..where((t) => t.localId.equals(id))).getSingleOrNull();
     if (existing != null) {
       if (existing.status == 'open') return;
+      await (_db.update(
+        _db.localSessions,
+      )..where((t) => t.localId.equals(id))).write(
+        LocalSessionsCompanion(
+          status: const Value('open'),
+          openedAt: Value(openedAt),
+          closedAt: const Value(null),
+          updatedAt: Value(now),
+        ),
+      );
       return;
     }
     await _db

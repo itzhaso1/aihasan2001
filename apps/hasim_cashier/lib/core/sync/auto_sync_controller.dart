@@ -117,7 +117,7 @@ class AutoSyncController extends StateNotifier<AutoSyncStatus> {
       final flush = await coordinator.flushPendingOrders(
         workspaceId: workspaceId,
         deviceId: deviceId,
-        refreshAfterBusy: manual || refreshAfterBusy,
+        refreshAfterBusy: true,
       );
       final offline = flush.networkError ||
           flush.skippedUnlinked ||

@@ -950,7 +950,10 @@ class PosOrderService
             throw new RuntimeException('لا يمكن إصدار فاتورة لطلب ملغي.');
         }
 
-        if ($order->table_session_id) {
+        $metadata = is_array($order->metadata) ? $order->metadata : [];
+        $offlineSale = filter_var($metadata['offline_sale'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $alreadyPaid = $order->payment_status === 'paid';
+        if ($order->table_session_id && ! $offlineSale && ! $alreadyPaid) {
             $session = TableSession::query()->whereKey($order->table_session_id)->first();
             if ($session && $session->status === 'open') {
                 throw new RuntimeException('لطلبات الطاولات: أغلق الجلسة لإصدار فاتورة نهائية واحدة.');

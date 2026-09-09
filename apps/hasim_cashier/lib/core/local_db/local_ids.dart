@@ -12,9 +12,12 @@ class LocalIds {
   static String table(int workspaceId, int serverId) =>
       'w${workspaceId}_table_$serverId';
 
+  static String session(int workspaceId, int serverId) =>
+      'w${workspaceId}_sess_$serverId';
+
   static String customer(int workspaceId, int serverId) =>
       'w${workspaceId}_cust_$serverId';
 
   static bool looksScoped(String localId) =>
-      RegExp(r'^w\d+_(cat|prod|table|cust)_').hasMatch(localId);
+      RegExp(r'^w\d+_(cat|prod|table|cust|sess)_').hasMatch(localId);
 }

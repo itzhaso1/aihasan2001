@@ -319,6 +319,31 @@ void main() {
     expect(invoice.reason, contains('صنف غير موجود'));
   });
 
+  test('table close waits for unsynced session open', () async {
+    await queue.enqueue(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      entityType: 'table_session',
+      entityId: 'w1_table_10',
+      operation: 'open',
+      payload: {'table_server_id': 10},
+      clientReference: 'open-1',
+    );
+    await queue.enqueue(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      entityType: 'table_session',
+      entityId: 'w1_table_10',
+      operation: 'close',
+      payload: {'table_server_id': 10},
+      clientReference: 'close-1',
+    );
+    final items = await SyncQueueClassifier(db).classifyWorkspace(workspaceId);
+    final close = items.firstWhere((i) => i.row.operation == 'close');
+    expect(close.bucket, SyncQueueBucket.waitingParent);
+    expect(close.reason, contains('فتح الجلسة'));
+  });
+
   test('kitchen status update is ready after the order has a server id', () async {
     await insertOrder(localId: 'k-ready', serverId: 77);
     await insertQueue(

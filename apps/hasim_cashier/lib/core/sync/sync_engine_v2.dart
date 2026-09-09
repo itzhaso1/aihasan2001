@@ -110,7 +110,9 @@ class SyncEngineV2 {
   bool get isFlushing => _flushing;
 
   /// Push pending local ops, then pull server deltas. Pull failure never
-  /// drops the local sync_queue or pending orders.
+  /// drops the local sync_queue or pending orders. A second push after pull
+  /// drains ops that were enqueued while the first cycle was already running
+  /// (first invoice / first table close after startup).
   Future<SyncEngineV2Result> syncBidirectional({
     required int workspaceId,
     String? deviceId,
@@ -121,12 +123,13 @@ class SyncEngineV2 {
         workspaceId: workspaceId,
         deviceId: deviceId,
       );
+      final catchUp = await pushPending(workspaceId: workspaceId);
       return SyncEngineV2Result(
-        synced: push.synced,
-        failed: push.failed,
-        keptPending: push.keptPending,
-        authRequired: push.authRequired || pull.authRequired,
-        skippedInFlight: push.skippedInFlight,
+        synced: push.synced + catchUp.synced,
+        failed: push.failed + catchUp.failed,
+        keptPending: catchUp.keptPending,
+        authRequired: push.authRequired || pull.authRequired || catchUp.authRequired,
+        skippedInFlight: push.skippedInFlight && catchUp.skippedInFlight,
         pulled: pull.pulled,
         cursor: pull.cursor,
         pullFailed: pull.pullFailed,
@@ -282,6 +285,10 @@ class SyncEngineV2 {
           continue;
         }
         if (row.entityType == 'table_session' && row.operation == 'close') {
+          if (await _hasPendingSessionOpen(row)) {
+            kept++;
+            continue;
+          }
           final payload = _decode(row.payloadJson);
           final tableId = (payload['table_server_id'] as num?)?.toInt();
           if (tableId != null &&
@@ -622,6 +629,9 @@ class SyncEngineV2 {
     if (!_isScopedBatchOp(row)) return false;
     if (row.entityType == 'table_session') {
       if (row.operation == 'close') {
+        if (await _hasPendingSessionOpen(row)) {
+          return false;
+        }
         final payload = _decode(row.payloadJson);
         final tableId = (payload['table_server_id'] as num?)?.toInt();
         if (tableId != null &&
@@ -859,6 +869,24 @@ class SyncEngineV2 {
       payload['device_id'] = row.deviceId;
       if ('${payload['session_client_id'] ?? ''}'.trim().isEmpty) {
         payload['session_client_id'] = row.clientReference;
+      }
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .getSingleOrNull();
+      final sessionId = table?.sessionServerId ??
+          (payload['session_server_id'] as num?)?.toInt();
+      if (sessionId != null && sessionId > 0) {
+        payload['session_server_id'] = sessionId;
+        payload['session_id'] = sessionId;
+      }
+      final tableServerId = table?.serverId ??
+          (payload['table_server_id'] as num?)?.toInt();
+      if (tableServerId != null && tableServerId > 0) {
+        payload['table_server_id'] = tableServerId;
       }
     }
     if (row.entityType == 'category' ||
@@ -1200,6 +1228,23 @@ class SyncEngineV2 {
     await _queue.markSynced(row.id);
   }
 
+  Future<bool> _hasPendingSessionOpen(SyncQueueItem closeRow) async {
+    final rows = await _queue.pendingForWorkspace(closeRow.workspaceId);
+    for (final row in rows) {
+      if (row.id == closeRow.id) continue;
+      if (row.entityType != 'table_session' || row.operation != 'open') {
+        continue;
+      }
+      if (row.entityId != closeRow.entityId) continue;
+      if (row.status == 'pending' ||
+          row.status == 'failed' ||
+          row.status == 'syncing') {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<bool> _hasUnsyncedOrdersForTable(int workspaceId, int tableId) async {
     final rows =
         await (_db.select(_db.localOrders)..where(
@@ -1448,23 +1493,43 @@ class SyncEngineV2 {
               .getSingleOrNull();
       if (table != null) {
         final prev = _decode(table.payloadJson);
-        final next = {
-          ...prev,
-          'session_id': sessionId,
-          'session_open': true,
-          'status': 'occupied',
-          if (data['opened_at'] != null) 'opened_at': data['opened_at'],
-        };
-        await (_db.update(
-          _db.localTables,
-        )..where((t) => t.localId.equals(table.localId))).write(
-          LocalTablesCompanion(
-            sessionServerId: Value(sessionId),
-            status: const Value('occupied'),
-            payloadJson: Value(jsonEncode(next)),
-            updatedAt: Value(now),
-          ),
+        final pendingClose = await _queue.findOpenOp(
+          workspaceId: row.workspaceId,
+          entityType: 'table_session',
+          entityId: row.entityId,
+          operation: 'close',
         );
+        final locallyClosed = table.status == 'available' &&
+            prev['session_open'] != true &&
+            '${prev['session_client_id'] ?? ''}'.trim().isEmpty;
+        if (pendingClose != null || locallyClosed) {
+          await (_db.update(
+            _db.localTables,
+          )..where((t) => t.localId.equals(table.localId))).write(
+            LocalTablesCompanion(
+              sessionServerId: Value(sessionId),
+              updatedAt: Value(now),
+            ),
+          );
+        } else {
+          final next = {
+            ...prev,
+            'session_id': sessionId,
+            'session_open': true,
+            'status': 'occupied',
+            if (data['opened_at'] != null) 'opened_at': data['opened_at'],
+          };
+          await (_db.update(
+            _db.localTables,
+          )..where((t) => t.localId.equals(table.localId))).write(
+            LocalTablesCompanion(
+              sessionServerId: Value(sessionId),
+              status: const Value('occupied'),
+              payloadJson: Value(jsonEncode(next)),
+              updatedAt: Value(now),
+            ),
+          );
+        }
       }
       await _queue.markSynced(row.id);
     });
@@ -1603,6 +1668,9 @@ class SyncEngineV2 {
       }
     }
     if (sessionId == null || sessionId <= 0) {
+      if (await _hasPendingSessionOpen(row)) {
+        throw StateError('table_session close waits for session open sync');
+      }
       // Session may already be closed server-side (e.g. auto-open + empty).
       await _markInvoiceSyncedFromClose(row, null);
       await _queue.markSynced(row.id);
@@ -1679,18 +1747,58 @@ class SyncEngineV2 {
           .write(const LocalPaymentsCompanion(syncStatus: Value('synced')));
     }
     // Ensure table is available after successful close sync.
-    await (_db.update(_db.localTables)..where(
-          (t) =>
-              t.localId.equals(row.entityId) &
-              t.workspaceId.equals(row.workspaceId),
-        ))
-        .write(
-          LocalTablesCompanion(
-            status: const Value('available'),
-            sessionServerId: const Value(null),
-            updatedAt: Value(now),
-          ),
-        );
+    final table =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.localId.equals(row.entityId) &
+                  t.workspaceId.equals(row.workspaceId),
+            ))
+            .getSingleOrNull();
+    if (table != null) {
+      final prev = _decode(table.payloadJson);
+      final next = {
+        ...prev,
+        'id': table.serverId ?? prev['id'],
+        'status': 'available',
+        'session_open': false,
+        'session_id': null,
+        'session_client_id': null,
+        'opened_at': null,
+        'orders': const [],
+        'last_sale_items': const [],
+        'last_sale_total': 0,
+        'subtotal': 0,
+        'tax_amount': 0,
+        'discount_amount': 0,
+        'total': 0,
+      };
+      await (_db.update(_db.localTables)..where(
+            (t) =>
+                t.localId.equals(row.entityId) &
+                t.workspaceId.equals(row.workspaceId),
+          ))
+          .write(
+            LocalTablesCompanion(
+              status: const Value('available'),
+              sessionServerId: const Value(null),
+              payloadJson: Value(jsonEncode(next)),
+              updatedAt: Value(now),
+            ),
+          );
+    } else {
+      await (_db.update(_db.localTables)..where(
+            (t) =>
+                t.localId.equals(row.entityId) &
+                t.workspaceId.equals(row.workspaceId),
+          ))
+          .write(
+            LocalTablesCompanion(
+              status: const Value('available'),
+              sessionServerId: const Value(null),
+              updatedAt: Value(now),
+            ),
+          );
+    }
   }
 
   Future<void> _pushInvoice(SyncQueueItem row) async {
