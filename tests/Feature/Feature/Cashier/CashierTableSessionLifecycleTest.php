@@ -295,6 +295,83 @@ class CashierTableSessionLifecycleTest extends TestCase
         $this->assertEqualsCanonicalizing(['ord-a', 'ord-b'], $pulledRefs);
     }
 
+    public function test_unpaid_table_order_flagged_offline_sale_attaches_to_the_open_sitting(): void
+    {
+        [$token, $workspace, $item, $table] = $this->bootTable();
+
+        $this->push($token, $workspace, 'POS-LIVE', [
+            'id' => 'op-open-live',
+            'type' => 'table_session.open',
+            'data' => ['table_server_id' => $table->id, 'session_client_id' => 'sess-live'],
+        ]);
+        $session = TableSession::query()->where('dining_table_id', $table->id)->where('status', 'open')->firstOrFail();
+
+        // Exactly what the cashier enqueues for a table order (local-first row).
+        $result = $this->push($token, $workspace, 'POS-LIVE', [
+            'id' => 'op-ord-live',
+            'type' => 'order.created',
+            'data' => [
+                'order_type' => 'table',
+                'dining_table_id' => $table->id,
+                'table_local_id' => 'w'.$workspace->id.'_tbl_'.$table->id,
+                'session_local_id' => 'sess-live',
+                'client_reference' => 'ord-live',
+                'pos_status' => 'new',
+                'payment_status' => 'unpaid',
+                'offline_sale' => true,
+                'items' => [[
+                    'pos_menu_item_id' => $item->id,
+                    'quantity' => 2,
+                    'unit_price' => 10,
+                    'name' => 'شاي',
+                ]],
+            ],
+        ], register: false);
+        $this->assertTrue($result['success']);
+
+        $order = Order::query()->where('client_reference', 'ord-live')->with('items')->firstOrFail();
+        $this->assertSame($session->id, (int) $order->table_session_id);
+        $this->assertSame($table->id, (int) $order->dining_table_id);
+        $this->assertSame(2, (int) $order->items->sum('quantity'));
+        $this->assertSame(1, TableSession::query()->where('dining_table_id', $table->id)->count());
+
+        // The Laravel table page lists exactly this order under the sitting.
+        $listed = Order::query()
+            ->where('dining_table_id', $table->id)
+            ->where('table_session_id', $session->id)
+            ->whereIn('source', ['pos', 'qr_menu'])
+            ->pluck('client_reference')
+            ->all();
+        $this->assertSame(['ord-live'], $listed);
+    }
+
+    public function test_paid_offline_sale_still_does_not_open_a_sitting(): void
+    {
+        [$token, $workspace, $item, $table] = $this->bootTable();
+
+        $result = $this->push($token, $workspace, 'POS-PAID', [
+            'id' => 'op-ord-paid',
+            'type' => 'order.created',
+            'data' => [
+                'order_type' => 'table',
+                'dining_table_id' => $table->id,
+                'client_reference' => 'ord-paid',
+                'pos_status' => 'completed',
+                'payment_status' => 'paid',
+                'offline_sale' => true,
+                'items' => [[
+                    'pos_menu_item_id' => $item->id,
+                    'quantity' => 1,
+                    'unit_price' => 10,
+                    'name' => 'شاي',
+                ]],
+            ],
+        ]);
+        $this->assertTrue($result['success']);
+        $this->assertSame(0, TableSession::query()->where('dining_table_id', $table->id)->count());
+        $this->assertNull(Order::query()->where('client_reference', 'ord-paid')->firstOrFail()->table_session_id);
+    }
+
     /**
      * @return array<string, mixed>
      */

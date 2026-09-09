@@ -49,7 +49,11 @@ class PosOrderService
             $offlineSale = $this->isOfflineCashierSale($payload);
 
             if ($offlineSale) {
-                [$table, $session] = $this->resolveTableWithoutOpeningSession($workspace->id, $diningTableId);
+                [$table, $session] = $this->resolveTableWithoutOpeningSession(
+                    $workspace->id,
+                    $diningTableId,
+                    attachOpenSession: $this->isLiveTableTicket($payload),
+                );
             } else {
                 [$table, $session] = $this->resolveTableAndSession($workspace->id, $diningTableId);
             }
@@ -1424,10 +1428,17 @@ class PosOrderService
      * Offline cashier invoices must not open or merge a live table session.
      * The sale already has a local invoice; attach dining_table_id only.
      *
-     * @return array{0: ?DiningTable, 1: null}
+     * A live (unpaid) cashier table order, however, belongs to the sitting the
+     * cashier already opened on this table — without it Laravel shows the
+     * table occupied with nothing on it. Never opens a session here.
+     *
+     * @return array{0: ?DiningTable, 1: ?TableSession}
      */
-    private function resolveTableWithoutOpeningSession(int $workspaceId, mixed $diningTableId): array
-    {
+    private function resolveTableWithoutOpeningSession(
+        int $workspaceId,
+        mixed $diningTableId,
+        bool $attachOpenSession = false,
+    ): array {
         if (empty($diningTableId)) {
             return [null, null];
         }
@@ -1440,7 +1451,30 @@ class PosOrderService
             throw new RuntimeException('الطاولة المحددة غير صالحة.');
         }
 
-        return [$table, null];
+        $session = null;
+        if ($attachOpenSession) {
+            $session = TableSession::query()
+                ->where('dining_table_id', $table->id)
+                ->where('status', 'open')
+                ->latest('id')
+                ->first();
+        }
+
+        return [$table, $session];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function isLiveTableTicket(array $payload): bool
+    {
+        $paymentStatus = strtolower(trim((string) ($payload['payment_status'] ?? '')));
+        $posStatus = strtolower(trim((string) ($payload['pos_status'] ?? '')));
+
+        // Only an explicitly unpaid, still-running ticket is part of the
+        // sitting. Checkout sales (invoiced right away) carry no such flag.
+        return $paymentStatus === 'unpaid'
+            && ! in_array($posStatus, ['completed', 'cancelled'], true);
     }
 
     /**
