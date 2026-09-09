@@ -7,6 +7,7 @@ use App\Models\WorkspaceScopedModel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 
 #[Fillable([
     'workspace_id',
@@ -46,6 +47,27 @@ class FinanceCreditNoteItem extends WorkspaceScopedModel
     public function creditNote(): BelongsTo
     {
         return $this->belongsTo(FinanceCreditNote::class, 'credit_note_id');
+    }
+
+    protected static function booted(): void
+    {
+        parent::booted();
+
+        $guard = static function (FinanceCreditNoteItem $item): void {
+            $noteId = (int) ($item->credit_note_id ?: $item->getOriginal('credit_note_id'));
+            if ($noteId <= 0) {
+                return;
+            }
+
+            $note = FinanceCreditNote::withoutGlobalScopes()->find($noteId);
+            if ($note?->isFinanciallyLocked()) {
+                throw new RuntimeException('لا يمكن تعديل بنود إشعار معتمد أو ملغى.');
+            }
+        };
+
+        static::creating($guard);
+        static::updating($guard);
+        static::deleting($guard);
     }
 
     public static function hasTaxProfileColumn(): bool

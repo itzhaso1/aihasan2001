@@ -27,6 +27,7 @@ use App\Services\Finance\IssuedSnapshotBuilder;
 use App\Services\Inventory\InventoryService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentService;
+use App\Support\Money\Money;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -41,6 +42,7 @@ class PosOrderService
         private readonly PaymentService $paymentService,
         private readonly InventoryService $inventoryService,
         private readonly IssuedSnapshotBuilder $issuedSnapshotBuilder,
+        private readonly PosTaxCalculator $posTaxCalculator,
     ) {}
 
     /**
@@ -455,21 +457,15 @@ class PosOrderService
             if (isset($payload['discount_percent'])) {
                 $discountAmount = $this->percentToAmount((float) $payload['discount_percent'], $subtotal);
             }
-            $taxAmount = $this->calculateTaxAmount($workspace, $subtotal, $discountAmount);
+            $this->persistCalculatedOrderTax($order->fresh(), $workspace, $discountAmount);
 
-            $attributes = [
-                'subtotal' => round($subtotal, 2),
-                'discount_amount' => $discountAmount,
-                'tax_amount' => $taxAmount,
-                'total_amount' => max(0, round($subtotal - $discountAmount + $taxAmount, 2)),
-            ];
             if (array_key_exists('notes', $payload)) {
-                $attributes['notes'] = filled($payload['notes'] ?? null)
-                    ? mb_substr(trim((string) $payload['notes']), 0, 2000)
-                    : null;
+                $order->update([
+                    'notes' => filled($payload['notes'] ?? null)
+                        ? mb_substr(trim((string) $payload['notes']), 0, 2000)
+                        : null,
+                ]);
             }
-
-            $order->update($attributes);
 
             $fresh = $order->fresh(['items', 'table', 'tableSession', 'customer']);
             event(new OrderUpdated($fresh));
@@ -652,29 +648,22 @@ class PosOrderService
                 return;
             }
 
+            $workspace = Workspace::withoutGlobalScopes()->find($session->workspace_id);
+
             foreach ($orders as $order) {
-                $subtotal = round((float) $order->items()->sum('total_amount'), 2);
-                $order->update([
-                    'subtotal' => $subtotal,
-                    'discount_amount' => 0,
-                    'total_amount' => $subtotal,
-                ]);
+                $this->persistCalculatedOrderTax($order, $workspace, 0);
             }
 
-            $remainingDiscount = max(0, round($discountAmount, 2));
+            $remainingDiscount = max(0, Money::round($discountAmount));
             foreach ($orders as $order) {
                 if ($remainingDiscount <= 0) {
                     break;
                 }
 
-                $subtotal = (float) $order->subtotal;
+                $subtotal = (float) $order->fresh()->subtotal;
                 $appliedDiscount = min($remainingDiscount, $subtotal);
-                $remainingDiscount = round($remainingDiscount - $appliedDiscount, 2);
-
-                $order->update([
-                    'discount_amount' => $appliedDiscount,
-                    'total_amount' => max(0, round($subtotal - $appliedDiscount, 2)),
-                ]);
+                $remainingDiscount = Money::round($remainingDiscount - $appliedDiscount);
+                $this->persistCalculatedOrderTax($order->fresh(), $workspace, $appliedDiscount);
             }
         });
     }
@@ -1153,15 +1142,7 @@ class PosOrderService
                     return null;
                 }
 
-                $subtotal = round((float) $fresh->items->sum('total_amount'), 2);
-                $discountAmount = max(0, (float) $fresh->discount_amount);
-                $taxAmount = $this->calculateTaxAmount($workspace, $subtotal, $discountAmount);
-                $fresh->update([
-                    'subtotal' => $subtotal,
-                    'discount_amount' => $discountAmount,
-                    'tax_amount' => $taxAmount,
-                    'total_amount' => max(0, round($subtotal - $discountAmount + $taxAmount, 2)),
-                ]);
+                $this->persistCalculatedOrderTax($fresh, $workspace, max(0, (float) $fresh->discount_amount));
 
                 return $fresh->fresh(['items']);
             })->filter()->values();
@@ -1207,9 +1188,14 @@ class PosOrderService
                 $metadata['edited_by_user_id'] = $actor->id;
             }
 
+            $tax = Money::round($orders->sum(fn (Order $order): float => (float) $order->tax_amount));
+            $taxable = $this->posTaxCalculator->taxableAmount($subtotal, $discount);
             $locked->update([
                 'subtotal' => $subtotal,
                 'discount_amount' => $discount,
+                'taxable_amount' => $taxable,
+                'tax_rate' => $this->posTaxCalculator->effectiveRate($taxable, $tax, $this->effectiveOrderTaxRate($orders, $workspace)),
+                'tax_amount' => $tax,
                 'total_amount' => $total,
                 'currency' => $this->resolveCurrencyFromOrders($orders),
                 'metadata' => $metadata,
@@ -1309,12 +1295,7 @@ class PosOrderService
                 $remaining = round($remaining - $share, 2);
             }
 
-            $taxAmount = $this->calculateTaxAmount($workspace, $orderSubtotal, $share);
-            $order->update([
-                'discount_amount' => $share,
-                'tax_amount' => $taxAmount,
-                'total_amount' => max(0, round($orderSubtotal - $share + $taxAmount, 2)),
-            ]);
+            $this->persistCalculatedOrderTax($order, $workspace, $share);
         }
     }
 
@@ -1342,6 +1323,8 @@ class PosOrderService
                 continue;
             }
 
+            $lineTaxable = Money::round($group->sum(fn (OrderItem $item): float => (float) ($item->taxable_amount ?? $item->total_amount)));
+            $lineTax = Money::round($group->sum(fn (OrderItem $item): float => (float) ($item->tax_amount ?? 0)));
             $invoice->items()->create([
                 'workspace_id' => $invoice->workspace_id,
                 'pos_cashier_invoice_id' => $invoice->id,
@@ -1351,8 +1334,11 @@ class PosOrderService
                 'size_label' => $first->variant_name,
                 'quantity' => (int) $group->sum('quantity'),
                 'unit_price' => $first->unit_price,
-                'discount_amount' => round((float) $group->sum('discount_amount'), 2),
-                'total_amount' => round((float) $group->sum('total_amount'), 2),
+                'discount_amount' => Money::round($group->sum('discount_amount')),
+                'taxable_amount' => $lineTaxable,
+                'tax_rate' => $this->posTaxCalculator->effectiveRate($lineTaxable, $lineTax, (float) ($first->tax_rate ?? 0)),
+                'tax_amount' => $lineTax,
+                'total_amount' => Money::round($group->sum('total_amount')),
             ]);
         }
     }
@@ -1661,14 +1647,8 @@ class PosOrderService
         $this->syncInventoryForPosLine($deltaItem);
 
         $order = Order::withoutGlobalScopes()->whereKey($line->order_id)->lockForUpdate()->firstOrFail();
-        $subtotal = (float) OrderItem::query()->where('order_id', $order->id)->sum('total_amount');
         $workspace ??= Workspace::withoutGlobalScopes()->find($order->workspace_id);
-        $taxAmount = $this->calculateTaxAmount($workspace, $subtotal, (float) $order->discount_amount);
-        $order->update([
-            'subtotal' => round($subtotal, 2),
-            'tax_amount' => $taxAmount,
-            'total_amount' => max(0, round($subtotal - (float) $order->discount_amount + $taxAmount, 2)),
-        ]);
+        $this->persistCalculatedOrderTax($order, $workspace, (float) $order->discount_amount);
     }
 
     /**
@@ -1694,15 +1674,21 @@ class PosOrderService
         ?float $subtotalAmount = null,
         ?Carbon $placedAt = null,
     ): Order {
-        $subtotal = round($subtotalAmount ?? (float) $items->sum('total_amount'), 2);
-        $discountAmount = max(0, round($discountAmount, 2));
+        $subtotal = Money::round($subtotalAmount ?? (float) $items->sum('total_amount'));
+        $discountAmount = max(0, Money::round($discountAmount));
         $resolvedTax = $taxAmount !== null
-            ? round($taxAmount, 2)
+            ? Money::round($taxAmount)
             : $this->calculateTaxAmount($workspace, $subtotal, $discountAmount);
         $total = $totalAmount !== null
-            ? round($totalAmount, 2)
-            : max(0, round($subtotal - $discountAmount + $resolvedTax, 2));
+            ? Money::round($totalAmount)
+            : max(0, Money::round($subtotal - $discountAmount + $resolvedTax));
         $taxAmount = $resolvedTax;
+        $taxRate = $this->posTaxCalculator->effectiveRate(
+            $this->posTaxCalculator->taxableAmount($subtotal, $discountAmount),
+            $taxAmount,
+            $this->posTaxCalculator->workspaceRate($workspace),
+        );
+        $items = $this->posTaxCalculator->attachLineTax($items, $taxAmount, $taxRate);
 
         $order = Order::query()->create([
             'workspace_id' => $workspace->id,
@@ -1722,6 +1708,7 @@ class PosOrderService
             'subtotal' => $subtotal,
             'discount_amount' => $discountAmount,
             'tax_amount' => $taxAmount,
+            'tax_rate' => $taxRate,
             'shipping_amount' => 0,
             'total_amount' => $total,
             'notes' => $notes,
@@ -1742,7 +1729,10 @@ class PosOrderService
                 'sku' => null,
                 'quantity' => $item['quantity'],
                 'unit_price' => $item['unit_price'],
-                'discount_amount' => round((float) ($item['discount_amount'] ?? 0), 2),
+                'discount_amount' => Money::round($item['discount_amount'] ?? 0),
+                'taxable_amount' => $item['taxable_amount'] ?? null,
+                'tax_rate' => $item['tax_rate'] ?? null,
+                'tax_amount' => $item['tax_amount'] ?? null,
                 'total_amount' => $item['total_amount'],
             ]);
 
@@ -1783,10 +1773,18 @@ class PosOrderService
         }
 
         $workspaceId = (int) $orders->first()->workspace_id;
+        $workspace = Workspace::withoutGlobalScopes()->find($workspaceId);
         $currency = $this->resolveCurrencyFromOrders($orders);
-        $subtotal = round((float) $orders->sum(fn (Order $order) => (float) $order->subtotal), 2);
-        $discount = round((float) $orders->sum(fn (Order $order) => (float) $order->discount_amount), 2);
-        $total = round((float) $orders->sum(fn (Order $order) => (float) $order->total_amount), 2);
+        $subtotal = Money::round($orders->sum(fn (Order $order): float => (float) $order->subtotal));
+        $discount = Money::round($orders->sum(fn (Order $order): float => (float) $order->discount_amount));
+        $total = Money::round($orders->sum(fn (Order $order): float => (float) $order->total_amount));
+        $tax = Money::round($orders->sum(fn (Order $order): float => (float) $order->tax_amount));
+        $taxable = $this->posTaxCalculator->taxableAmount($subtotal, $discount);
+        $taxRate = $this->posTaxCalculator->effectiveRate(
+            $taxable,
+            $tax,
+            $this->effectiveOrderTaxRate($orders, $workspace),
+        );
 
         $invoice = $this->persistCashierInvoice($workspaceId, [
             'dining_table_id' => $table?->id,
@@ -1796,6 +1794,9 @@ class PosOrderService
             'currency' => $currency,
             'subtotal' => $subtotal,
             'discount_amount' => $discount,
+            'taxable_amount' => $taxable,
+            'tax_rate' => $taxRate,
+            'tax_amount' => $tax,
             'total_amount' => $total,
             'closed_at' => $closedAt ?? now(),
             'metadata' => [
@@ -1822,8 +1823,10 @@ class PosOrderService
             }
 
             $quantity = (int) $group->sum('quantity');
-            $discountAmount = round((float) $group->sum('discount_amount'), 2);
-            $lineTotal = round((float) $group->sum('total_amount'), 2);
+            $discountAmount = Money::round($group->sum('discount_amount'));
+            $lineTotal = Money::round($group->sum('total_amount'));
+            $lineTaxable = Money::round($group->sum(fn (OrderItem $item): float => (float) ($item->taxable_amount ?? $item->total_amount)));
+            $lineTax = Money::round($group->sum(fn (OrderItem $item): float => (float) ($item->tax_amount ?? 0)));
 
             $invoice->items()->create([
                 'workspace_id' => $workspaceId,
@@ -1834,6 +1837,9 @@ class PosOrderService
                 'size_label' => $first->variant_name,
                 'quantity' => $quantity,
                 'unit_price' => $first->unit_price,
+                'taxable_amount' => $lineTaxable,
+                'tax_rate' => $this->posTaxCalculator->effectiveRate($lineTaxable, $lineTax, (float) ($first->tax_rate ?? $taxRate)),
+                'tax_amount' => $lineTax,
                 'discount_amount' => $discountAmount,
                 'total_amount' => $lineTotal,
             ]);
@@ -2264,18 +2270,62 @@ class PosOrderService
 
     private function calculateTaxAmount(?Workspace $workspace, float $subtotal, float $discountAmount): float
     {
-        if (! $workspace) {
-            return 0.0;
+        return $this->posTaxCalculator->taxAmount($workspace, $subtotal, $discountAmount);
+    }
+
+    /**
+     * Recalculate and persist order + line tax from current items using the POS tax engine.
+     */
+    private function persistCalculatedOrderTax(Order $order, ?Workspace $workspace, float $discountAmount): void
+    {
+        $subtotal = Money::round(OrderItem::query()->where('order_id', $order->id)->sum('total_amount'));
+        $discountAmount = max(0, Money::round($discountAmount));
+        $taxAmount = $this->calculateTaxAmount($workspace, $subtotal, $discountAmount);
+        $taxRate = $this->posTaxCalculator->effectiveRate(
+            $this->posTaxCalculator->taxableAmount($subtotal, $discountAmount),
+            $taxAmount,
+            $this->posTaxCalculator->workspaceRate($workspace),
+        );
+
+        $order->update([
+            'subtotal' => $subtotal,
+            'discount_amount' => $discountAmount,
+            'tax_amount' => $taxAmount,
+            'tax_rate' => $taxRate,
+            'total_amount' => max(0, Money::round($subtotal - $discountAmount + $taxAmount)),
+        ]);
+
+        $lines = $order->items()->get()->map(fn (OrderItem $item): array => [
+            'id' => $item->id,
+            'total_amount' => (float) $item->total_amount,
+        ]);
+        $allocated = $this->posTaxCalculator->attachLineTax($lines, $taxAmount, $taxRate);
+        foreach ($allocated as $row) {
+            OrderItem::query()->whereKey($row['id'])->update([
+                'taxable_amount' => $row['taxable_amount'],
+                'tax_rate' => $row['tax_rate'],
+                'tax_amount' => $row['tax_amount'],
+            ]);
+        }
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     */
+    private function effectiveOrderTaxRate(Collection $orders, ?Workspace $workspace): float
+    {
+        $rates = $orders
+            ->pluck('tax_rate')
+            ->filter(fn ($rate): bool => $rate !== null && $rate !== '')
+            ->map(fn ($rate): float => Money::round($rate))
+            ->unique()
+            ->values();
+
+        if ($rates->count() === 1) {
+            return (float) $rates->first();
         }
 
-        $rate = (float) data_get($workspace->settings ?? [], 'pos.tax_rate', 0);
-        if ($rate <= 0) {
-            return 0.0;
-        }
-
-        $taxable = max(0, $subtotal - $discountAmount);
-
-        return max(0, round($taxable * ($rate / 100), 2));
+        return $this->posTaxCalculator->workspaceRate($workspace);
     }
 
     private function normalizeClientReference(mixed $reference): ?string

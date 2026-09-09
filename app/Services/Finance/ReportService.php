@@ -48,6 +48,7 @@ class ReportService
                     ->on('customers.workspace_id', '=', 'finance_invoices.workspace_id');
             })
             ->groupBy('customers.id', 'customers.name', 'finance_invoices.customer_name')
+            ->selectRaw('customers.id as customer_id')
             ->selectRaw("COALESCE(customers.name, finance_invoices.customer_name, 'عميل غير محدد') as customer_name")
             ->selectRaw('COALESCE(SUM(finance_invoices.total), 0) as total')
             ->orderByDesc('total')
@@ -85,6 +86,24 @@ class ReportService
         $outputVat += $noteVat['sales'];
         $inputVatPurchase += $noteVat['purchase'];
         $inputVat = $inputVatPurchase + $inputVatExpense;
+
+        $noteTotals = $this->issuedNoteTotalsByInvoiceType($from, $to);
+        if ($salesSummary) {
+            $salesSummary->total_sales = round((float) $salesSummary->total_sales + $noteTotals['sales'], 2);
+        }
+        if ($purchaseSummary) {
+            $purchaseSummary->total_purchases = round((float) $purchaseSummary->total_purchases + $noteTotals['purchase'], 2);
+        }
+
+        $noteByCustomer = $this->issuedNoteTotalsByCustomer($from, $to);
+        $salesByCustomer = $salesByCustomer->map(function ($row) use ($noteByCustomer) {
+            $customerId = (int) ($row->customer_id ?? 0);
+            if ($customerId > 0 && array_key_exists($customerId, $noteByCustomer)) {
+                $row->total = round((float) $row->total + $noteByCustomer[$customerId], 2);
+            }
+
+            return $row;
+        });
 
         return [
             'salesSummary' => $salesSummary,
@@ -134,6 +153,75 @@ class ReportService
             $adjustments[$invoiceType] += ((string) $row->note_type) === FinanceCreditNote::TYPE_CREDIT
                 ? -$tax
                 : $tax;
+        }
+
+        return $adjustments;
+    }
+
+    /**
+     * Issued credit notes reduce sales/purchase totals; issued debit notes increase them.
+     *
+     * @return array{sales: float, purchase: float}
+     */
+    private function issuedNoteTotalsByInvoiceType(string $from, string $to): array
+    {
+        $adjustments = ['sales' => 0.0, 'purchase' => 0.0];
+
+        $rows = FinanceCreditNote::query()
+            ->selectRaw('finance_invoices.type as invoice_type')
+            ->selectRaw('finance_credit_notes.type as note_type')
+            ->selectRaw('COALESCE(SUM(finance_credit_notes.total), 0) as note_total')
+            ->join('finance_invoices', function ($join): void {
+                $join->on('finance_invoices.id', '=', 'finance_credit_notes.invoice_id')
+                    ->on('finance_invoices.workspace_id', '=', 'finance_credit_notes.workspace_id');
+            })
+            ->where('finance_credit_notes.status', FinanceCreditNote::STATUS_ISSUED)
+            ->whereBetween('finance_credit_notes.issue_date', [$from, $to])
+            ->groupBy('finance_invoices.type', 'finance_credit_notes.type')
+            ->get();
+
+        foreach ($rows as $row) {
+            $invoiceType = (string) $row->invoice_type;
+            if (! array_key_exists($invoiceType, $adjustments)) {
+                continue;
+            }
+
+            $total = (float) $row->note_total;
+            $adjustments[$invoiceType] += ((string) $row->note_type) === FinanceCreditNote::TYPE_CREDIT
+                ? -$total
+                : $total;
+        }
+
+        return $adjustments;
+    }
+
+    /**
+     * @return array<int, float>
+     */
+    private function issuedNoteTotalsByCustomer(string $from, string $to): array
+    {
+        $adjustments = [];
+
+        $rows = FinanceCreditNote::query()
+            ->selectRaw('finance_credit_notes.customer_id as customer_id')
+            ->selectRaw('finance_credit_notes.type as note_type')
+            ->selectRaw('COALESCE(SUM(finance_credit_notes.total), 0) as note_total')
+            ->join('finance_invoices', function ($join): void {
+                $join->on('finance_invoices.id', '=', 'finance_credit_notes.invoice_id')
+                    ->on('finance_invoices.workspace_id', '=', 'finance_credit_notes.workspace_id');
+            })
+            ->where('finance_credit_notes.status', FinanceCreditNote::STATUS_ISSUED)
+            ->where('finance_invoices.type', 'sales')
+            ->whereBetween('finance_credit_notes.issue_date', [$from, $to])
+            ->whereNotNull('finance_credit_notes.customer_id')
+            ->groupBy('finance_credit_notes.customer_id', 'finance_credit_notes.type')
+            ->get();
+
+        foreach ($rows as $row) {
+            $customerId = (int) $row->customer_id;
+            $total = (float) $row->note_total;
+            $delta = ((string) $row->note_type) === FinanceCreditNote::TYPE_CREDIT ? -$total : $total;
+            $adjustments[$customerId] = ($adjustments[$customerId] ?? 0.0) + $delta;
         }
 
         return $adjustments;
