@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,16 +49,56 @@ class _TableDetailScreenState extends ConsumerState<TableDetailScreen> {
   String _filter = 'all';
   final _search = TextEditingController();
 
+  StreamSubscription<void>? _activitySub;
+  var _reloading = false;
+  var _reloadQueued = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _subscribeLocalActivity();
+    });
   }
 
   @override
   void dispose() {
+    _activitySub?.cancel();
     _search.dispose();
     super.dispose();
+  }
+
+  /// SQLite is the display source. Sync pull (QR orders, remote close,
+  /// session changes) and other screens write there; reload on any change
+  /// touching this table so the open detail never shows a stale sitting.
+  void _subscribeLocalActivity() {
+    _activitySub?.cancel();
+    final workspaceId = _workspaceId;
+    if (workspaceId == null || workspaceId <= 0) return;
+    _activitySub = ref
+        .read(tablesRepositoryProvider)
+        .watchTableActivity(workspaceId, widget.tableId)
+        .listen((_) => _reloadFromLocal());
+  }
+
+  /// Coalesces bursts of SQLite notifications into one reload at a time
+  /// (no timers: a reload already running simply schedules one follow-up).
+  Future<void> _reloadFromLocal() async {
+    if (!mounted) return;
+    if (_reloading) {
+      _reloadQueued = true;
+      return;
+    }
+    _reloading = true;
+    try {
+      do {
+        _reloadQueued = false;
+        await _load();
+      } while (_reloadQueued && mounted);
+    } finally {
+      _reloading = false;
+    }
   }
 
   int? get _sessionId {

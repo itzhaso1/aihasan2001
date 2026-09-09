@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hasim_cashier/core/local_db/app_database.dart';
 import 'package:hasim_cashier/core/local_db/local_ids.dart';
@@ -365,6 +365,233 @@ void main() {
     expect(
       ConflictStrategy.forDomain('discount'),
       ConflictPolicy.detectAndRecord,
+    );
+  });
+
+  test('catch-up push after pull still syncs the first sitting invoice', () async {
+    await seedTable();
+    var pulls = 0;
+    final calls = <String>[];
+    final engine = SyncEngineV2(
+      db,
+      queue,
+      postOrder: (payload, key) async {
+        calls.add('order:$key');
+        return {'id': 801, ...payload};
+      },
+      postSessionOpen: (tableId, key) async {
+        calls.add('open:$key');
+        return {
+          'session_id': 91,
+          'table_id': tableId,
+          'status': 'open',
+          'opened_at': DateTime.now().toUtc().toIso8601String(),
+        };
+      },
+      postSessionClose: (tableId, sessionId, payload, key) async {
+        calls.add('close:$key');
+        expect(sessionId, 91);
+        return {
+          'invoice': {
+            'id': 61,
+            'invoice_number': 'INV-61',
+            'total_amount': 10,
+            'currency': 'SAR',
+            'payment_method': payload['payment_method'],
+          },
+        };
+      },
+      postInvoice: (orderServerId, key) async {
+        calls.add('invoice:$key');
+        expect(orderServerId, 801);
+        return {
+          'invoice_id': 61,
+          'id': 61,
+          'invoice_number': 'INV-61',
+          'total_amount': 10,
+          'currency': 'SAR',
+        };
+      },
+      fetchChanges: (since, limit) async {
+        pulls++;
+        if (pulls == 1) {
+          await tables.openSessionLocal(
+            workspaceId: 1,
+            deviceId: 'dev-1',
+            tableServerId: 10,
+          );
+          await orders.createTableOrder(
+            workspaceId: 1,
+            deviceId: 'dev-1',
+            tableId: 10,
+            clientReference: 'first-inv',
+            items: [
+              {
+                'pos_menu_item_id': 1,
+                'name': 'شاي',
+                'quantity': 2,
+                'unit_price': 5,
+                'total_amount': 10,
+              },
+            ],
+          );
+          await tables.closeSessionLocal(
+            workspaceId: 1,
+            deviceId: 'dev-1',
+            tableServerId: 10,
+            paymentMethod: 'cash',
+          );
+        }
+        return {
+          'cursor': since,
+          'server_cursor': since,
+          'has_more': false,
+          'changes': const [],
+        };
+      },
+    );
+
+    final result = await engine.syncBidirectional(workspaceId: 1);
+    expect(result.failed, 0);
+    expect(result.synced, greaterThan(0));
+    expect(calls.first, startsWith('open:'));
+    expect(calls, contains('order:first-inv'));
+    expect(calls.any((c) => c.startsWith('invoice:')), isTrue);
+    expect(calls.last, startsWith('close:'));
+    expect(await queue.pendingForWorkspace(1), isEmpty);
+
+    final invoices = await db.select(db.localInvoices).get();
+    expect(invoices, hasLength(1));
+    expect(invoices.single.syncStatus, 'synced');
+    expect(invoices.single.serverId, 61);
+  });
+
+  test('close waits for open then clears opened_at; reopen starts a new clock',
+      () async {
+    await seedTable();
+    var openCalls = 0;
+    var closeCalls = 0;
+    final engine = SyncEngineV2(
+      db,
+      queue,
+      postOrder: (payload, key) async => {'id': 802, ...payload},
+      postSessionOpen: (tableId, key) async {
+        openCalls++;
+        return {
+          'session_id': 44,
+          'table_id': tableId,
+          'status': 'open',
+          'opened_at': '2026-09-09T10:00:00.000Z',
+        };
+      },
+      postSessionClose: (tableId, sessionId, payload, key) async {
+        closeCalls++;
+        expect(sessionId, 44);
+        return {'invoice': null, 'already_closed': false};
+      },
+      postInvoice: (orderServerId, key) async => {
+        'invoice_id': 70,
+        'id': 70,
+        'invoice_number': 'INV-70',
+        'total_amount': 5,
+        'currency': 'SAR',
+      },
+    );
+
+    await tables.openSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 10,
+    );
+    await orders.createTableOrder(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableId: 10,
+      clientReference: 'sess-ord',
+      items: [
+        {
+          'pos_menu_item_id': 1,
+          'name': 'شاي',
+          'quantity': 1,
+          'unit_price': 5,
+          'total_amount': 5,
+        },
+      ],
+    );
+    await tables.closeSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 10,
+      paymentMethod: 'cash',
+    );
+
+    final first = await engine.pushPending(workspaceId: 1);
+    expect(first.failed, 0);
+    expect(openCalls, 1);
+    expect(closeCalls, 1);
+
+    var closed = await tables.getTable(1, 10);
+    expect(closed?['status'], 'available');
+    expect(closed?['opened_at'], isNull);
+    expect(closed?['session_open'], isFalse);
+    expect(closed?['session_client_id'], isNull);
+
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final reopened = await tables.openSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 10,
+    );
+    expect(reopened['status'], 'occupied');
+    expect(reopened['session_open'], isTrue);
+    expect(reopened['opened_at'], isNotNull);
+    expect(reopened['opened_at'], isNot('2026-09-09T10:00:00.000Z'));
+    expect('${reopened['session_client_id']}', isNotEmpty);
+  });
+
+  test('close is not silently synced while session open is still pending',
+      () async {
+    await seedTable();
+    await tables.openSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 10,
+    );
+    await tables.closeSessionLocal(
+      workspaceId: 1,
+      deviceId: 'dev-1',
+      tableServerId: 10,
+      paymentMethod: 'cash',
+    );
+
+    var closeCalls = 0;
+    final engine = SyncEngineV2(
+      db,
+      queue,
+      postSessionOpen: (tableId, key) async {
+        throw StateError('open still starting');
+      },
+      postSessionClose: (tableId, sessionId, payload, key) async {
+        closeCalls++;
+        return {'already_closed': true};
+      },
+    );
+
+    final result = await engine.pushPending(workspaceId: 1);
+    expect(closeCalls, 0);
+    expect(result.synced, 0);
+    final pending = await queue.pendingForWorkspace(1);
+    expect(
+      pending.any(
+        (r) => r.entityType == 'table_session' && r.operation == 'close',
+      ),
+      isTrue,
+    );
+    expect(
+      pending.any(
+        (r) => r.entityType == 'table_session' && r.operation == 'open',
+      ),
+      isTrue,
     );
   });
 }

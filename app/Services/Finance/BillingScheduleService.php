@@ -147,6 +147,10 @@ class BillingScheduleService
                 return null;
             }
 
+            if ($this->contractBlocksBilling($locked)) {
+                return null;
+            }
+
             $onDate = ($onDate ?? now())->startOfDay();
             if ($locked->next_run_on && $locked->next_run_on->startOfDay()->gt($onDate)) {
                 return null;
@@ -334,6 +338,28 @@ class BillingScheduleService
         }
 
         return $items;
+    }
+
+    private function contractBlocksBilling(FinanceBillingSchedule $schedule): bool
+    {
+        if (! $schedule->contract_id) {
+            return false;
+        }
+
+        $contract = Contract::withoutGlobalScopes()->whereKey($schedule->contract_id)->first();
+        if (! $contract) {
+            return true;
+        }
+
+        if (in_array((string) $contract->status, ['closed', 'cancelled'], true)) {
+            return true;
+        }
+
+        if ($contract->end_date && $contract->end_date->startOfDay()->lt(now()->startOfDay())) {
+            return true;
+        }
+
+        return false;
     }
 
     private function occurrenceKey(FinanceBillingSchedule $schedule, string $occurrenceDate): string

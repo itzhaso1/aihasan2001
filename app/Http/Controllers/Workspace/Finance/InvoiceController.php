@@ -117,6 +117,9 @@ class InvoiceController extends FinanceBaseController
         $this->financeBootstrapService->ensureWorkspaceFinanceSetup($workspace);
 
         $validated = $this->validatedInvoicePayload($request, $workspace->id);
+        if (((string) ($validated['invoice_status'] ?? 'issued')) === 'issued') {
+            $this->authorizeFinance($request, 'invoices.issue');
+        }
 
         try {
             $invoice = $this->invoiceService->create($workspace, $validated, (int) $request->user()?->id);
@@ -167,6 +170,20 @@ class InvoiceController extends FinanceBaseController
         }
 
         return redirect()->route('workspace.finance.invoices.show', $updated)->with('success', 'تم تحديث مسودة الفاتورة.');
+    }
+
+    public function destroy(Request $request, FinanceInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'invoices.delete');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        try {
+            $this->invoiceService->deleteDraft($invoice);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('workspace.finance.invoices.index')->with('success', 'تم حذف مسودة الفاتورة.');
     }
 
     public function show(Request $request, FinanceInvoice $invoice): View
@@ -254,7 +271,7 @@ class InvoiceController extends FinanceBaseController
 
     public function issue(Request $request, FinanceInvoice $invoice): RedirectResponse
     {
-        $this->authorizeFinance($request, 'invoices.edit');
+        $this->authorizeFinance($request, 'invoices.issue');
         $this->assertSameWorkspace($invoice->workspace_id);
 
         try {

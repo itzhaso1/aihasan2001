@@ -168,6 +168,7 @@ class AppServiceProvider extends ServiceProvider
         DiningTable::observe(WorkspaceAuditObserver::class);
         DiningTable::observe(PosSyncChangeObserver::class);
         TableSession::observe(WorkspaceAuditObserver::class);
+        TableSession::observe(PosSyncChangeObserver::class);
         PosItemCategory::observe(WorkspaceAuditObserver::class);
         PosItemCategory::observe(PosSyncChangeObserver::class);
         PosMenuItem::observe(WorkspaceAuditObserver::class);

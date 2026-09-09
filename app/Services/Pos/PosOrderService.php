@@ -18,6 +18,7 @@ use App\Services\Audit\AuditLogService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Order\OrderService;
 use App\Services\Payment\PaymentService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -49,7 +50,11 @@ class PosOrderService
             $offlineSale = $this->isOfflineCashierSale($payload);
 
             if ($offlineSale) {
-                [$table, $session] = $this->resolveTableWithoutOpeningSession($workspace->id, $diningTableId);
+                [$table, $session] = $this->resolveTableWithoutOpeningSession(
+                    $workspace->id,
+                    $diningTableId,
+                    attachOpenSession: $this->isLiveTableTicket($payload),
+                );
             } else {
                 [$table, $session] = $this->resolveTableAndSession($workspace->id, $diningTableId);
             }
@@ -104,7 +109,15 @@ class PosOrderService
                 $metadata['kitchen_item_notes'] = $kitchenItemNotes;
             }
 
+            $clientReference = $this->normalizeClientReference($payload['client_reference'] ?? null);
+
             if ($table && $session && ! $offlineSale) {
+                // A client_reference means the device owns this order as its
+                // own entity (offline SQLite row that will be reconciled by
+                // id). Folding its lines into another order would leave the
+                // device with two local orders mapped to one server order and
+                // double-counted quantities on the next pull. Only anonymous
+                // additions (no client_reference) merge into the sitting.
                 $order = $this->mergeOrCreateSessionOrder(
                     workspace: $workspace,
                     table: $table,
@@ -116,7 +129,8 @@ class PosOrderService
                     notes: $payload['notes'] ?? null,
                     metadata: $metadata,
                     orderType: $orderType,
-                    clientReference: $this->normalizeClientReference($payload['client_reference'] ?? null),
+                    clientReference: $clientReference,
+                    mergeLines: $clientReference === null,
                 );
             } else {
                 $order = $this->createOrderWithSnapshots(
@@ -131,7 +145,7 @@ class PosOrderService
                     metadata: $metadata,
                     currency: $financials['currency'],
                     orderType: $orderType,
-                    clientReference: $this->normalizeClientReference($payload['client_reference'] ?? null),
+                    clientReference: $clientReference,
                     taxAmount: $financials['tax_amount'],
                     totalAmount: $financials['total_amount'],
                     subtotalAmount: $financials['subtotal'],
@@ -950,7 +964,10 @@ class PosOrderService
             throw new RuntimeException('لا يمكن إصدار فاتورة لطلب ملغي.');
         }
 
-        if ($order->table_session_id) {
+        $metadata = is_array($order->metadata) ? $order->metadata : [];
+        $offlineSale = filter_var($metadata['offline_sale'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $alreadyPaid = $order->payment_status === 'paid';
+        if ($order->table_session_id && ! $offlineSale && ! $alreadyPaid) {
             $session = TableSession::query()->whereKey($order->table_session_id)->first();
             if ($session && $session->status === 'open') {
                 throw new RuntimeException('لطلبات الطاولات: أغلق الجلسة لإصدار فاتورة نهائية واحدة.');
@@ -1412,10 +1429,17 @@ class PosOrderService
      * Offline cashier invoices must not open or merge a live table session.
      * The sale already has a local invoice; attach dining_table_id only.
      *
-     * @return array{0: ?DiningTable, 1: null}
+     * A live (unpaid) cashier table order, however, belongs to the sitting the
+     * cashier already opened on this table — without it Laravel shows the
+     * table occupied with nothing on it. Never opens a session here.
+     *
+     * @return array{0: ?DiningTable, 1: ?TableSession}
      */
-    private function resolveTableWithoutOpeningSession(int $workspaceId, mixed $diningTableId): array
-    {
+    private function resolveTableWithoutOpeningSession(
+        int $workspaceId,
+        mixed $diningTableId,
+        bool $attachOpenSession = false,
+    ): array {
         if (empty($diningTableId)) {
             return [null, null];
         }
@@ -1428,7 +1452,30 @@ class PosOrderService
             throw new RuntimeException('الطاولة المحددة غير صالحة.');
         }
 
-        return [$table, null];
+        $session = null;
+        if ($attachOpenSession) {
+            $session = TableSession::query()
+                ->where('dining_table_id', $table->id)
+                ->where('status', 'open')
+                ->latest('id')
+                ->first();
+        }
+
+        return [$table, $session];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function isLiveTableTicket(array $payload): bool
+    {
+        $paymentStatus = strtolower(trim((string) ($payload['payment_status'] ?? '')));
+        $posStatus = strtolower(trim((string) ($payload['pos_status'] ?? '')));
+
+        // Only an explicitly unpaid, still-running ticket is part of the
+        // sitting. Checkout sales (invoiced right away) carry no such flag.
+        return $paymentStatus === 'unpaid'
+            && ! in_array($posStatus, ['completed', 'cancelled'], true);
     }
 
     /**
@@ -1476,12 +1523,13 @@ class PosOrderService
         ?array $metadata,
         string $orderType = Order::ORDER_TYPE_TABLE,
         ?string $clientReference = null,
+        bool $mergeLines = true,
     ): Order {
         $remaining = collect();
         $lastTouched = null;
 
         foreach ($items as $item) {
-            $existingLine = $this->findMergeableSessionLine($session, $item);
+            $existingLine = $mergeLines ? $this->findMergeableSessionLine($session, $item) : null;
             if ($existingLine) {
                 $this->increaseOrderItemQuantity($existingLine, (int) $item['quantity'], $workspace);
                 $lastTouched = $existingLine->order()->with(['items', 'customer', 'table', 'tableSession'])->first();
@@ -1700,12 +1748,10 @@ class PosOrderService
         $discount = round((float) $orders->sum(fn (Order $order) => (float) $order->discount_amount), 2);
         $total = round((float) $orders->sum(fn (Order $order) => (float) $order->total_amount), 2);
 
-        $invoice = PosCashierInvoice::query()->create([
-            'workspace_id' => $workspaceId,
+        $invoice = $this->persistCashierInvoice($workspaceId, [
             'dining_table_id' => $table?->id,
             'table_session_id' => $session?->id,
             'closed_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
-            'invoice_number' => $this->nextCashierInvoiceNumber(),
             'status' => 'closed',
             'currency' => $currency,
             'subtotal' => $subtotal,
@@ -1763,11 +1809,53 @@ class PosOrderService
         return 'POS-'.str_pad((string) $lastId, 8, '0', STR_PAD_LEFT);
     }
 
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function persistCashierInvoice(int $workspaceId, array $attributes): PosCashierInvoice
+    {
+        return DB::transaction(function () use ($workspaceId, $attributes): PosCashierInvoice {
+            $attempt = 0;
+            while ($attempt < 2) {
+                try {
+                    return PosCashierInvoice::query()->create([
+                        ...$attributes,
+                        'workspace_id' => $workspaceId,
+                        'invoice_number' => $this->nextCashierInvoiceNumber(),
+                    ]);
+                } catch (UniqueConstraintViolationException $exception) {
+                    $attempt++;
+                    if ($attempt >= 2) {
+                        throw $exception;
+                    }
+                }
+            }
+
+            throw new RuntimeException('تعذر توليد رقم فاتورة كاشير فريد.');
+        });
+    }
+
     private function nextCashierInvoiceNumber(): string
     {
-        $lastId = (PosCashierInvoice::withoutGlobalScopes()->max('id') ?? 0) + 1;
+        $last = PosCashierInvoice::withoutGlobalScopes()
+            ->orderByDesc('id')
+            ->lockForUpdate()
+            ->first();
 
-        return 'CASH-'.str_pad((string) $lastId, 8, '0', STR_PAD_LEFT);
+        $next = ((int) ($last?->id ?? 0)) + 1;
+
+        do {
+            $candidate = 'CASH-'.str_pad((string) $next, 8, '0', STR_PAD_LEFT);
+            $taken = PosCashierInvoice::withoutGlobalScopes()
+                ->where('invoice_number', $candidate)
+                ->exists();
+            if (! $taken) {
+                return $candidate;
+            }
+            $next++;
+        } while ($next < ((int) ($last?->id ?? 0)) + 1000);
+
+        throw new RuntimeException('تعذر توليد رقم فاتورة كاشير فريد.');
     }
 
     /**

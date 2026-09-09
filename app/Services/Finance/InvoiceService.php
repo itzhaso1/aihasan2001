@@ -469,6 +469,22 @@ class InvoiceService
         });
     }
 
+    public function deleteDraft(FinanceInvoice $invoice): void
+    {
+        DB::transaction(function () use ($invoice): void {
+            $locked = FinanceInvoice::withoutGlobalScopes()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->isFinanciallyLocked()) {
+                throw new RuntimeException('لا يمكن حذف فاتورة معتمدة أو ملغاة. استخدم الإلغاء أو إشعار دائن.');
+            }
+
+            $locked->delete();
+        });
+    }
+
     public function deleteAttachment(FinanceInvoiceAttachment $attachment): void
     {
         $invoice = FinanceInvoice::withoutGlobalScopes()->find($attachment->invoice_id);

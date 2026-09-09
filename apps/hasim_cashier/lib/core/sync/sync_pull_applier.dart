@@ -6,6 +6,8 @@ import 'package:uuid/uuid.dart';
 import '../local_db/app_database.dart';
 import '../pos/domain/pricing_service.dart';
 import '../local_db/local_ids.dart';
+import '../pos/table_session_orders.dart';
+import '../util/occupied_duration.dart';
 import '../local_db/workspace_scope.dart';
 import '../repositories/sync_conflict_repository.dart';
 
@@ -60,11 +62,29 @@ class SyncPullApplier {
 
         switch (entity) {
           case 'product':
-            await _applyProduct(workspaceId, operation, entityId, data);
+            await _applyProduct(
+              workspaceId,
+              operation,
+              entityId,
+              data,
+              version: version,
+            );
           case 'category':
-            await _applyCategory(workspaceId, operation, entityId, data);
+            await _applyCategory(
+              workspaceId,
+              operation,
+              entityId,
+              data,
+              version: version,
+            );
           case 'table':
-            await _applyTable(workspaceId, operation, entityId, data);
+            await _applyTable(
+              workspaceId,
+              operation,
+              entityId,
+              data,
+              version: version,
+            );
           case 'order':
             await _applyOrder(
               workspaceId: workspaceId,
@@ -131,14 +151,16 @@ class SyncPullApplier {
     int workspaceId,
     String operation,
     int? serverId,
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    int? version,
+  }) async {
     if (serverId == null || serverId <= 0) return;
     final existing = await (_db.select(_db.localProducts)..where(
           (t) =>
               t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId),
         ))
         .getSingleOrNull();
+    if (_isStaleVersion(version, existing?.serverVersion)) return;
     final localId = existing?.localId ?? LocalIds.product(workspaceId, serverId);
     if (operation == 'delete') {
       await (_db.update(_db.localProducts)
@@ -150,6 +172,8 @@ class SyncPullApplier {
           isDeleted: const Value(true),
           isActive: const Value(false),
           updatedAt: Value(DateTime.now()),
+          serverVersion:
+              version == null ? const Value.absent() : Value(version),
         ),
       );
       return;
@@ -186,7 +210,7 @@ class SyncPullApplier {
           payloadJson: Value(jsonEncode({...data, 'id': serverId})),
           stock: Value((data['stock'] as num?)?.toInt() ?? existing.stock),
           updatedAt: Value(now),
-          serverVersion: Value((data['version'] as num?)?.toInt()),
+          serverVersion: Value(version ?? (data['version'] as num?)?.toInt()),
         ),
       );
       return;
@@ -208,7 +232,7 @@ class SyncPullApplier {
             payloadJson: Value(jsonEncode({...data, 'id': serverId})),
             stock: Value((data['stock'] as num?)?.toInt() ?? existing?.stock),
             updatedAt: now,
-            serverVersion: Value((data['version'] as num?)?.toInt()),
+            serverVersion: Value(version ?? (data['version'] as num?)?.toInt()),
           ),
         );
   }
@@ -217,16 +241,20 @@ class SyncPullApplier {
     int workspaceId,
     String operation,
     int? serverId,
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    int? version,
+  }) async {
     if (serverId == null || serverId <= 0) return;
     final existing = await (_db.select(_db.localCategories)..where(
           (t) =>
               t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId),
         ))
         .getSingleOrNull();
+    if (_isStaleVersion(version, existing?.serverVersion)) return;
     final localId =
         existing?.localId ?? LocalIds.category(workspaceId, serverId);
+    final versionValue =
+        version == null ? const Value<int?>.absent() : Value<int?>(version);
     if (operation == 'delete') {
       await (_db.update(_db.localCategories)
             ..where((t) =>
@@ -237,6 +265,7 @@ class SyncPullApplier {
           isDeleted: const Value(true),
           isActive: const Value(false),
           updatedAt: Value(DateTime.now()),
+          serverVersion: versionValue,
         ),
       );
       return;
@@ -254,6 +283,7 @@ class SyncPullApplier {
           isActive: Value(data['is_active'] != false),
           isDeleted: const Value(false),
           updatedAt: Value(DateTime.now()),
+          serverVersion: versionValue,
         ),
       );
       return;
@@ -271,6 +301,7 @@ class SyncPullApplier {
             isActive: Value(data['is_active'] != false),
             isDeleted: const Value(false),
             updatedAt: DateTime.now(),
+            serverVersion: versionValue,
           ),
         );
   }
@@ -279,13 +310,17 @@ class SyncPullApplier {
     int workspaceId,
     String operation,
     int? serverId,
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    int? version,
+  }) async {
     if (serverId == null || serverId <= 0) return;
     final existing = await _findLocalTable(
       workspaceId: workspaceId,
       serverId: serverId,
     );
+    // Re-delivered history (cursor rollback / replay from 0) must be a no-op:
+    // the row already reflects a newer or equal server version.
+    if (_isStaleVersion(version, existing?.serverVersion)) return;
     final localId = existing?.localId ?? LocalIds.table(workspaceId, serverId);
     if (operation == 'delete') {
       await (_db.delete(_db.localTables)
@@ -303,8 +338,78 @@ class SyncPullApplier {
         if (decoded is Map) payload = Map<String, dynamic>.from(decoded);
       } catch (_) {}
     }
+    final localClient = '${payload['session_client_id'] ?? ''}'.trim();
+    final localOpenedAt = payload['opened_at'];
+    final remoteSessionId = data.containsKey('session_id')
+        ? (data['session_id'] as num?)?.toInt()
+        : null;
+    final remoteSessionOpen = data['session_open'] == true ||
+        (remoteSessionId != null && remoteSessionId > 0);
+    final pendingLocalClose = existing != null &&
+        await _hasPendingSessionClose(workspaceId, existing.localId);
+    final pendingLocalOpen = existing != null &&
+        await _hasPendingSessionOpen(workspaceId, existing.localId);
+    // A local sitting Laravel has not acknowledged yet (open still queued, or
+    // no server session id) must survive a pull that says "available" —
+    // otherwise offline opens get clobbered. Once the server knows the
+    // sitting (session_server_id set, open drained), Laravel is authoritative:
+    // "no open session" means it was closed there and must close here too.
+    final localOpenUnacked = existing != null &&
+        (pendingLocalOpen ||
+            existing.sessionServerId == null ||
+            existing.sessionServerId! <= 0);
+    // Laravel can keep status=available while a TableSession is still open
+    // (QR guest visit with no billable order yet). Occupancy follows the
+    // session, not the dining-table status flag alone.
+    final preserveLocalOpen = existing != null &&
+        existing.status == 'occupied' &&
+        localClient.isNotEmpty &&
+        localOpenUnacked &&
+        !remoteSessionOpen &&
+        !pendingLocalClose &&
+        (data['status'] == 'available' ||
+            data['session_open'] == false ||
+            data['session_id'] == null);
     payload.addAll(data);
     payload['id'] = serverId;
+    final status = '${data['status'] ?? existing?.status ?? 'available'}';
+    final available = pendingLocalClose ||
+        (!preserveLocalOpen &&
+            !remoteSessionOpen &&
+            (status == 'available' ||
+                status == 'closed' ||
+                data['session_open'] == false));
+    int? sessionServerId = existing?.sessionServerId;
+    if (data.containsKey('session_id')) {
+      sessionServerId = remoteSessionId;
+    }
+    if (available) {
+      sessionServerId = null;
+      payload['status'] = 'available';
+      payload['session_open'] = false;
+      payload['session_id'] = null;
+      payload['session_client_id'] = null;
+      payload['opened_at'] = null;
+      payload['orders'] = const [];
+    } else {
+      payload['status'] = (preserveLocalOpen || remoteSessionOpen)
+          ? 'occupied'
+          : status;
+      if (preserveLocalOpen) {
+        payload['session_client_id'] = localClient;
+        payload['session_open'] = true;
+        if (payload['opened_at'] == null) {
+          payload['opened_at'] = localOpenedAt;
+        }
+      }
+      if (sessionServerId != null && sessionServerId > 0) {
+        payload['session_id'] = sessionServerId;
+        payload['session_open'] = true;
+      }
+    }
+    final nextStatus = available
+        ? 'available'
+        : ((preserveLocalOpen || remoteSessionOpen) ? 'occupied' : status);
     if (existing != null) {
       await (_db.update(_db.localTables)
             ..where((t) => t.localId.equals(existing.localId)))
@@ -312,19 +417,28 @@ class SyncPullApplier {
         LocalTablesCompanion(
           serverId: Value(serverId),
           name: Value('${data['name'] ?? existing.name}'),
-          status: Value(
-            '${data['status'] ?? existing.status}',
-          ),
+          status: Value(nextStatus),
           capacity: Value(
             (data['capacity'] as num?)?.toInt() ?? existing.capacity,
           ),
-          sessionServerId: Value(
-            (data['session_id'] as num?)?.toInt() ?? existing.sessionServerId,
-          ),
+          sessionServerId: Value(sessionServerId),
           payloadJson: Value(jsonEncode(payload)),
           updatedAt: Value(DateTime.now()),
+          serverVersion:
+              version == null ? const Value.absent() : Value(version),
         ),
       );
+      if (available) {
+        await _closeOpenLocalSessions(existing.localId, DateTime.now());
+      } else if (sessionServerId != null && sessionServerId > 0) {
+        await _ensureServerTableSession(
+          workspaceId: workspaceId,
+          tableLocalId: existing.localId,
+          serverSessionId: sessionServerId,
+          openedAtRaw: data['opened_at'] ?? payload['opened_at'],
+          currentSessionLocalId: localClient,
+        );
+      }
       return;
     }
     await _db.into(_db.localTables).insertOnConflictUpdate(
@@ -333,19 +447,24 @@ class SyncPullApplier {
             workspaceId: workspaceId,
             serverId: Value(serverId),
             name: '${data['name'] ?? existing?.name ?? ''}',
-            status: Value(
-              '${data['status'] ?? existing?.status ?? 'available'}',
-            ),
+            status: Value(nextStatus),
             capacity: Value(
               (data['capacity'] as num?)?.toInt() ?? existing?.capacity,
             ),
-            sessionServerId: Value(
-              (data['session_id'] as num?)?.toInt() ?? existing?.sessionServerId,
-            ),
+            sessionServerId: Value(sessionServerId),
             payloadJson: Value(jsonEncode(payload)),
             updatedAt: DateTime.now(),
+            serverVersion: Value(version),
           ),
         );
+    if (!available && sessionServerId != null && sessionServerId > 0) {
+      await _ensureServerTableSession(
+        workspaceId: workspaceId,
+        tableLocalId: localId,
+        serverSessionId: sessionServerId,
+        openedAtRaw: data['opened_at'],
+      );
+    }
   }
 
   Future<void> _applyOrder({
@@ -366,6 +485,7 @@ class SyncPullApplier {
       clientRef: clientRef,
       serverId: serverId,
     );
+    if (_isStaleVersion(version, local?.serverVersion)) return;
 
     final isEcho = ourDeviceId != null &&
         originDeviceId != null &&
@@ -397,6 +517,7 @@ class SyncPullApplier {
           posStatus: const Value('cancelled'),
           syncStatus: const Value('synced'),
           serverId: Value(serverId ?? local.serverId),
+          serverVersion: Value(version),
           updatedAt: Value(DateTime.now()),
           syncedAt: Value(DateTime.now()),
         ),
@@ -443,12 +564,15 @@ class SyncPullApplier {
       now: now,
     );
     final sessionHint = '${data['session_local_id'] ?? ''}'.trim();
-    final sessionLocalId = await _db.existingFk(
-          'local_sessions',
-          'local_id',
-          sessionHint.isEmpty ? null : sessionHint,
-        ) ??
-        local?.sessionLocalId;
+    final tableSessionId = (data['table_session_id'] as num?)?.toInt();
+    final sessionLocalId = await _resolvePulledOrderSession(
+      workspaceId: workspaceId,
+      tableLocalId: tableLocalId,
+      tableSessionId: tableSessionId,
+      sessionHint: sessionHint,
+      fallbackSessionLocalId: local?.sessionLocalId,
+      openedAtRaw: data['placed_at'] ?? data['created_at'],
+    );
     await _db.into(_db.localOrders).insertOnConflictUpdate(
           LocalOrdersCompanion.insert(
             localId: localId,
@@ -483,9 +607,12 @@ class SyncPullApplier {
             posStatus: Value(_kitchenPosStatus(local: local, data: data)),
             paymentStatus: Value(_kitchenPaymentStatus(data['payment_status'])),
             syncStatus: const Value('synced'),
-            createdAt: local?.createdAt ?? now,
+            createdAt: local?.createdAt ??
+                parseOpenedAt(data['placed_at']) ??
+                now,
             updatedAt: now,
             syncedAt: Value(now),
+            serverVersion: Value(version),
           ),
         );
 
@@ -536,6 +663,16 @@ class SyncPullApplier {
             ),
           );
     }
+    await _attachPulledOrderToTable(
+      workspaceId: workspaceId,
+      tableLocalId: tableLocalId,
+      tableServerId: tableServerId,
+      sessionLocalId: sessionLocalId,
+      tableSessionId: tableSessionId,
+      orderLocalId: localId,
+      data: data,
+      now: now,
+    );
   }
 
   Future<void> _applyCustomer({
@@ -890,5 +1027,369 @@ class SyncPullApplier {
         ),
       );
     }
+  }
+
+  Future<String?> _resolvePulledOrderSession({
+    required int workspaceId,
+    required String? tableLocalId,
+    required int? tableSessionId,
+    required String sessionHint,
+    String? fallbackSessionLocalId,
+    Object? openedAtRaw,
+  }) async {
+    if (sessionHint.isNotEmpty) {
+      final hinted = await _db.existingFk(
+        'local_sessions',
+        'local_id',
+        sessionHint,
+      );
+      if (hinted != null) return hinted;
+    }
+    if (fallbackSessionLocalId != null &&
+        fallbackSessionLocalId.trim().isNotEmpty) {
+      final existing = await _db.existingFk(
+        'local_sessions',
+        'local_id',
+        fallbackSessionLocalId,
+      );
+      if (existing != null) return existing;
+    }
+    if (tableLocalId == null || tableLocalId.isEmpty) return null;
+    if (tableSessionId != null && tableSessionId > 0) {
+      return _ensureServerTableSession(
+        workspaceId: workspaceId,
+        tableLocalId: tableLocalId,
+        serverSessionId: tableSessionId,
+        openedAtRaw: openedAtRaw,
+      );
+    }
+    return _openSessionLocalId(tableLocalId);
+  }
+
+  Future<String> _ensureServerTableSession({
+    required int workspaceId,
+    required String tableLocalId,
+    required int serverSessionId,
+    Object? openedAtRaw,
+    String? currentSessionLocalId,
+  }) async {
+    // 1. A local row already bound to this server sitting (open ACK or an
+    //    earlier pull) is the identity — never mint a second one for it.
+    final bound = await _sessionByServerId(workspaceId, serverSessionId);
+    if (bound != null) {
+      await _upsertOpenLocalSession(
+        sessionLocalId: bound.localId,
+        workspaceId: workspaceId,
+        tableLocalId: bound.tableLocalId,
+        openedAtRaw: openedAtRaw,
+        serverId: serverSessionId,
+      );
+      return bound.localId;
+    }
+    // 2. Adopt the sitting this device already has open (offline open that
+    //    Laravel unified into this server session).
+    final current = (currentSessionLocalId ?? '').trim();
+    if (current.isNotEmpty) {
+      await _upsertOpenLocalSession(
+        sessionLocalId: current,
+        workspaceId: workspaceId,
+        tableLocalId: tableLocalId,
+        openedAtRaw: openedAtRaw,
+        serverId: serverSessionId,
+      );
+      return current;
+    }
+    final open = await _openSessionLocalId(tableLocalId);
+    if (open != null && open.isNotEmpty) {
+      await _upsertOpenLocalSession(
+        sessionLocalId: open,
+        workspaceId: workspaceId,
+        tableLocalId: tableLocalId,
+        openedAtRaw: openedAtRaw,
+        serverId: serverSessionId,
+      );
+      return open;
+    }
+    // 3. Server-originated sitting (QR / web): deterministic local id.
+    final generated = LocalIds.session(workspaceId, serverSessionId);
+    await _upsertOpenLocalSession(
+      sessionLocalId: generated,
+      workspaceId: workspaceId,
+      tableLocalId: tableLocalId,
+      openedAtRaw: openedAtRaw,
+      serverId: serverSessionId,
+    );
+    return generated;
+  }
+
+  Future<LocalSession?> _sessionByServerId(int workspaceId, int serverId) {
+    return (_db.select(_db.localSessions)
+          ..where(
+            (t) =>
+                t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId),
+          )
+          ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)])
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
+  Future<void> _upsertOpenLocalSession({
+    required String sessionLocalId,
+    required int workspaceId,
+    required String tableLocalId,
+    Object? openedAtRaw,
+    int? serverId,
+  }) async {
+    final id = sessionLocalId.trim();
+    if (id.isEmpty || tableLocalId.trim().isEmpty) return;
+    final now = DateTime.now();
+    final openedAt = parseOpenedAt(openedAtRaw) ?? now;
+    final existing = await (_db.select(
+      _db.localSessions,
+    )..where((t) => t.localId.equals(id))).getSingleOrNull();
+    final serverIdValue = serverId == null || serverId <= 0
+        ? const Value<int?>.absent()
+        : Value<int?>(serverId);
+    if (existing != null) {
+      if (existing.status == 'open') {
+        if (serverIdValue.present && existing.serverId != serverId) {
+          await (_db.update(
+            _db.localSessions,
+          )..where((t) => t.localId.equals(id))).write(
+            LocalSessionsCompanion(
+              serverId: serverIdValue,
+              updatedAt: Value(now),
+            ),
+          );
+        }
+        return;
+      }
+      await (_db.update(
+        _db.localSessions,
+      )..where((t) => t.localId.equals(id))).write(
+        LocalSessionsCompanion(
+          status: const Value('open'),
+          openedAt: Value(openedAt),
+          closedAt: const Value(null),
+          serverId: serverIdValue,
+          updatedAt: Value(now),
+        ),
+      );
+      return;
+    }
+    await _db.into(_db.localSessions).insert(
+          LocalSessionsCompanion.insert(
+            localId: id,
+            workspaceId: workspaceId,
+            tableLocalId: tableLocalId,
+            serverId: serverIdValue,
+            status: const Value('open'),
+            openedAt: openedAt,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+  }
+
+  /// True when [incoming] is at or below the version already applied to the
+  /// row. Rows that never recorded a version (snapshot / legacy) always
+  /// accept the change.
+  bool _isStaleVersion(int? incoming, int? applied) {
+    if (incoming == null || applied == null) return false;
+    return incoming <= applied;
+  }
+
+  Future<bool> _hasPendingSessionClose(
+    int workspaceId,
+    String tableLocalId,
+  ) =>
+      _hasPendingSessionOp(workspaceId, tableLocalId, 'close');
+
+  Future<bool> _hasPendingSessionOpen(
+    int workspaceId,
+    String tableLocalId,
+  ) =>
+      _hasPendingSessionOp(workspaceId, tableLocalId, 'open');
+
+  Future<bool> _hasPendingSessionOp(
+    int workspaceId,
+    String tableLocalId,
+    String operation,
+  ) async {
+    final rows = await (_db.select(_db.syncQueueItems)
+          ..where(
+            (t) =>
+                t.workspaceId.equals(workspaceId) &
+                t.entityType.equals('table_session') &
+                t.entityId.equals(tableLocalId) &
+                t.operation.equals(operation) &
+                (t.status.equals('pending') |
+                    t.status.equals('failed') |
+                    t.status.equals('syncing')),
+          )
+          ..limit(1))
+        .get();
+    return rows.isNotEmpty;
+  }
+
+  Future<void> _closeOpenLocalSessions(String tableLocalId, DateTime now) {
+    return (_db.update(_db.localSessions)..where(
+          (t) => t.tableLocalId.equals(tableLocalId) & t.status.equals('open'),
+        ))
+        .write(
+          LocalSessionsCompanion(
+            status: const Value('closed'),
+            closedAt: Value(now),
+            updatedAt: Value(now),
+          ),
+        );
+  }
+
+  Future<String?> _openSessionLocalId(String tableLocalId) async {
+    final open = await (_db.select(_db.localSessions)
+          ..where(
+            (t) =>
+                t.tableLocalId.equals(tableLocalId) & t.status.equals('open'),
+          )
+          ..orderBy([(t) => OrderingTerm.desc(t.openedAt)])
+          ..limit(1))
+        .getSingleOrNull();
+    return open?.localId;
+  }
+
+  Future<void> _attachPulledOrderToTable({
+    required int workspaceId,
+    required String? tableLocalId,
+    required int? tableServerId,
+    required String? sessionLocalId,
+    required int? tableSessionId,
+    required String orderLocalId,
+    required Map<String, dynamic> data,
+    required DateTime now,
+  }) async {
+    if (tableLocalId == null || tableLocalId.isEmpty) return;
+    final posStatus = _kitchenPosStatus(local: null, data: data);
+    final paymentStatus = _kitchenPaymentStatus(data['payment_status']);
+    if (posStatus == 'cancelled') return;
+    final live = paymentStatus != 'paid' && posStatus != 'completed';
+    if (!live) return;
+
+    var sessionId = (sessionLocalId ?? '').trim();
+    if (tableSessionId != null && tableSessionId > 0) {
+      sessionId = await _ensureServerTableSession(
+        workspaceId: workspaceId,
+        tableLocalId: tableLocalId,
+        serverSessionId: tableSessionId,
+        openedAtRaw: data['placed_at'] ?? data['created_at'] ?? data['opened_at'],
+        currentSessionLocalId: sessionId,
+      );
+    } else if (sessionId.isEmpty) {
+      sessionId = await _openSessionLocalId(tableLocalId) ?? '';
+    }
+    if (sessionId.isEmpty) {
+      sessionId = const Uuid().v4();
+      await _upsertOpenLocalSession(
+        sessionLocalId: sessionId,
+        workspaceId: workspaceId,
+        tableLocalId: tableLocalId,
+        openedAtRaw: data['placed_at'] ?? data['created_at'],
+      );
+    }
+
+    await (_db.update(_db.localOrders)..where(
+          (t) =>
+              t.localId.equals(orderLocalId) &
+              t.workspaceId.equals(workspaceId),
+        ))
+        .write(
+          LocalOrdersCompanion(
+            sessionLocalId: Value(sessionId),
+            tableLocalId: Value(tableLocalId),
+            tableServerId: Value(tableServerId),
+            updatedAt: Value(now),
+          ),
+        );
+
+    final table = await (_db.select(_db.localTables)..where(
+          (t) =>
+              t.localId.equals(tableLocalId) &
+              t.workspaceId.equals(workspaceId),
+        ))
+        .getSingleOrNull();
+    if (table == null) return;
+
+    Map<String, dynamic> payload = {};
+    try {
+      final decoded = jsonDecode(table.payloadJson);
+      if (decoded is Map) payload = Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    final openedAt = parseOpenedAt(payload['opened_at']) ??
+        parseOpenedAt(data['placed_at']) ??
+        parseOpenedAt(data['created_at']) ??
+        now.toUtc();
+    final snapshot = {
+      'id': (data['id'] as num?)?.toInt() ?? orderLocalId,
+      'local_id': orderLocalId,
+      'client_reference': '${data['client_reference'] ?? orderLocalId}',
+      'order_number': '${data['order_number'] ?? orderLocalId}',
+      'pos_status': posStatus,
+      'payment_status': paymentStatus,
+      'session_local_id': sessionId,
+      'session_id': tableSessionId,
+      'created_at': (data['placed_at'] ?? data['created_at'] ?? now.toUtc().toIso8601String()).toString(),
+      'subtotal': data['subtotal'] ?? 0,
+      'tax_amount': data['tax_amount'] ?? 0,
+      'discount_amount': data['discount_amount'] ?? 0,
+      'total_amount': data['total_amount'] ?? 0,
+      'source': data['source'],
+      'items': data['items'] is List ? data['items'] : const [],
+    };
+    final previous = payload['orders'] is List
+        ? [
+            for (final item in payload['orders'] as List)
+              if (item is Map) Map<String, dynamic>.from(item),
+          ]
+        : const <Map<String, dynamic>>[];
+    final merged = mergeTableSessionOrders(
+      sessionOrders: filterOrdersForOpenTableSession(
+        orders: previous,
+        openedAt: openedAt,
+        currentSessionLocalId: sessionId,
+      ),
+      liveOrders: [snapshot],
+    );
+    var total = 0.0;
+    for (final order in merged) {
+      final value = order['total_amount'];
+      if (value is num) total += value.toDouble();
+    }
+    final next = {
+      ...payload,
+      if (tableServerId != null) 'id': tableServerId,
+      'status': 'occupied',
+      'session_open': true,
+      'session_client_id': sessionId,
+      'session_id': tableSessionId ?? payload['session_id'],
+      'opened_at': payload['opened_at'] ?? openedAt.toUtc().toIso8601String(),
+      'orders': merged,
+      'orders_count': merged.length,
+      'open_orders_count': merged.length,
+      if (total > 0) 'total': total,
+    };
+    await (_db.update(_db.localTables)..where(
+          (t) =>
+              t.localId.equals(tableLocalId) &
+              t.workspaceId.equals(workspaceId),
+        ))
+        .write(
+          LocalTablesCompanion(
+            status: const Value('occupied'),
+            sessionServerId: Value(
+              tableSessionId ?? table.sessionServerId,
+            ),
+            payloadJson: Value(jsonEncode(next)),
+            updatedAt: Value(now),
+          ),
+        );
   }
 }

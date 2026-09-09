@@ -527,7 +527,7 @@ class PosSyncPushService
      */
     private function sessionClose(Workspace $workspace, User $user, array $data): array
     {
-        $session = $this->resolveSession($workspace, $data, required: false);
+        $session = $this->resolveCloseableSession($workspace, $data);
         if (! $session) {
             return [
                 'entity_type' => 'table_session',
@@ -1259,6 +1259,34 @@ class PosSyncPushService
         }
 
         return $table;
+    }
+
+    /**
+     * Close the sitting the cashier asked for. If the payload session is
+     * already gone, still close any leftover open session on that table so
+     * Laravel occupancy/opened_at cannot outlive the cashier close.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveCloseableSession(Workspace $workspace, array $data): ?TableSession
+    {
+        $session = $this->resolveSession($workspace, $data, required: false);
+        if ($session && ! in_array($session->status, ['closed', 'cancelled'], true)) {
+            return $session;
+        }
+
+        try {
+            $table = $this->resolveTable($workspace, $data);
+        } catch (PosSyncOperationException) {
+            return null;
+        }
+
+        return TableSession::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->where('dining_table_id', $table->id)
+            ->where('status', 'open')
+            ->latest('id')
+            ->first();
     }
 
     /**

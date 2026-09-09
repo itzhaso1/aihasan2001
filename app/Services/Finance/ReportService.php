@@ -2,6 +2,7 @@
 
 namespace App\Services\Finance;
 
+use App\Models\Finance\FinanceCreditNote;
 use App\Models\Finance\FinanceExpense;
 use App\Models\Finance\FinanceInvoice;
 
@@ -79,6 +80,10 @@ class ReportService
         $inputVatExpense = (float) FinanceExpense::query()
             ->whereBetween('expense_date', [$from, $to])
             ->sum('tax_amount');
+
+        $noteVat = $this->issuedNoteVatByInvoiceType($from, $to);
+        $outputVat += $noteVat['sales'];
+        $inputVatPurchase += $noteVat['purchase'];
         $inputVat = $inputVatPurchase + $inputVatExpense;
 
         return [
@@ -93,5 +98,44 @@ class ReportService
                 'net' => round($outputVat - $inputVat, 2),
             ],
         ];
+    }
+
+    /**
+     * Issued credit notes reduce VAT; issued debit notes increase it.
+     * Draft/cancelled notes are excluded. Invoice tax_amount is never mutated,
+     * so notes are applied once here and are not double-counted.
+     *
+     * @return array{sales: float, purchase: float}
+     */
+    private function issuedNoteVatByInvoiceType(string $from, string $to): array
+    {
+        $adjustments = ['sales' => 0.0, 'purchase' => 0.0];
+
+        $rows = FinanceCreditNote::query()
+            ->selectRaw('finance_invoices.type as invoice_type')
+            ->selectRaw('finance_credit_notes.type as note_type')
+            ->selectRaw('COALESCE(SUM(finance_credit_notes.tax_amount), 0) as tax_total')
+            ->join('finance_invoices', function ($join): void {
+                $join->on('finance_invoices.id', '=', 'finance_credit_notes.invoice_id')
+                    ->on('finance_invoices.workspace_id', '=', 'finance_credit_notes.workspace_id');
+            })
+            ->where('finance_credit_notes.status', FinanceCreditNote::STATUS_ISSUED)
+            ->whereBetween('finance_credit_notes.issue_date', [$from, $to])
+            ->groupBy('finance_invoices.type', 'finance_credit_notes.type')
+            ->get();
+
+        foreach ($rows as $row) {
+            $invoiceType = (string) $row->invoice_type;
+            if (! array_key_exists($invoiceType, $adjustments)) {
+                continue;
+            }
+
+            $tax = (float) $row->tax_total;
+            $adjustments[$invoiceType] += ((string) $row->note_type) === FinanceCreditNote::TYPE_CREDIT
+                ? -$tax
+                : $tax;
+        }
+
+        return $adjustments;
     }
 }
