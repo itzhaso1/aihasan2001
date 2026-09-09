@@ -142,11 +142,23 @@ class PosSyncChangeRecorder
             return [];
         }
 
+        $table->unsetRelation('sessions');
+        $table->load([
+            'sessions' => fn ($query) => $query
+                ->where('status', 'open')
+                ->latest('id')
+                ->limit(1),
+        ]);
+        $open = $table->sessions->first();
+
         return [
             'id' => $table->id,
             'name' => $table->name,
             'status' => $table->status,
             'qr_token' => $table->qr_token,
+            'session_id' => $open?->id,
+            'session_open' => $open !== null,
+            'opened_at' => optional($open?->opened_at)?->toIso8601String(),
             'updated_at' => optional($table->updated_at)?->toIso8601String(),
         ];
     }
@@ -175,6 +187,7 @@ class PosSyncChangeRecorder
             'customer_id' => $order->customer_id,
             'dining_table_id' => $order->dining_table_id,
             'table_session_id' => $order->table_session_id,
+            'source' => $order->source,
             'table_name' => $order->table?->name ?? ($metadata['table_name'] ?? null),
             'session_local_id' => $metadata['cashier_session_local_id'] ?? null,
             'order_number' => $order->order_number,

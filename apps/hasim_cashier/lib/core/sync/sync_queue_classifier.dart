@@ -514,6 +514,16 @@ class SyncQueueClassifier {
         );
       }
     }
+    if (row.operation == 'close') {
+      final waitingOpen = await _hasPendingSessionOpen(row);
+      if (waitingOpen) {
+        return SyncQueueClassification(
+          row: row,
+          bucket: SyncQueueBucket.waitingParent,
+          reason: 'إغلاق الطاولة ينتظر وصول فتح الجلسة إلى Laravel أولاً.',
+        );
+      }
+    }
     return SyncQueueClassification(
       row: row,
       bucket: SyncQueueBucket.ready,
@@ -678,5 +688,24 @@ class SyncQueueClassifier {
     if (tableLocalId.isEmpty) return false;
     final table = await _table(row.workspaceId, tableLocalId);
     return table == null || table.serverId == null || table.serverId! <= 0;
+  }
+
+  Future<bool> _hasPendingSessionOpen(SyncQueueItem closeRow) async {
+    final rows = await SyncQueueRepository(_db).pendingForWorkspace(
+      closeRow.workspaceId,
+    );
+    for (final row in rows) {
+      if (row.id == closeRow.id) continue;
+      if (row.entityType != 'table_session' || row.operation != 'open') {
+        continue;
+      }
+      if (row.entityId != closeRow.entityId) continue;
+      if (row.status == 'pending' ||
+          row.status == 'failed' ||
+          row.status == 'syncing') {
+        return true;
+      }
+    }
+    return false;
   }
 }

@@ -4371,6 +4371,17 @@ class $LocalSessionsTable extends LocalSessions
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _serverIdMeta = const VerificationMeta(
+    'serverId',
+  );
+  @override
+  late final GeneratedColumn<int> serverId = GeneratedColumn<int>(
+    'server_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _tableLocalIdMeta = const VerificationMeta(
     'tableLocalId',
   );
@@ -4492,6 +4503,7 @@ class $LocalSessionsTable extends LocalSessions
   List<GeneratedColumn> get $columns => [
     localId,
     workspaceId,
+    serverId,
     tableLocalId,
     status,
     openedAt,
@@ -4533,6 +4545,12 @@ class $LocalSessionsTable extends LocalSessions
       );
     } else if (isInserting) {
       context.missing(_workspaceIdMeta);
+    }
+    if (data.containsKey('server_id')) {
+      context.handle(
+        _serverIdMeta,
+        serverId.isAcceptableOrUnknown(data['server_id']!, _serverIdMeta),
+      );
     }
     if (data.containsKey('table_local_id')) {
       context.handle(
@@ -4631,6 +4649,10 @@ class $LocalSessionsTable extends LocalSessions
         DriftSqlType.int,
         data['${effectivePrefix}workspace_id'],
       )!,
+      serverId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}server_id'],
+      ),
       tableLocalId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}table_local_id'],
@@ -4683,6 +4705,10 @@ class $LocalSessionsTable extends LocalSessions
 class LocalSession extends DataClass implements Insertable<LocalSession> {
   final String localId;
   final int workspaceId;
+
+  /// Laravel table_sessions.id once known (open ACK or pull). One local row
+  /// per server sitting, whichever side created it first.
+  final int? serverId;
   final String tableLocalId;
   final String status;
   final DateTime openedAt;
@@ -4696,6 +4722,7 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
   const LocalSession({
     required this.localId,
     required this.workspaceId,
+    this.serverId,
     required this.tableLocalId,
     required this.status,
     required this.openedAt,
@@ -4712,6 +4739,9 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
     final map = <String, Expression>{};
     map['local_id'] = Variable<String>(localId);
     map['workspace_id'] = Variable<int>(workspaceId);
+    if (!nullToAbsent || serverId != null) {
+      map['server_id'] = Variable<int>(serverId);
+    }
     map['table_local_id'] = Variable<String>(tableLocalId);
     map['status'] = Variable<String>(status);
     map['opened_at'] = Variable<DateTime>(openedAt);
@@ -4737,6 +4767,9 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
     return LocalSessionsCompanion(
       localId: Value(localId),
       workspaceId: Value(workspaceId),
+      serverId: serverId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverId),
       tableLocalId: Value(tableLocalId),
       status: Value(status),
       openedAt: Value(openedAt),
@@ -4766,6 +4799,7 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
     return LocalSession(
       localId: serializer.fromJson<String>(json['localId']),
       workspaceId: serializer.fromJson<int>(json['workspaceId']),
+      serverId: serializer.fromJson<int?>(json['serverId']),
       tableLocalId: serializer.fromJson<String>(json['tableLocalId']),
       status: serializer.fromJson<String>(json['status']),
       openedAt: serializer.fromJson<DateTime>(json['openedAt']),
@@ -4784,6 +4818,7 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
     return <String, dynamic>{
       'localId': serializer.toJson<String>(localId),
       'workspaceId': serializer.toJson<int>(workspaceId),
+      'serverId': serializer.toJson<int?>(serverId),
       'tableLocalId': serializer.toJson<String>(tableLocalId),
       'status': serializer.toJson<String>(status),
       'openedAt': serializer.toJson<DateTime>(openedAt),
@@ -4800,6 +4835,7 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
   LocalSession copyWith({
     String? localId,
     int? workspaceId,
+    Value<int?> serverId = const Value.absent(),
     String? tableLocalId,
     String? status,
     DateTime? openedAt,
@@ -4813,6 +4849,7 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
   }) => LocalSession(
     localId: localId ?? this.localId,
     workspaceId: workspaceId ?? this.workspaceId,
+    serverId: serverId.present ? serverId.value : this.serverId,
     tableLocalId: tableLocalId ?? this.tableLocalId,
     status: status ?? this.status,
     openedAt: openedAt ?? this.openedAt,
@@ -4834,6 +4871,7 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
       workspaceId: data.workspaceId.present
           ? data.workspaceId.value
           : this.workspaceId,
+      serverId: data.serverId.present ? data.serverId.value : this.serverId,
       tableLocalId: data.tableLocalId.present
           ? data.tableLocalId.value
           : this.tableLocalId,
@@ -4860,6 +4898,7 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
     return (StringBuffer('LocalSession(')
           ..write('localId: $localId, ')
           ..write('workspaceId: $workspaceId, ')
+          ..write('serverId: $serverId, ')
           ..write('tableLocalId: $tableLocalId, ')
           ..write('status: $status, ')
           ..write('openedAt: $openedAt, ')
@@ -4878,6 +4917,7 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
   int get hashCode => Object.hash(
     localId,
     workspaceId,
+    serverId,
     tableLocalId,
     status,
     openedAt,
@@ -4895,6 +4935,7 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
       (other is LocalSession &&
           other.localId == this.localId &&
           other.workspaceId == this.workspaceId &&
+          other.serverId == this.serverId &&
           other.tableLocalId == this.tableLocalId &&
           other.status == this.status &&
           other.openedAt == this.openedAt &&
@@ -4910,6 +4951,7 @@ class LocalSession extends DataClass implements Insertable<LocalSession> {
 class LocalSessionsCompanion extends UpdateCompanion<LocalSession> {
   final Value<String> localId;
   final Value<int> workspaceId;
+  final Value<int?> serverId;
   final Value<String> tableLocalId;
   final Value<String> status;
   final Value<DateTime> openedAt;
@@ -4924,6 +4966,7 @@ class LocalSessionsCompanion extends UpdateCompanion<LocalSession> {
   const LocalSessionsCompanion({
     this.localId = const Value.absent(),
     this.workspaceId = const Value.absent(),
+    this.serverId = const Value.absent(),
     this.tableLocalId = const Value.absent(),
     this.status = const Value.absent(),
     this.openedAt = const Value.absent(),
@@ -4939,6 +4982,7 @@ class LocalSessionsCompanion extends UpdateCompanion<LocalSession> {
   LocalSessionsCompanion.insert({
     required String localId,
     required int workspaceId,
+    this.serverId = const Value.absent(),
     required String tableLocalId,
     this.status = const Value.absent(),
     required DateTime openedAt,
@@ -4959,6 +5003,7 @@ class LocalSessionsCompanion extends UpdateCompanion<LocalSession> {
   static Insertable<LocalSession> custom({
     Expression<String>? localId,
     Expression<int>? workspaceId,
+    Expression<int>? serverId,
     Expression<String>? tableLocalId,
     Expression<String>? status,
     Expression<DateTime>? openedAt,
@@ -4974,6 +5019,7 @@ class LocalSessionsCompanion extends UpdateCompanion<LocalSession> {
     return RawValuesInsertable({
       if (localId != null) 'local_id': localId,
       if (workspaceId != null) 'workspace_id': workspaceId,
+      if (serverId != null) 'server_id': serverId,
       if (tableLocalId != null) 'table_local_id': tableLocalId,
       if (status != null) 'status': status,
       if (openedAt != null) 'opened_at': openedAt,
@@ -4991,6 +5037,7 @@ class LocalSessionsCompanion extends UpdateCompanion<LocalSession> {
   LocalSessionsCompanion copyWith({
     Value<String>? localId,
     Value<int>? workspaceId,
+    Value<int?>? serverId,
     Value<String>? tableLocalId,
     Value<String>? status,
     Value<DateTime>? openedAt,
@@ -5006,6 +5053,7 @@ class LocalSessionsCompanion extends UpdateCompanion<LocalSession> {
     return LocalSessionsCompanion(
       localId: localId ?? this.localId,
       workspaceId: workspaceId ?? this.workspaceId,
+      serverId: serverId ?? this.serverId,
       tableLocalId: tableLocalId ?? this.tableLocalId,
       status: status ?? this.status,
       openedAt: openedAt ?? this.openedAt,
@@ -5028,6 +5076,9 @@ class LocalSessionsCompanion extends UpdateCompanion<LocalSession> {
     }
     if (workspaceId.present) {
       map['workspace_id'] = Variable<int>(workspaceId.value);
+    }
+    if (serverId.present) {
+      map['server_id'] = Variable<int>(serverId.value);
     }
     if (tableLocalId.present) {
       map['table_local_id'] = Variable<String>(tableLocalId.value);
@@ -5070,6 +5121,7 @@ class LocalSessionsCompanion extends UpdateCompanion<LocalSession> {
     return (StringBuffer('LocalSessionsCompanion(')
           ..write('localId: $localId, ')
           ..write('workspaceId: $workspaceId, ')
+          ..write('serverId: $serverId, ')
           ..write('tableLocalId: $tableLocalId, ')
           ..write('status: $status, ')
           ..write('openedAt: $openedAt, ')
@@ -5421,6 +5473,17 @@ class $LocalOrdersTable extends LocalOrders
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _serverVersionMeta = const VerificationMeta(
+    'serverVersion',
+  );
+  @override
+  late final GeneratedColumn<int> serverVersion = GeneratedColumn<int>(
+    'server_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     localId,
@@ -5451,6 +5514,7 @@ class $LocalOrdersTable extends LocalOrders
     updatedAt,
     completedAt,
     syncedAt,
+    serverVersion,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -5688,6 +5752,15 @@ class $LocalOrdersTable extends LocalOrders
         syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
       );
     }
+    if (data.containsKey('server_version')) {
+      context.handle(
+        _serverVersionMeta,
+        serverVersion.isAcceptableOrUnknown(
+          data['server_version']!,
+          _serverVersionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -5809,6 +5882,10 @@ class $LocalOrdersTable extends LocalOrders
         DriftSqlType.dateTime,
         data['${effectivePrefix}synced_at'],
       ),
+      serverVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}server_version'],
+      ),
     );
   }
 
@@ -5847,6 +5924,10 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
   final DateTime updatedAt;
   final DateTime? completedAt;
   final DateTime? syncedAt;
+
+  /// Highest pos_sync_changes version applied to this row. Pull skips
+  /// changes at or below it so re-delivery (cursor rollback) is a no-op.
+  final int? serverVersion;
   const LocalOrder({
     required this.localId,
     required this.workspaceId,
@@ -5876,6 +5957,7 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
     required this.updatedAt,
     this.completedAt,
     this.syncedAt,
+    this.serverVersion,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5929,6 +6011,9 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
     }
     if (!nullToAbsent || syncedAt != null) {
       map['synced_at'] = Variable<DateTime>(syncedAt);
+    }
+    if (!nullToAbsent || serverVersion != null) {
+      map['server_version'] = Variable<int>(serverVersion);
     }
     return map;
   }
@@ -5985,6 +6070,9 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
       syncedAt: syncedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(syncedAt),
+      serverVersion: serverVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverVersion),
     );
   }
 
@@ -6022,6 +6110,7 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
       syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
+      serverVersion: serializer.fromJson<int?>(json['serverVersion']),
     );
   }
   @override
@@ -6056,6 +6145,7 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'completedAt': serializer.toJson<DateTime?>(completedAt),
       'syncedAt': serializer.toJson<DateTime?>(syncedAt),
+      'serverVersion': serializer.toJson<int?>(serverVersion),
     };
   }
 
@@ -6088,6 +6178,7 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
     DateTime? updatedAt,
     Value<DateTime?> completedAt = const Value.absent(),
     Value<DateTime?> syncedAt = const Value.absent(),
+    Value<int?> serverVersion = const Value.absent(),
   }) => LocalOrder(
     localId: localId ?? this.localId,
     workspaceId: workspaceId ?? this.workspaceId,
@@ -6125,6 +6216,9 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
     updatedAt: updatedAt ?? this.updatedAt,
     completedAt: completedAt.present ? completedAt.value : this.completedAt,
     syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
+    serverVersion: serverVersion.present
+        ? serverVersion.value
+        : this.serverVersion,
   );
   LocalOrder copyWithCompanion(LocalOrdersCompanion data) {
     return LocalOrder(
@@ -6188,6 +6282,9 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
           ? data.completedAt.value
           : this.completedAt,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      serverVersion: data.serverVersion.present
+          ? data.serverVersion.value
+          : this.serverVersion,
     );
   }
 
@@ -6221,7 +6318,8 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('completedAt: $completedAt, ')
-          ..write('syncedAt: $syncedAt')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('serverVersion: $serverVersion')
           ..write(')'))
         .toString();
   }
@@ -6256,6 +6354,7 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
     updatedAt,
     completedAt,
     syncedAt,
+    serverVersion,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -6288,7 +6387,8 @@ class LocalOrder extends DataClass implements Insertable<LocalOrder> {
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.completedAt == this.completedAt &&
-          other.syncedAt == this.syncedAt);
+          other.syncedAt == this.syncedAt &&
+          other.serverVersion == this.serverVersion);
 }
 
 class LocalOrdersCompanion extends UpdateCompanion<LocalOrder> {
@@ -6320,6 +6420,7 @@ class LocalOrdersCompanion extends UpdateCompanion<LocalOrder> {
   final Value<DateTime> updatedAt;
   final Value<DateTime?> completedAt;
   final Value<DateTime?> syncedAt;
+  final Value<int?> serverVersion;
   final Value<int> rowid;
   const LocalOrdersCompanion({
     this.localId = const Value.absent(),
@@ -6350,6 +6451,7 @@ class LocalOrdersCompanion extends UpdateCompanion<LocalOrder> {
     this.updatedAt = const Value.absent(),
     this.completedAt = const Value.absent(),
     this.syncedAt = const Value.absent(),
+    this.serverVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalOrdersCompanion.insert({
@@ -6381,6 +6483,7 @@ class LocalOrdersCompanion extends UpdateCompanion<LocalOrder> {
     required DateTime updatedAt,
     this.completedAt = const Value.absent(),
     this.syncedAt = const Value.absent(),
+    this.serverVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : localId = Value(localId),
        workspaceId = Value(workspaceId),
@@ -6418,6 +6521,7 @@ class LocalOrdersCompanion extends UpdateCompanion<LocalOrder> {
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? completedAt,
     Expression<DateTime>? syncedAt,
+    Expression<int>? serverVersion,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -6449,6 +6553,7 @@ class LocalOrdersCompanion extends UpdateCompanion<LocalOrder> {
       if (updatedAt != null) 'updated_at': updatedAt,
       if (completedAt != null) 'completed_at': completedAt,
       if (syncedAt != null) 'synced_at': syncedAt,
+      if (serverVersion != null) 'server_version': serverVersion,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -6482,6 +6587,7 @@ class LocalOrdersCompanion extends UpdateCompanion<LocalOrder> {
     Value<DateTime>? updatedAt,
     Value<DateTime?>? completedAt,
     Value<DateTime?>? syncedAt,
+    Value<int?>? serverVersion,
     Value<int>? rowid,
   }) {
     return LocalOrdersCompanion(
@@ -6513,6 +6619,7 @@ class LocalOrdersCompanion extends UpdateCompanion<LocalOrder> {
       updatedAt: updatedAt ?? this.updatedAt,
       completedAt: completedAt ?? this.completedAt,
       syncedAt: syncedAt ?? this.syncedAt,
+      serverVersion: serverVersion ?? this.serverVersion,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -6604,6 +6711,9 @@ class LocalOrdersCompanion extends UpdateCompanion<LocalOrder> {
     if (syncedAt.present) {
       map['synced_at'] = Variable<DateTime>(syncedAt.value);
     }
+    if (serverVersion.present) {
+      map['server_version'] = Variable<int>(serverVersion.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -6641,6 +6751,7 @@ class LocalOrdersCompanion extends UpdateCompanion<LocalOrder> {
           ..write('updatedAt: $updatedAt, ')
           ..write('completedAt: $completedAt, ')
           ..write('syncedAt: $syncedAt, ')
+          ..write('serverVersion: $serverVersion, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -22215,6 +22326,7 @@ typedef $$LocalSessionsTableCreateCompanionBuilder =
     LocalSessionsCompanion Function({
       required String localId,
       required int workspaceId,
+      Value<int?> serverId,
       required String tableLocalId,
       Value<String> status,
       required DateTime openedAt,
@@ -22231,6 +22343,7 @@ typedef $$LocalSessionsTableUpdateCompanionBuilder =
     LocalSessionsCompanion Function({
       Value<String> localId,
       Value<int> workspaceId,
+      Value<int?> serverId,
       Value<String> tableLocalId,
       Value<String> status,
       Value<DateTime> openedAt,
@@ -22358,6 +22471,11 @@ class $$LocalSessionsTableFilterComposer
 
   ColumnFilters<int> get workspaceId => $composableBuilder(
     column: $table.workspaceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get serverId => $composableBuilder(
+    column: $table.serverId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -22510,6 +22628,11 @@ class $$LocalSessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get serverId => $composableBuilder(
+    column: $table.serverId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get status => $composableBuilder(
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
@@ -22631,6 +22754,9 @@ class $$LocalSessionsTableAnnotationComposer
     column: $table.workspaceId,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get serverId =>
+      $composableBuilder(column: $table.serverId, builder: (column) => column);
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
@@ -22785,6 +22911,7 @@ class $$LocalSessionsTableTableManager
               ({
                 Value<String> localId = const Value.absent(),
                 Value<int> workspaceId = const Value.absent(),
+                Value<int?> serverId = const Value.absent(),
                 Value<String> tableLocalId = const Value.absent(),
                 Value<String> status = const Value.absent(),
                 Value<DateTime> openedAt = const Value.absent(),
@@ -22799,6 +22926,7 @@ class $$LocalSessionsTableTableManager
               }) => LocalSessionsCompanion(
                 localId: localId,
                 workspaceId: workspaceId,
+                serverId: serverId,
                 tableLocalId: tableLocalId,
                 status: status,
                 openedAt: openedAt,
@@ -22815,6 +22943,7 @@ class $$LocalSessionsTableTableManager
               ({
                 required String localId,
                 required int workspaceId,
+                Value<int?> serverId = const Value.absent(),
                 required String tableLocalId,
                 Value<String> status = const Value.absent(),
                 required DateTime openedAt,
@@ -22829,6 +22958,7 @@ class $$LocalSessionsTableTableManager
               }) => LocalSessionsCompanion.insert(
                 localId: localId,
                 workspaceId: workspaceId,
+                serverId: serverId,
                 tableLocalId: tableLocalId,
                 status: status,
                 openedAt: openedAt,
@@ -23005,6 +23135,7 @@ typedef $$LocalOrdersTableCreateCompanionBuilder =
       required DateTime updatedAt,
       Value<DateTime?> completedAt,
       Value<DateTime?> syncedAt,
+      Value<int?> serverVersion,
       Value<int> rowid,
     });
 typedef $$LocalOrdersTableUpdateCompanionBuilder =
@@ -23037,6 +23168,7 @@ typedef $$LocalOrdersTableUpdateCompanionBuilder =
       Value<DateTime> updatedAt,
       Value<DateTime?> completedAt,
       Value<DateTime?> syncedAt,
+      Value<int?> serverVersion,
       Value<int> rowid,
     });
 
@@ -23353,6 +23485,11 @@ class $$LocalOrdersTableFilterComposer
 
   ColumnFilters<DateTime> get syncedAt => $composableBuilder(
     column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -23678,6 +23815,11 @@ class $$LocalOrdersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$LocalTablesTableOrderingComposer get tableLocalId {
     final $$LocalTablesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -23875,6 +24017,11 @@ class $$LocalOrdersTableAnnotationComposer
 
   GeneratedColumn<DateTime> get syncedAt =>
       $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => column,
+  );
 
   $$LocalTablesTableAnnotationComposer get tableLocalId {
     final $$LocalTablesTableAnnotationComposer composer = $composerBuilder(
@@ -24134,6 +24281,7 @@ class $$LocalOrdersTableTableManager
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<DateTime?> syncedAt = const Value.absent(),
+                Value<int?> serverVersion = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalOrdersCompanion(
                 localId: localId,
@@ -24164,6 +24312,7 @@ class $$LocalOrdersTableTableManager
                 updatedAt: updatedAt,
                 completedAt: completedAt,
                 syncedAt: syncedAt,
+                serverVersion: serverVersion,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -24196,6 +24345,7 @@ class $$LocalOrdersTableTableManager
                 required DateTime updatedAt,
                 Value<DateTime?> completedAt = const Value.absent(),
                 Value<DateTime?> syncedAt = const Value.absent(),
+                Value<int?> serverVersion = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalOrdersCompanion.insert(
                 localId: localId,
@@ -24226,6 +24376,7 @@ class $$LocalOrdersTableTableManager
                 updatedAt: updatedAt,
                 completedAt: completedAt,
                 syncedAt: syncedAt,
+                serverVersion: serverVersion,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
