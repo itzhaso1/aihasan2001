@@ -104,7 +104,15 @@ class PosOrderService
                 $metadata['kitchen_item_notes'] = $kitchenItemNotes;
             }
 
+            $clientReference = $this->normalizeClientReference($payload['client_reference'] ?? null);
+
             if ($table && $session && ! $offlineSale) {
+                // A client_reference means the device owns this order as its
+                // own entity (offline SQLite row that will be reconciled by
+                // id). Folding its lines into another order would leave the
+                // device with two local orders mapped to one server order and
+                // double-counted quantities on the next pull. Only anonymous
+                // additions (no client_reference) merge into the sitting.
                 $order = $this->mergeOrCreateSessionOrder(
                     workspace: $workspace,
                     table: $table,
@@ -116,7 +124,8 @@ class PosOrderService
                     notes: $payload['notes'] ?? null,
                     metadata: $metadata,
                     orderType: $orderType,
-                    clientReference: $this->normalizeClientReference($payload['client_reference'] ?? null),
+                    clientReference: $clientReference,
+                    mergeLines: $clientReference === null,
                 );
             } else {
                 $order = $this->createOrderWithSnapshots(
@@ -131,7 +140,7 @@ class PosOrderService
                     metadata: $metadata,
                     currency: $financials['currency'],
                     orderType: $orderType,
-                    clientReference: $this->normalizeClientReference($payload['client_reference'] ?? null),
+                    clientReference: $clientReference,
                     taxAmount: $financials['tax_amount'],
                     totalAmount: $financials['total_amount'],
                     subtotalAmount: $financials['subtotal'],
@@ -1479,12 +1488,13 @@ class PosOrderService
         ?array $metadata,
         string $orderType = Order::ORDER_TYPE_TABLE,
         ?string $clientReference = null,
+        bool $mergeLines = true,
     ): Order {
         $remaining = collect();
         $lastTouched = null;
 
         foreach ($items as $item) {
-            $existingLine = $this->findMergeableSessionLine($session, $item);
+            $existingLine = $mergeLines ? $this->findMergeableSessionLine($session, $item) : null;
             if ($existingLine) {
                 $this->increaseOrderItemQuantity($existingLine, (int) $item['quantity'], $workspace);
                 $lastTouched = $existingLine->order()->with(['items', 'customer', 'table', 'tableSession'])->first();

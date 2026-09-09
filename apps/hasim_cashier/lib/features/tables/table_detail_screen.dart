@@ -50,7 +50,8 @@ class _TableDetailScreenState extends ConsumerState<TableDetailScreen> {
   final _search = TextEditingController();
 
   StreamSubscription<void>? _activitySub;
-  Timer? _activityDebounce;
+  var _reloading = false;
+  var _reloadQueued = false;
 
   @override
   void initState() {
@@ -63,7 +64,6 @@ class _TableDetailScreenState extends ConsumerState<TableDetailScreen> {
 
   @override
   void dispose() {
-    _activityDebounce?.cancel();
     _activitySub?.cancel();
     _search.dispose();
     super.dispose();
@@ -79,13 +79,26 @@ class _TableDetailScreenState extends ConsumerState<TableDetailScreen> {
     _activitySub = ref
         .read(tablesRepositoryProvider)
         .watchTableActivity(workspaceId, widget.tableId)
-        .listen((_) {
-      if (!mounted) return;
-      _activityDebounce?.cancel();
-      _activityDebounce = Timer(const Duration(milliseconds: 150), () {
-        if (mounted) _load();
-      });
-    });
+        .listen((_) => _reloadFromLocal());
+  }
+
+  /// Coalesces bursts of SQLite notifications into one reload at a time
+  /// (no timers: a reload already running simply schedules one follow-up).
+  Future<void> _reloadFromLocal() async {
+    if (!mounted) return;
+    if (_reloading) {
+      _reloadQueued = true;
+      return;
+    }
+    _reloading = true;
+    try {
+      do {
+        _reloadQueued = false;
+        await _load();
+      } while (_reloadQueued && mounted);
+    } finally {
+      _reloading = false;
+    }
   }
 
   int? get _sessionId {

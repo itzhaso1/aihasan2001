@@ -250,6 +250,51 @@ class CashierTableSessionLifecycleTest extends TestCase
         $this->assertSame('available', $closeChange['data']['status']);
     }
 
+    public function test_device_owned_orders_on_one_sitting_are_not_folded_together(): void
+    {
+        [$token, $workspace, $item, $table] = $this->bootTable();
+
+        $this->push($token, $workspace, 'POS-TWO', [
+            'id' => 'op-open-two',
+            'type' => 'table_session.open',
+            'data' => ['table_server_id' => $table->id, 'session_client_id' => 'sess-two-orders'],
+        ]);
+
+        foreach (['ord-a', 'ord-b'] as $ref) {
+            $result = $this->push($token, $workspace, 'POS-TWO', [
+                'id' => 'op-'.$ref,
+                'type' => 'order.created',
+                'data' => [
+                    'order_type' => 'table',
+                    'dining_table_id' => $table->id,
+                    'client_reference' => $ref,
+                    'items' => [[
+                        'pos_menu_item_id' => $item->id,
+                        'quantity' => 1,
+                        'unit_price' => 10,
+                        'name' => 'شاي',
+                    ]],
+                ],
+            ], register: false);
+            $this->assertTrue($result['success']);
+            $this->assertSame($ref, Order::query()->findOrFail($result['accepted'][0]['entity_id'])->client_reference);
+        }
+
+        $orders = Order::query()->whereIn('client_reference', ['ord-a', 'ord-b'])->with('items')->get();
+        $this->assertCount(2, $orders);
+        $this->assertSame([1, 1], $orders->map(fn ($o) => (int) $o->items->sum('quantity'))->all());
+        $this->assertSame(1, $orders->pluck('table_session_id')->unique()->count());
+
+        $pull = $this->pull($token, $workspace, 'POS-TWO');
+        $pulledRefs = collect($pull['changes'])
+            ->where('entity', 'order')
+            ->pluck('data.client_reference')
+            ->unique()
+            ->values()
+            ->all();
+        $this->assertEqualsCanonicalizing(['ord-a', 'ord-b'], $pulledRefs);
+    }
+
     /**
      * @return array<string, mixed>
      */

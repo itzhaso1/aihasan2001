@@ -219,21 +219,44 @@ class TablesRepository {
         final prevMap = previous == null
             ? const <String, dynamic>{}
             : _safeMap(previous.payloadJson);
+        final remoteSessionId = asInt(table['session_id']);
+        final remoteSessionOpen = remoteSessionId != null && remoteSessionId > 0;
+        // Only an offline sitting Laravel has not acknowledged yet (no server
+        // session id) survives a snapshot that says the table is free. Once
+        // acknowledged, the snapshot is authoritative — same rule as pull.
+        final prevAcked =
+            previous?.sessionServerId != null && previous!.sessionServerId! > 0;
         final offlineOpen =
             prevMap['session_client_id'] != null &&
             previous?.status == 'occupied' &&
+            !prevAcked &&
+            !remoteSessionOpen &&
             (table['status'] == 'available' || table['session_id'] == null);
-        final status = offlineOpen
+        // Occupancy follows the open session, not the status flag alone
+        // (QR guest visit keeps dining_tables.status = available).
+        final status = (offlineOpen || remoteSessionOpen)
             ? 'occupied'
             : '${table['status'] ?? previous?.status ?? 'available'}';
         final sessionServerId = offlineOpen
             ? previous?.sessionServerId
-            : asInt(table['session_id']) ?? previous?.sessionServerId;
+            : (remoteSessionOpen ? remoteSessionId : null);
         if (offlineOpen && prevMap['session_client_id'] != null) {
           mergedPayload['session_client_id'] = prevMap['session_client_id'];
           mergedPayload['session_open'] = true;
           if (prevMap['opened_at'] != null) {
             mergedPayload['opened_at'] = prevMap['opened_at'];
+          }
+        } else if (remoteSessionOpen) {
+          mergedPayload['status'] = 'occupied';
+          mergedPayload['session_open'] = true;
+          mergedPayload['session_id'] = remoteSessionId;
+        } else if (!table.containsKey('session_id') || table['session_id'] == null) {
+          if (status == 'available') {
+            mergedPayload['session_open'] = false;
+            mergedPayload['session_id'] = null;
+            mergedPayload['session_client_id'] = null;
+            mergedPayload['opened_at'] = null;
+            mergedPayload['orders'] = const [];
           }
         }
         await _db
@@ -560,37 +583,32 @@ class TablesRepository {
   /// detail snapshot so pulled QR orders / remote closes show without leaving
   /// the screen.
   Stream<void> watchTableActivity(int workspaceId, int tableServerId) {
-    final table = (_db.select(_db.localTables)..where(
-          (t) =>
-              t.workspaceId.equals(workspaceId) &
-              t.serverId.equals(tableServerId),
-        ))
-        .watch();
-    final orders = (_db.select(_db.localOrders)..where(
-          (t) =>
-              t.workspaceId.equals(workspaceId) &
-              t.tableServerId.equals(tableServerId),
-        ))
-        .watch();
-    // Sessions key on the table's local id, which may be device-generated for
-    // tables created offline; the workspace-level watch is cheap and the
-    // caller debounces.
-    final sessions = (_db.select(_db.localSessions)..where(
-          (t) => t.workspaceId.equals(workspaceId),
-        ))
-        .watch();
-    final controller = StreamController<void>.broadcast();
-    final subs = <StreamSubscription<dynamic>>[
-      table.listen((_) => controller.add(null)),
-      orders.listen((_) => controller.add(null)),
-      sessions.listen((_) => controller.add(null)),
-    ];
-    controller.onCancel = () async {
-      for (final sub in subs) {
-        await sub.cancel();
-      }
-    };
-    return controller.stream;
+    // One drift stream keyed on all three tables (same mechanics as
+    // [watchBoard]); a hand-rolled merge controller does not close cleanly
+    // under the widget-test fake async zone.
+    return _db
+        .customSelect(
+          'SELECT '
+          '(SELECT COUNT(*) FROM local_tables WHERE workspace_id = ?1 '
+          '   AND server_id = ?2) AS tables_n, '
+          '(SELECT MAX(updated_at) FROM local_tables WHERE workspace_id = ?1 '
+          '   AND server_id = ?2) AS tables_at, '
+          '(SELECT COUNT(*) FROM local_orders WHERE workspace_id = ?1 '
+          '   AND table_server_id = ?2) AS orders_n, '
+          '(SELECT MAX(updated_at) FROM local_orders WHERE workspace_id = ?1 '
+          '   AND table_server_id = ?2) AS orders_at, '
+          '(SELECT COUNT(*) FROM local_sessions WHERE workspace_id = ?1) '
+          '   AS sessions_n, '
+          '(SELECT MAX(updated_at) FROM local_sessions WHERE workspace_id = ?1) '
+          '   AS sessions_at',
+          variables: [
+            Variable.withInt(workspaceId),
+            Variable.withInt(tableServerId),
+          ],
+          readsFrom: {_db.localTables, _db.localOrders, _db.localSessions},
+        )
+        .watch()
+        .map((_) {});
   }
 
   /// Local-first close + payment + invoice draft. Queues sync; no online required.
@@ -2050,7 +2068,8 @@ class TablesRepository {
     if (boardRow['orders'] == null && previous['orders'] != null) {
       final incomingStatus =
           '${boardRow['status'] ?? previous['status'] ?? ''}';
-      merged['orders'] = incomingStatus == 'available'
+      final incomingSessionOpen = (asInt(boardRow['session_id']) ?? 0) > 0;
+      merged['orders'] = incomingStatus == 'available' && !incomingSessionOpen
           ? const []
           : previous['orders'];
     }

@@ -205,7 +205,9 @@ void main() {
     );
 
     final pushed = await _pushKitchenOrders();
-    expect(pushed['types'], ['order.created']);
+    // The sitting must reach Laravel before (or with) its first ticket so the
+    // order attaches to the same session instead of opening a second one.
+    expect(pushed['types'], ['table_session.open', 'order.created']);
     final payload =
         (pushed['orders'] as List).cast<Map<String, dynamic>>().single;
     expect(payload['dining_table_id'], 5);
