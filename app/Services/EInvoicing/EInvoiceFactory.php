@@ -62,6 +62,8 @@ class EInvoiceFactory
             complianceStatus: $compliance,
             payment: $payment,
             sourceMetadata: is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [],
+            reason: $this->nullableString($document['reason'] ?? null),
+            notes: $this->nullableString($document['notes'] ?? null),
         );
     }
 

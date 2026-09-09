@@ -40,6 +40,8 @@ final class EInvoiceDocument
         public readonly ComplianceStatus $complianceStatus,
         public readonly array $payment,
         public readonly array $sourceMetadata,
+        public readonly ?string $reason = null,
+        public readonly ?string $notes = null,
     ) {}
 
     public function kind(): ElectronicDocumentKind
@@ -104,6 +106,8 @@ final class EInvoiceDocument
             'compliance_status' => $this->complianceStatus->value,
             'payment' => $this->payment,
             'source_metadata' => $this->sourceMetadata,
+            'reason' => $this->reason,
+            'notes' => $this->notes,
         ];
     }
 }

@@ -19,6 +19,7 @@ final readonly class EInvoiceLine
         public ?string $taxAmount,
         public string $total,
         public ?string $exemptionReason,
+        public ?string $exemptionCode = null,
     ) {}
 
     /**
@@ -42,6 +43,7 @@ final readonly class EInvoiceLine
             taxAmount: $taxAmount !== null ? Money::of($taxAmount) : null,
             total: Money::of($line['total'] ?? 0),
             exemptionReason: isset($line['exemption_reason']) ? (string) $line['exemption_reason'] : null,
+            exemptionCode: isset($line['exemption_code']) ? (string) $line['exemption_code'] : null,
         );
     }
 
@@ -62,6 +64,7 @@ final readonly class EInvoiceLine
             'tax_amount' => $this->taxAmount,
             'total' => $this->total,
             'exemption_reason' => $this->exemptionReason,
+            'exemption_code' => $this->exemptionCode,
         ];
     }
 }
