@@ -333,17 +333,25 @@ class IssuedSnapshotBuilder
         $orders = $invoice->orders
             ->filter(fn (Order $order): bool => (int) $order->workspace_id === (int) $invoice->workspace_id)
             ->values();
-        $taxAmount = $this->money($orders->sum(fn (Order $order): float => (float) $order->tax_amount));
+        $taxAmount = $this->money(
+            $invoice->tax_amount !== null
+                ? $invoice->tax_amount
+                : $orders->sum(fn (Order $order): float => (float) $order->tax_amount)
+        );
         $subtotal = $this->money($invoice->subtotal);
         $discount = $this->money($invoice->discount_amount);
         $total = $this->money($invoice->total_amount);
-        $taxable = $this->money(max(0, (float) $invoice->subtotal - (float) $invoice->discount_amount));
+        $taxable = $this->money(
+            $invoice->taxable_amount !== null
+                ? $invoice->taxable_amount
+                : max(0, (float) $invoice->subtotal - (float) $invoice->discount_amount)
+        );
         $allPaid = $orders->isNotEmpty()
             && $orders->every(fn (Order $order): bool => $order->payment_status === 'paid');
         $amountPaid = $allPaid ? $total : $this->money(0);
         $amountDue = $allPaid ? $this->money(0) : $total;
         $workspace = Workspace::query()->find((int) $invoice->workspace_id);
-        $configuredRate = (float) data_get($workspace?->settings ?? [], 'pos.tax_rate', 0);
+        $configuredRate = $this->posPersistedTaxRate($invoice, $orders);
 
         return [
             'document' => [
@@ -436,8 +444,8 @@ class IssuedSnapshotBuilder
             'unit_price' => $this->money($item->unit_price),
             'discount' => $this->money($item->discount_amount),
             'subtotal' => $this->money($item->total_amount),
-            'tax_rate' => null,
-            'tax_amount' => null,
+            'tax_rate' => $item->tax_rate !== null ? $this->money($item->tax_rate) : null,
+            'tax_amount' => $item->tax_amount !== null ? $this->money($item->tax_amount) : null,
             'total' => $this->money($item->total_amount),
         ];
     }
@@ -490,9 +498,39 @@ class IssuedSnapshotBuilder
             'vat_number' => $customer->vat_number,
             'commercial_registration' => $customer->commercial_registration,
             'address' => $customer->address,
+            'building_number' => $customer->building_number,
+            'street' => $customer->street,
+            'district' => $customer->district,
+            'city' => $customer->city,
+            'postal_code' => $customer->postal_code,
+            'country_code' => $customer->country_code,
+            'additional_number' => $customer->additional_number,
             'phone' => $customer->phone,
             'email' => $customer->email,
         ];
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     */
+    private function posPersistedTaxRate(PosCashierInvoice $invoice, Collection $orders): float
+    {
+        if ($invoice->tax_rate !== null && $invoice->tax_rate !== '') {
+            return (float) $invoice->tax_rate;
+        }
+
+        $rates = $orders
+            ->pluck('tax_rate')
+            ->filter(fn ($rate): bool => $rate !== null && $rate !== '')
+            ->map(fn ($rate): float => (float) $rate)
+            ->unique()
+            ->values();
+
+        if ($rates->count() === 1) {
+            return (float) $rates->first();
+        }
+
+        return 0.0;
     }
 
     /**

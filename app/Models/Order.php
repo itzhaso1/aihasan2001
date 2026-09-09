@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Finance\FinanceInvoice;
+use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,6 +31,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'subtotal',
     'discount_amount',
     'tax_amount',
+    'tax_rate',
     'shipping_amount',
     'total_amount',
     'payment_link',
@@ -40,7 +42,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class Order extends WorkspaceScopedModel
 {
-    /** @use HasFactory<\Database\Factories\OrderFactory> */
+    /** @use HasFactory<OrderFactory> */
     use BelongsToWorkspace, HasFactory, SoftDeletes;
 
     public const ORDER_TYPE_TABLE = 'table';
@@ -55,6 +57,7 @@ class Order extends WorkspaceScopedModel
             'subtotal' => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'tax_amount' => 'decimal:2',
+            'tax_rate' => 'decimal:2',
             'shipping_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
             'placed_at' => 'datetime',

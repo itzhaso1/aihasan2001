@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Appointment\AppointmentBooking;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Finance\FinanceInvoice;
+use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -21,6 +22,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'vat_number',
     'commercial_registration',
     'address',
+    'building_number',
+    'street',
+    'district',
+    'city',
+    'postal_code',
+    'country_code',
+    'additional_number',
     'payment_terms',
     'balance',
     'orders_count',
@@ -32,7 +40,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class Customer extends WorkspaceScopedModel
 {
-    /** @use HasFactory<\Database\Factories\CustomerFactory> */
+    /** @use HasFactory<CustomerFactory> */
     use BelongsToWorkspace, HasFactory, SoftDeletes;
 
     protected function casts(): array
