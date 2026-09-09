@@ -6,7 +6,7 @@ use App\Enums\EInvoicing\ComplianceStatus;
 use App\Enums\EInvoicing\ElectronicDocumentKind;
 use App\Enums\EInvoicing\InvoiceTransactionCode;
 use App\Enums\EInvoicing\InvoiceTypeCode;
-use App\Models\IssuedDocumentSnapshot;
+use App\Models\Finance\IssuedDocumentSnapshot;
 
 /**
  * In-memory electronic-invoice projection of an issued snapshot.
