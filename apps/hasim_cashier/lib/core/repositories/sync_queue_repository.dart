@@ -147,6 +147,44 @@ class SyncQueueRepository {
     return true;
   }
 
+  /// Cancel open outbox rows for wiped local entities so push cannot revive them.
+  Future<int> cancelOpenOps({
+    required int workspaceId,
+    required Iterable<String> entityTypes,
+    Iterable<String>? entityIds,
+  }) async {
+    final types = [
+      for (final type in entityTypes)
+        if (type.trim().isNotEmpty) type.trim(),
+    ];
+    if (types.isEmpty) return 0;
+    final query = _db.select(_db.syncQueueItems)
+      ..where(
+        (t) =>
+            t.workspaceId.equals(workspaceId) &
+            t.entityType.isIn(types) &
+            (t.status.equals('pending') |
+                t.status.equals('failed') |
+                t.status.equals('syncing')),
+      );
+    final ids = entityIds?.toList();
+    if (ids != null) {
+      if (ids.isEmpty) return 0;
+      query.where((t) => t.entityId.isIn(ids));
+    }
+    final rows = await query.get();
+    if (rows.isEmpty) return 0;
+    await (_db.update(_db.syncQueueItems)
+          ..where((t) => t.id.isIn([for (final row in rows) row.id])))
+        .write(
+          SyncQueueItemsCompanion(
+            status: const Value('cancelled'),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+    return rows.length;
+  }
+
   /// Cancel a not-yet-synced op when the local entity is deleted offline.
   Future<bool> cancelOpenOp({
     required int workspaceId,

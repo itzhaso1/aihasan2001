@@ -77,6 +77,17 @@ class OfflineStore {
   bool hasCachedCatalogFor(int? workspaceId) =>
       readCatalog(workspaceId: workspaceId).isNotEmpty;
 
+  Future<void> clearCatalogCache({int? workspaceId}) async {
+    if (!_ready) return;
+    if (workspaceId != null) {
+      await _catalog.delete('items_$workspaceId');
+      await _catalog.delete('categories_$workspaceId');
+    }
+    await _catalog.delete('items');
+    await _catalog.delete('categories');
+    await _catalog.delete('cached_at');
+  }
+
   Future<void> cacheJson(String key, Map<String, dynamic> value) async {
     await _catalog.put(key, jsonEncode(value));
     await _catalog.put('${key}_at', DateTime.now().toIso8601String());

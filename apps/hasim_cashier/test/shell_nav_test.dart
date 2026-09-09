@@ -590,6 +590,12 @@ void main() {
     expect(find.text('إغلاق الكاش'), findsOneWidget);
     expect(find.text('مزامنة الآن'), findsWidgets);
     expect(find.text('مزامنة السحابة'), findsOneWidget);
+    await revealSettingsAction(tester, 'حذف جميع الفواتير');
+    expect(find.text('حذف جميع الفواتير'), findsOneWidget);
+    expect(find.text('حذف جميع الأصناف'), findsOneWidget);
+    expect(find.text('حذف جميع الطلبات'), findsOneWidget);
+    expect(find.text('حذف جميع استعلامات المطبخ'), findsOneWidget);
+    expect(find.text('تنظيف البيانات المحلية'), findsOneWidget);
 
     await revealSettingsAction(tester, 'فتح التقارير');
     await tester.tap(find.text('فتح التقارير'));
@@ -651,5 +657,62 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(find.textContaining('اربط الحساب السحابي'), findsOneWidget);
+  });
+
+  testWidgets('settings bulk wipe asks first then clears local invoices', (
+    tester,
+  ) async {
+    await pumpShell(tester, size: const Size(1400, 900));
+    await tapNav(tester, 'الإعدادات');
+    await revealSettingsAction(tester, 'حذف جميع الفواتير');
+    await tester.tap(find.widgetWithText(HsOutlineButton, 'حذف جميع الفواتير'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('حذف الكل'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: find.byType(Dialog), matching: find.text('إلغاء')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(Dialog), findsNothing);
+
+    await tapNav(tester, 'الفواتير');
+    expect(find.text('INV-TEST-1'), findsOneWidget);
+
+    await tapNav(tester, 'الإعدادات');
+    await revealSettingsAction(tester, 'حذف جميع الفواتير');
+    await tester.tap(find.widgetWithText(HsOutlineButton, 'حذف جميع الفواتير'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.widgetWithText(HsPrimaryButton, 'حذف الكل'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('تم حذف الفواتير محلياً'), findsOneWidget);
+
+    await tapNav(tester, 'الفواتير');
+    expect(find.text('INV-TEST-1'), findsNothing);
+    expect((await db.select(db.localInvoices).get()), isEmpty);
+
+    await tapNav(tester, 'الإعدادات');
+    await revealSettingsAction(tester, 'حذف جميع الأصناف');
+    await tester.tap(find.widgetWithText(HsOutlineButton, 'حذف جميع الأصناف'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.textContaining('سيتم حذف كل الأصناف'), findsOneWidget);
+    await tester.tap(find.widgetWithText(HsPrimaryButton, 'حذف الكل'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('تم حذف الأصناف محلياً'), findsOneWidget);
+
+    await tapNav(tester, 'الكاشير');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('شاي اختبار'), findsNothing);
+    expect(find.text('برجر اختبار'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
   });
 }

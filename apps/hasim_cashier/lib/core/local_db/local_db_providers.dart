@@ -31,11 +31,15 @@ final deviceIdProvider = FutureProvider<String>((ref) async {
   return ref.watch(deviceIdentityProvider).getOrCreateDeviceId();
 });
 
-final deviceRegistrationServiceProvider = Provider<DeviceRegistrationService>((ref) {
+final deviceRegistrationServiceProvider = Provider<DeviceRegistrationService>((
+  ref,
+) {
   return DeviceRegistrationService(ref.watch(cashierApiProvider));
 });
 
-final cashierCloudLinkServiceProvider = Provider<CashierCloudLinkService>((ref) {
+final cashierCloudLinkServiceProvider = Provider<CashierCloudLinkService>((
+  ref,
+) {
   return CashierCloudLinkService(
     api: ref.watch(cashierApiProvider),
     store: ref.watch(cloudLinkStoreProvider),
@@ -100,6 +104,12 @@ final invoicesRevisionProvider = StateProvider<int>((ref) => 0);
 /// Bumped after table occupy / close so the board updates without a pull-to-refresh.
 final tablesRevisionProvider = StateProvider<int>((ref) => 0);
 
+/// Bumped after local order wipes so the running-orders tab reloads.
+final ordersRevisionProvider = StateProvider<int>((ref) => 0);
+
+/// Bumped after catalog wipes so cashier/menu grids reload.
+final catalogRevisionProvider = StateProvider<int>((ref) => 0);
+
 final syncPullApplierProvider = Provider<SyncPullApplier>((ref) {
   return SyncPullApplier(
     ref.watch(appDatabaseProvider),
@@ -117,7 +127,10 @@ final initialSyncServiceProvider = Provider<InitialSyncService>((ref) {
 });
 
 /// True when this workspace completed Initial Sync (or already has local products).
-final localPosReadyProvider = FutureProvider.family<bool, int?>((ref, workspaceId) async {
+final localPosReadyProvider = FutureProvider.family<bool, int?>((
+  ref,
+  workspaceId,
+) async {
   if (workspaceId == null || workspaceId <= 0) return false;
   final db = ref.watch(appDatabaseProvider);
   return db.isOfflinePosReady(workspaceId);

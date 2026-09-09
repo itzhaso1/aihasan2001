@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -453,6 +454,13 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(catalogRevisionProvider, (prev, next) {
+      if (prev != next) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_load());
+        });
+      }
+    });
     final perms = CashierPermissions.resolve(
       ref.watch(cashierPermissionsProvider),
       ref.watch(authControllerProvider).valueOrNull?.permissions,

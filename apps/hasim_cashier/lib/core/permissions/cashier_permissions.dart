@@ -54,12 +54,17 @@ class CashierPermissions {
   static bool canViewReports(Map<String, dynamic>? p) =>
       can(p, StaffPermissions.reportsView);
 
+  static bool canWipeOrders(Map<String, dynamic>? p) =>
+      can(p, StaffPermissions.ordersManage);
+
+  static bool canWipeKitchen(Map<String, dynamic>? p) =>
+      canUseKitchen(p) || canWipeOrders(p);
+
   static bool canUseKitchen(Map<String, dynamic>? p) =>
       can(p, StaffPermissions.kitchenUse);
 
   static bool canViewInvoices(Map<String, dynamic>? p) =>
-      can(p, StaffPermissions.invoicesView) ||
-      can(p, StaffPermissions.posUse);
+      can(p, StaffPermissions.invoicesView) || can(p, StaffPermissions.posUse);
 
   static bool canCreateInvoices(Map<String, dynamic>? p) =>
       can(p, StaffPermissions.invoicesCreate) ||

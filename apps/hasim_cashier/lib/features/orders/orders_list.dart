@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -487,6 +489,13 @@ class _OrdersListState extends ConsumerState<OrdersList> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(ordersRevisionProvider, (prev, next) {
+      if (prev != next) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_load());
+        });
+      }
+    });
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }

@@ -50,6 +50,7 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
   var _ready = false;
   var _savingPos = false;
   var _syncing = false;
+  var _wiping = false;
   var _pendingSync = 0;
   var _failedSync = 0;
   var _unsupportedSync = 0;
@@ -859,6 +860,168 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     return DateFormat('yyyy/MM/dd  HH:mm').format(at.toLocal());
   }
 
+  Future<int?> _wipeWorkspaceId() async {
+    final cloud = CashierRequestAuth.activeLink(
+      ref.read(cloudLinkSessionProvider),
+    );
+    final fromSession = CashierRequestAuth.workspaceId(
+      sessionWorkspaceId: ref.read(workspaceIdProvider),
+      cloud: cloud,
+    );
+    if (fromSession != null && fromSession > 0) return fromSession;
+    return ref.read(localAuthServiceProvider).localUnlockWorkspaceId();
+  }
+
+  Future<void> _confirmLocalWipe({
+    required String title,
+    required String body,
+    required Future<int> Function(int workspaceId) wipe,
+    required void Function() onDone,
+    required String doneLabel,
+  }) async {
+    if (_wiping) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 48, vertical: 24),
+        backgroundColor: HasimColors.surface,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  body,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: HasimColors.muted,
+                    height: 1.45,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                HsPrimaryButton(
+                  label: 'حذف الكل',
+                  onPressed: () => Navigator.pop(ctx, true),
+                ),
+                const SizedBox(height: 8),
+                HsOutlineButton(
+                  label: 'إلغاء',
+                  onPressed: () => Navigator.pop(ctx, false),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (ok != true) return;
+    final workspaceId = await _wipeWorkspaceId();
+    if (workspaceId == null || workspaceId <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('لا توجد مساحة عمل محلية.')));
+      return;
+    }
+    setState(() => _wiping = true);
+    try {
+      final count = await wipe(workspaceId);
+      onDone();
+      await _refreshSyncStatus();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$doneLabel ($count)')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e is PosException ? e.messageAr : '$e')),
+      );
+    } finally {
+      if (mounted) setState(() => _wiping = false);
+    }
+  }
+
+  Future<void> _wipeAllInvoices() {
+    return _confirmLocalWipe(
+      title: 'حذف جميع الفواتير',
+      body:
+          'سيتم حذف كل الفواتير والمدفوعات والمرتجعات المرتبطة بها من هذا الجهاز فقط. الطلبات والحسابات والطاولات تبقى.',
+      doneLabel: 'تم حذف الفواتير محلياً',
+      wipe: (workspaceId) => ref
+          .read(localDataWipeServiceProvider)
+          .deleteAllInvoices(workspaceId: workspaceId, permissions: _perms),
+      onDone: () {
+        ref.read(invoicesRevisionProvider.notifier).state++;
+      },
+    );
+  }
+
+  Future<void> _wipeAllProducts() {
+    return _confirmLocalWipe(
+      title: 'حذف جميع الأصناف',
+      body:
+          'سيتم حذف كل الأصناف والتصنيفات من منيو هذا الجهاز. السلة الحالية تُفرَّغ. إن كان الجهاز مرتبطاً بالسحابة قد تعود الأصناف بعد المزامنة.',
+      doneLabel: 'تم حذف الأصناف محلياً',
+      wipe: (workspaceId) => ref
+          .read(localDataWipeServiceProvider)
+          .deleteAllProducts(workspaceId: workspaceId, permissions: _perms),
+      onDone: () {
+        ref.read(catalogRevisionProvider.notifier).state++;
+        ref.invalidate(catalogItemsProvider);
+        ref.invalidate(categoriesProvider);
+        ref.read(cartControllerProvider.notifier).clear();
+      },
+    );
+  }
+
+  Future<void> _wipeAllOrders() {
+    return _confirmLocalWipe(
+      title: 'حذف جميع الطلبات',
+      body:
+          'سيتم حذف كل الطلبات المحلية واستعلامات المطبخ المرتبطة بها من هذا الجهاز. الفواتير تبقى إن وُجدت، والطاولات المشغولة بلا طلبات تُفتح.',
+      doneLabel: 'تم حذف الطلبات محلياً',
+      wipe: (workspaceId) => ref
+          .read(localDataWipeServiceProvider)
+          .deleteAllOrders(workspaceId: workspaceId, permissions: _perms),
+      onDone: () {
+        ref.read(ordersRevisionProvider.notifier).state++;
+        ref.read(tablesRevisionProvider.notifier).state++;
+      },
+    );
+  }
+
+  Future<void> _wipeAllKitchenTickets() {
+    return _confirmLocalWipe(
+      title: 'حذف جميع استعلامات المطبخ',
+      body:
+          'سيتم حذف تذاكر المطبخ المحلية (الجديدة والمكتملة والملغاة) من هذا الجهاز. الطاولات بلا طلبات متبقية تُفتح.',
+      doneLabel: 'تم حذف استعلامات المطبخ محلياً',
+      wipe: (workspaceId) => ref
+          .read(localDataWipeServiceProvider)
+          .deleteAllKitchenTickets(
+            workspaceId: workspaceId,
+            permissions: _perms,
+          ),
+      onDone: () {
+        ref.read(ordersRevisionProvider.notifier).state++;
+        ref.read(tablesRevisionProvider.notifier).state++;
+      },
+    );
+  }
+
   ({Color background, Color foreground}) _roleTone(String role) {
     if (LocalAuthService.isKitchenRole(role)) {
       return (
@@ -1357,6 +1520,56 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
     );
   }
 
+  Widget _dataWipeCard({
+    required bool canWipeInvoices,
+    required bool canWipeProducts,
+    required bool canWipeOrders,
+    required bool canWipeKitchen,
+  }) {
+    return HsSectionCard(
+      icon: Icons.delete_sweep_outlined,
+      iconBackground: HasimColors.dangerSoft,
+      iconColor: HasimColors.danger,
+      title: 'تنظيف البيانات المحلية',
+      subtitle:
+          'حذف تشغيلي على هذا الجهاز فقط. الحسابات والطاولات والإعدادات تبقى.',
+      children: [
+        if (canWipeInvoices)
+          HsOutlineButton(
+            label: 'حذف جميع الفواتير',
+            icon: Icons.receipt_long_outlined,
+            foreground: HasimColors.danger,
+            borderColor: HasimColors.danger,
+            onPressed: _wiping ? null : _wipeAllInvoices,
+          ),
+        if (canWipeProducts)
+          HsOutlineButton(
+            label: 'حذف جميع الأصناف',
+            icon: Icons.inventory_2_outlined,
+            foreground: HasimColors.danger,
+            borderColor: HasimColors.danger,
+            onPressed: _wiping ? null : _wipeAllProducts,
+          ),
+        if (canWipeOrders)
+          HsOutlineButton(
+            label: 'حذف جميع الطلبات',
+            icon: Icons.shopping_bag_outlined,
+            foreground: HasimColors.danger,
+            borderColor: HasimColors.danger,
+            onPressed: _wiping ? null : _wipeAllOrders,
+          ),
+        if (canWipeKitchen)
+          HsOutlineButton(
+            label: 'حذف جميع استعلامات المطبخ',
+            icon: Icons.soup_kitchen_outlined,
+            foreground: HasimColors.danger,
+            borderColor: HasimColors.danger,
+            onPressed: _wiping ? null : _wipeAllKitchenTickets,
+          ),
+      ],
+    );
+  }
+
   Widget _tablesCard({required bool canCreate}) {
     return HsSectionCard(
       icon: Icons.table_restaurant_outlined,
@@ -1530,6 +1743,27 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
         ref.watch(authControllerProvider).valueOrNull?.permissions,
       ),
     );
+    final canWipeInvoices = CashierPermissions.canDeleteInvoices(
+      CashierPermissions.resolve(
+        ref.watch(cashierPermissionsProvider),
+        ref.watch(authControllerProvider).valueOrNull?.permissions,
+      ),
+    );
+    final canWipeProducts = canManage;
+    final canWipeOrders = CashierPermissions.canWipeOrders(
+      CashierPermissions.resolve(
+        ref.watch(cashierPermissionsProvider),
+        ref.watch(authControllerProvider).valueOrNull?.permissions,
+      ),
+    );
+    final canWipeKitchen = CashierPermissions.canWipeKitchen(
+      CashierPermissions.resolve(
+        ref.watch(cashierPermissionsProvider),
+        ref.watch(authControllerProvider).valueOrNull?.permissions,
+      ),
+    );
+    final showDataWipe =
+        canWipeInvoices || canWipeProducts || canWipeOrders || canWipeKitchen;
     final cloud = CashierRequestAuth.activeLink(
       ref.watch(cloudLinkSessionProvider),
     );
@@ -1554,6 +1788,13 @@ class _SettingsPanelState extends ConsumerState<SettingsPanel> {
                 canUseKitchen: canUseKitchen,
               ),
             _backupCard(),
+            if (showDataWipe)
+              _dataWipeCard(
+                canWipeInvoices: canWipeInvoices,
+                canWipeProducts: canWipeProducts,
+                canWipeOrders: canWipeOrders,
+                canWipeKitchen: canWipeKitchen,
+              ),
             _soundCard(),
             if (canViewTables || canCreateTables)
               _tablesCard(canCreate: canCreateTables),

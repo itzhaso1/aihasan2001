@@ -1381,12 +1381,6 @@ class _ProductsPanelState extends ConsumerState<_ProductsPanel> {
               }).toList();
 
               if (filtered.isEmpty) {
-                final offline = OfflineStore.instance.readCatalog(
-                  workspaceId: ref.read(workspaceIdProvider),
-                );
-                if (list.isEmpty && offline.isNotEmpty) {
-                  return _grid(ref, offline);
-                }
                 return HsEmpty(
                   title: 'لا توجد منتجات في هذا التصنيف.',
                   actionLabel: 'عرض الكل',
