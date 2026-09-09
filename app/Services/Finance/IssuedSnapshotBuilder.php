@@ -2,14 +2,20 @@
 
 namespace App\Services\Finance;
 
+use App\Models\Customer;
 use App\Models\Finance\FinanceCreditNote;
 use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\FinanceInvoiceItem;
 use App\Models\Finance\FinanceSetting;
 use App\Models\Finance\IssuedDocumentSnapshot;
+use App\Models\Order;
+use App\Models\PosCashierInvoice;
+use App\Models\PosCashierInvoiceItem;
+use App\Models\Workspace;
 use App\Support\Money\Money;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -57,6 +63,36 @@ class IssuedSnapshotBuilder
             issuedAt: $note->issued_at,
             currency: (string) ($note->currency ?: 'SAR'),
             payload: $this->creditNotePayload($note),
+        );
+    }
+
+    public function capturePosCashierInvoice(PosCashierInvoice $invoice): IssuedDocumentSnapshot
+    {
+        $this->assertSameWorkspace((int) $invoice->workspace_id);
+
+        if ($invoice->status !== 'closed') {
+            throw new RuntimeException('لا يمكن إنشاء لقطة إلا لمستند صادر.');
+        }
+
+        $invoice->loadMissing([
+            'items',
+            'orders.customer',
+            'closer',
+            'session',
+            'table',
+        ]);
+
+        $this->assertPosRelationsSameWorkspace($invoice);
+
+        return $this->persist(
+            workspaceId: (int) $invoice->workspace_id,
+            sourceType: IssuedDocumentSnapshot::SOURCE_POS_CASHIER_INVOICE,
+            sourceId: (int) $invoice->id,
+            documentNumber: (string) $invoice->invoice_number,
+            issueDate: $invoice->closed_at?->toDateString() ?? now(config('app.timezone'))->toDateString(),
+            issuedAt: $invoice->closed_at,
+            currency: (string) ($invoice->currency ?: 'USD'),
+            payload: $this->posCashierInvoicePayload($invoice),
         );
     }
 
@@ -287,6 +323,205 @@ class IssuedSnapshotBuilder
                 'workspace_id' => (int) $note->workspace_id,
             ],
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function posCashierInvoicePayload(PosCashierInvoice $invoice): array
+    {
+        $orders = $invoice->orders
+            ->filter(fn (Order $order): bool => (int) $order->workspace_id === (int) $invoice->workspace_id)
+            ->values();
+        $taxAmount = $this->money($orders->sum(fn (Order $order): float => (float) $order->tax_amount));
+        $subtotal = $this->money($invoice->subtotal);
+        $discount = $this->money($invoice->discount_amount);
+        $total = $this->money($invoice->total_amount);
+        $taxable = $this->money(max(0, (float) $invoice->subtotal - (float) $invoice->discount_amount));
+        $allPaid = $orders->isNotEmpty()
+            && $orders->every(fn (Order $order): bool => $order->payment_status === 'paid');
+        $amountPaid = $allPaid ? $total : $this->money(0);
+        $amountDue = $allPaid ? $this->money(0) : $total;
+        $workspace = Workspace::query()->find((int) $invoice->workspace_id);
+        $configuredRate = (float) data_get($workspace?->settings ?? [], 'pos.tax_rate', 0);
+
+        return [
+            'document' => [
+                'number' => $invoice->invoice_number,
+                'issue_date' => $invoice->closed_at?->toDateString(),
+                'issued_at' => $invoice->closed_at?->toIso8601String(),
+                'status' => $invoice->status,
+                'type' => 'pos_cashier_invoice',
+                'currency' => $invoice->currency,
+                'source' => 'pos',
+                'notes' => is_array($invoice->metadata) ? ($invoice->metadata['notes'] ?? null) : null,
+                'local_invoice_number' => is_array($invoice->metadata)
+                    ? ($invoice->metadata['local_invoice_number'] ?? null)
+                    : null,
+            ],
+            'seller' => $this->posSeller($invoice, $workspace),
+            'buyer' => $this->posBuyer($invoice, $orders),
+            'contract' => null,
+            'reference' => [
+                'order_ids' => $orders->pluck('id')->map(fn ($id): int => (int) $id)->values()->all(),
+                'order_numbers' => $orders->pluck('order_number')->filter()->values()->all(),
+                'client_references' => $orders->pluck('client_reference')->filter()->values()->all(),
+                'table_session_id' => $invoice->table_session_id ? (int) $invoice->table_session_id : null,
+                'dining_table_id' => $invoice->dining_table_id ? (int) $invoice->dining_table_id : null,
+                'table_name' => $invoice->table?->name
+                    ?? (is_array($invoice->metadata) ? ($invoice->metadata['table_name'] ?? null) : null),
+            ],
+            'lines' => $invoice->items
+                ->map(fn (PosCashierInvoiceItem $item): array => $this->posInvoiceLine($item))
+                ->values()
+                ->all(),
+            'tax' => [
+                'engine' => 'pos',
+                'configured_rate' => $configuredRate > 0 ? $this->money($configuredRate) : $this->money(0),
+                'amount' => $taxAmount,
+                'profile_type' => null,
+                'price_mode' => null,
+                'breakdown' => null,
+            ],
+            'totals' => [
+                'subtotal' => $subtotal,
+                'discount' => $discount,
+                'taxable_amount' => $taxable,
+                'tax_amount' => $taxAmount,
+                'total' => $total,
+                'amount_paid' => $amountPaid,
+                'amount_due' => $amountDue,
+            ],
+            'payment' => [
+                'payment_status' => $this->posPaymentStatus($orders),
+                'payment_methods' => $orders
+                    ->map(fn (Order $order): ?string => is_array($order->metadata)
+                        ? (isset($order->metadata['payment_method']) ? (string) $order->metadata['payment_method'] : null)
+                        : null)
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all(),
+                'amount_paid' => $amountPaid,
+                'amount_due' => $amountDue,
+            ],
+            'cashier' => [
+                'closed_by_user_id' => $invoice->closed_by_user_id ? (int) $invoice->closed_by_user_id : null,
+                'closed_by_name' => $invoice->closer?->name,
+                'table_session_id' => $invoice->table_session_id ? (int) $invoice->table_session_id : null,
+                'dining_table_id' => $invoice->dining_table_id ? (int) $invoice->dining_table_id : null,
+            ],
+            'metadata' => [
+                'schema_version' => IssuedDocumentSnapshot::SCHEMA_VERSION,
+                'source_type' => IssuedDocumentSnapshot::SOURCE_POS_CASHIER_INVOICE,
+                'source_id' => (int) $invoice->id,
+                'workspace_id' => (int) $invoice->workspace_id,
+                'orders_count' => $orders->count(),
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function posInvoiceLine(PosCashierInvoiceItem $item): array
+    {
+        return [
+            'description' => $item->item_name,
+            'pos_menu_item_id' => $item->pos_menu_item_id ? (int) $item->pos_menu_item_id : null,
+            'product_name' => $item->item_name,
+            'item_type' => $item->item_type,
+            'size_label' => $item->size_label,
+            'quantity' => $this->quantity($item->quantity),
+            'unit_price' => $this->money($item->unit_price),
+            'discount' => $this->money($item->discount_amount),
+            'subtotal' => $this->money($item->total_amount),
+            'tax_rate' => null,
+            'tax_amount' => null,
+            'total' => $this->money($item->total_amount),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function posSeller(PosCashierInvoice $invoice, ?Workspace $workspace): array
+    {
+        $seller = $this->sellerFromSettings((int) $invoice->workspace_id);
+        $seller['workspace_id'] = (int) $invoice->workspace_id;
+        $seller['workspace_name'] = $workspace?->name;
+        if (blank($seller['company_name'] ?? null)) {
+            $seller['company_name'] = $workspace?->name;
+        }
+
+        return $seller;
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     * @return array<string, mixed>
+     */
+    private function posBuyer(PosCashierInvoice $invoice, Collection $orders): array
+    {
+        $customer = $orders
+            ->map(fn (Order $order): ?Customer => $order->customer)
+            ->filter(fn (?Customer $customer): bool => $customer !== null
+                && (int) $customer->workspace_id === (int) $invoice->workspace_id)
+            ->first();
+
+        if (! $customer) {
+            return [
+                'kind' => 'anonymous',
+                'walk_in' => true,
+                'name' => null,
+                'vat_number' => null,
+                'commercial_registration' => null,
+                'address' => null,
+                'phone' => null,
+                'email' => null,
+            ];
+        }
+
+        return [
+            'kind' => 'customer',
+            'walk_in' => false,
+            'id' => (int) $customer->id,
+            'name' => $customer->name,
+            'vat_number' => $customer->vat_number,
+            'commercial_registration' => $customer->commercial_registration,
+            'address' => $customer->address,
+            'phone' => $customer->phone,
+            'email' => $customer->email,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     */
+    private function posPaymentStatus(Collection $orders): string
+    {
+        if ($orders->isEmpty()) {
+            return 'pending';
+        }
+
+        if ($orders->every(fn (Order $order): bool => $order->payment_status === 'paid')) {
+            return 'paid';
+        }
+
+        if ($orders->contains(fn (Order $order): bool => $order->payment_status === 'paid')) {
+            return 'mixed';
+        }
+
+        return (string) ($orders->first()?->payment_status ?: 'pending');
+    }
+
+    private function assertPosRelationsSameWorkspace(PosCashierInvoice $invoice): void
+    {
+        foreach ($invoice->orders as $order) {
+            if ((int) $order->workspace_id !== (int) $invoice->workspace_id) {
+                throw new RuntimeException('Cross-workspace POS snapshot creation is not allowed.');
+            }
+        }
     }
 
     /**

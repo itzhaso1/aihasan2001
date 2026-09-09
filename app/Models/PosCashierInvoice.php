@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToWorkspace;
+use App\Models\Finance\IssuedDocumentSnapshot;
+use Database\Factories\PosCashierInvoiceFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
@@ -25,7 +28,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class PosCashierInvoice extends WorkspaceScopedModel
 {
-    /** @use HasFactory<\Database\Factories\PosCashierInvoiceFactory> */
+    /** @use HasFactory<PosCashierInvoiceFactory> */
     use BelongsToWorkspace, HasFactory, SoftDeletes;
 
     protected function casts(): array
@@ -62,5 +65,11 @@ class PosCashierInvoice extends WorkspaceScopedModel
     public function orders(): HasMany
     {
         return $this->hasMany(Order::class, 'pos_cashier_invoice_id');
+    }
+
+    public function issuedSnapshot(): HasOne
+    {
+        return $this->hasOne(IssuedDocumentSnapshot::class, 'source_id')
+            ->where('source_type', IssuedDocumentSnapshot::SOURCE_POS_CASHIER_INVOICE);
     }
 }
