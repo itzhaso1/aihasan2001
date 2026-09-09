@@ -482,6 +482,96 @@ void main() {
         },
       };
 
+  test('re-delivered older table/order versions never regress applied state',
+      () async {
+    final applier = SyncPullApplier(db);
+    final order = qrOrderChange(version: 2);
+    await applier.applyBatch(
+      workspaceId: 1,
+      fromCursor: 0,
+      responseCursor: 3,
+      changes: [
+        {
+          'version': 1,
+          'entity': 'table',
+          'operation': 'update',
+          'id': 3,
+          'data': {
+            'id': 3,
+            'name': 'T3',
+            'status': 'occupied',
+            'session_id': 17,
+            'session_open': true,
+            'opened_at': '2026-09-09T12:00:00.000Z',
+          },
+        },
+        order,
+        {
+          'version': 3,
+          'entity': 'order',
+          'operation': 'update',
+          'id': 88,
+          'data': {
+            ...order['data'] as Map<String, dynamic>,
+            'pos_status': 'completed',
+            'payment_status': 'paid',
+          },
+        },
+      ],
+    );
+    await applier.applyBatch(
+      workspaceId: 1,
+      fromCursor: 3,
+      responseCursor: 4,
+      changes: [closedTableChange(3, version: 4)],
+    );
+    final sessionsAfter = await db.select(db.localSessions).get();
+    expect(sessionsAfter, hasLength(1));
+    expect(sessionsAfter.single.serverId, 17);
+    expect(sessionsAfter.single.status, 'closed');
+
+    // Cursor rollback: history comes back in order from version 1.
+    await applier.applyBatch(
+      workspaceId: 1,
+      fromCursor: 0,
+      responseCursor: 2,
+      changes: [
+        {
+          'version': 1,
+          'entity': 'table',
+          'operation': 'update',
+          'id': 3,
+          'data': {
+            'id': 3,
+            'name': 'T3',
+            'status': 'occupied',
+            'session_id': 17,
+            'session_open': true,
+            'opened_at': '2026-09-09T12:00:00.000Z',
+          },
+        },
+        order,
+      ],
+    );
+
+    final table = await (db.select(db.localTables)
+          ..where((t) => t.localId.equals(LocalIds.table(1, 3))))
+        .getSingle();
+    expect(table.status, 'available');
+    expect(table.sessionServerId, isNull);
+    expect(table.serverVersion, 4);
+    final local = await (db.select(db.localOrders)
+          ..where((t) => t.clientReference.equals('qr-88')))
+        .getSingle();
+    expect(local.posStatus, 'completed');
+    expect(local.paymentStatus, 'paid');
+    expect(local.serverVersion, 3);
+    expect(await db.select(db.localOrders).get(), hasLength(1));
+    final sessions = await db.select(db.localSessions).get();
+    expect(sessions, hasLength(1));
+    expect(sessions.single.status, 'closed');
+  });
+
   test('Laravel-side close frees an acknowledged local sitting', () async {
     await seedOccupied(
       tableId: 6,

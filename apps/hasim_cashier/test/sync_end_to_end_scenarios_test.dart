@@ -361,24 +361,56 @@ void main() {
     expect(row.sessionServerId, 102);
     expect(await openSessions(), hasLength(1));
 
-    // 7. Repeated sync (and re-delivery of already-applied changes after a
-    //    cursor rollback) creates nothing new and re-pushes nothing.
-    final ordersBefore = (await db.select(db.localOrders).get()).length;
-    final sessionsBefore = (await db.select(db.localSessions).get()).length;
-    final tablesBefore = (await db.select(db.localTables).get()).length;
+    // 7. Repeated sync, partial re-delivery, and a full replay from cursor 0
+    //    create nothing new, re-push nothing, and leave state untouched.
+    Future<Map<String, Object>> snapshot() async {
+      final o = await db.select(db.localOrders).get();
+      final s = await db.select(db.localSessions).get();
+      final t = await db.select(db.localTables).get();
+      final items = await db.select(db.localOrderItems).get();
+      return {
+        'orders': o.length,
+        'order_states': (o
+                .map((e) => '${e.localId}:${e.posStatus}:${e.paymentStatus}:'
+                    '${e.serverId}:${e.sessionLocalId}')
+                .toList()
+              ..sort())
+            .join('|'),
+        'items': items.length,
+        'sessions': s.length,
+        'session_states': (s
+                .map((e) => '${e.localId}:${e.status}:${e.serverId}')
+                .toList()
+              ..sort())
+            .join('|'),
+        'tables': t.length,
+        'table_state': '${t.single.status}:${t.single.sessionServerId}',
+      };
+    }
+
+    final before = await snapshot();
     final logBefore = laravel.log.length;
     for (var i = 0; i < 3; i++) {
       result = await sync();
       expect(result.failed, 0);
       expect(result.pulled, 0);
     }
+    expect(await snapshot(), before);
+
     await db.writeCursor(ws, '$cursorBeforeReopen');
     result = await sync();
     expect(result.pulled, greaterThan(0));
+    expect(await snapshot(), before,
+        reason: 'partial re-delivery must be a no-op');
+
+    await db.writeCursor(ws, '0');
+    result = await sync();
     expect(result.pullFailed, isFalse);
-    expect((await db.select(db.localOrders).get()).length, ordersBefore);
-    expect((await db.select(db.localSessions).get()).length, sessionsBefore);
-    expect((await db.select(db.localTables).get()).length, tablesBefore);
+    expect(result.pulled, laravel.log.length);
+    expect(await snapshot(), before,
+        reason: 'replay from cursor 0 must be a no-op');
+    expect(int.parse((await db.readCursor(ws))!), laravel.log.length);
+
     expect(laravel.log.length, logBefore, reason: 'replay must not re-push');
     expect(laravel.orders, hasLength(2));
     expect(await queue.pendingForWorkspace(ws), isEmpty);
@@ -386,6 +418,14 @@ void main() {
     expect(row.status, 'occupied');
     expect(row.sessionServerId, 102);
     expect(await openSessions(), hasLength(1));
+
+    // Every server sitting maps to exactly one local row.
+    final sessions = await db.select(db.localSessions).get();
+    final serverIds =
+        sessions.map((s) => s.serverId).whereType<int>().toList();
+    expect(serverIds.toSet().length, serverIds.length);
+    expect(serverIds.toSet(), {100, 101, 102});
+    expect(sessions, hasLength(3));
   });
 
   test('open table detail is notified when a pulled QR order lands', () async {

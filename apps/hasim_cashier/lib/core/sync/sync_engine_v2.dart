@@ -1491,6 +1491,22 @@ class SyncEngineV2 {
                     t.workspaceId.equals(row.workspaceId),
               ))
               .getSingleOrNull();
+      // Bind the device sitting to its server id so pull recognises the same
+      // sitting instead of minting a second local row for it.
+      final sessionClientId = '${_decode(row.payloadJson)['session_client_id'] ?? row.clientReference ?? ''}'.trim();
+      if (sessionId != null && sessionId > 0 && sessionClientId.isNotEmpty) {
+        await (_db.update(_db.localSessions)..where(
+              (t) =>
+                  t.localId.equals(sessionClientId) &
+                  t.workspaceId.equals(row.workspaceId),
+            ))
+            .write(
+          LocalSessionsCompanion(
+            serverId: Value(sessionId),
+            updatedAt: Value(now),
+          ),
+        );
+      }
       if (table != null) {
         final prev = _decode(table.payloadJson);
         final pendingClose = await _queue.findOpenOp(

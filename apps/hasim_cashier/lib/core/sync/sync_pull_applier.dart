@@ -62,11 +62,29 @@ class SyncPullApplier {
 
         switch (entity) {
           case 'product':
-            await _applyProduct(workspaceId, operation, entityId, data);
+            await _applyProduct(
+              workspaceId,
+              operation,
+              entityId,
+              data,
+              version: version,
+            );
           case 'category':
-            await _applyCategory(workspaceId, operation, entityId, data);
+            await _applyCategory(
+              workspaceId,
+              operation,
+              entityId,
+              data,
+              version: version,
+            );
           case 'table':
-            await _applyTable(workspaceId, operation, entityId, data);
+            await _applyTable(
+              workspaceId,
+              operation,
+              entityId,
+              data,
+              version: version,
+            );
           case 'order':
             await _applyOrder(
               workspaceId: workspaceId,
@@ -133,14 +151,16 @@ class SyncPullApplier {
     int workspaceId,
     String operation,
     int? serverId,
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    int? version,
+  }) async {
     if (serverId == null || serverId <= 0) return;
     final existing = await (_db.select(_db.localProducts)..where(
           (t) =>
               t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId),
         ))
         .getSingleOrNull();
+    if (_isStaleVersion(version, existing?.serverVersion)) return;
     final localId = existing?.localId ?? LocalIds.product(workspaceId, serverId);
     if (operation == 'delete') {
       await (_db.update(_db.localProducts)
@@ -152,6 +172,8 @@ class SyncPullApplier {
           isDeleted: const Value(true),
           isActive: const Value(false),
           updatedAt: Value(DateTime.now()),
+          serverVersion:
+              version == null ? const Value.absent() : Value(version),
         ),
       );
       return;
@@ -188,7 +210,7 @@ class SyncPullApplier {
           payloadJson: Value(jsonEncode({...data, 'id': serverId})),
           stock: Value((data['stock'] as num?)?.toInt() ?? existing.stock),
           updatedAt: Value(now),
-          serverVersion: Value((data['version'] as num?)?.toInt()),
+          serverVersion: Value(version ?? (data['version'] as num?)?.toInt()),
         ),
       );
       return;
@@ -210,7 +232,7 @@ class SyncPullApplier {
             payloadJson: Value(jsonEncode({...data, 'id': serverId})),
             stock: Value((data['stock'] as num?)?.toInt() ?? existing?.stock),
             updatedAt: now,
-            serverVersion: Value((data['version'] as num?)?.toInt()),
+            serverVersion: Value(version ?? (data['version'] as num?)?.toInt()),
           ),
         );
   }
@@ -219,16 +241,20 @@ class SyncPullApplier {
     int workspaceId,
     String operation,
     int? serverId,
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    int? version,
+  }) async {
     if (serverId == null || serverId <= 0) return;
     final existing = await (_db.select(_db.localCategories)..where(
           (t) =>
               t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId),
         ))
         .getSingleOrNull();
+    if (_isStaleVersion(version, existing?.serverVersion)) return;
     final localId =
         existing?.localId ?? LocalIds.category(workspaceId, serverId);
+    final versionValue =
+        version == null ? const Value<int?>.absent() : Value<int?>(version);
     if (operation == 'delete') {
       await (_db.update(_db.localCategories)
             ..where((t) =>
@@ -239,6 +265,7 @@ class SyncPullApplier {
           isDeleted: const Value(true),
           isActive: const Value(false),
           updatedAt: Value(DateTime.now()),
+          serverVersion: versionValue,
         ),
       );
       return;
@@ -256,6 +283,7 @@ class SyncPullApplier {
           isActive: Value(data['is_active'] != false),
           isDeleted: const Value(false),
           updatedAt: Value(DateTime.now()),
+          serverVersion: versionValue,
         ),
       );
       return;
@@ -273,6 +301,7 @@ class SyncPullApplier {
             isActive: Value(data['is_active'] != false),
             isDeleted: const Value(false),
             updatedAt: DateTime.now(),
+            serverVersion: versionValue,
           ),
         );
   }
@@ -281,13 +310,17 @@ class SyncPullApplier {
     int workspaceId,
     String operation,
     int? serverId,
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    int? version,
+  }) async {
     if (serverId == null || serverId <= 0) return;
     final existing = await _findLocalTable(
       workspaceId: workspaceId,
       serverId: serverId,
     );
+    // Re-delivered history (cursor rollback / replay from 0) must be a no-op:
+    // the row already reflects a newer or equal server version.
+    if (_isStaleVersion(version, existing?.serverVersion)) return;
     final localId = existing?.localId ?? LocalIds.table(workspaceId, serverId);
     if (operation == 'delete') {
       await (_db.delete(_db.localTables)
@@ -391,6 +424,8 @@ class SyncPullApplier {
           sessionServerId: Value(sessionServerId),
           payloadJson: Value(jsonEncode(payload)),
           updatedAt: Value(DateTime.now()),
+          serverVersion:
+              version == null ? const Value.absent() : Value(version),
         ),
       );
       if (available) {
@@ -419,6 +454,7 @@ class SyncPullApplier {
             sessionServerId: Value(sessionServerId),
             payloadJson: Value(jsonEncode(payload)),
             updatedAt: DateTime.now(),
+            serverVersion: Value(version),
           ),
         );
     if (!available && sessionServerId != null && sessionServerId > 0) {
@@ -449,6 +485,7 @@ class SyncPullApplier {
       clientRef: clientRef,
       serverId: serverId,
     );
+    if (_isStaleVersion(version, local?.serverVersion)) return;
 
     final isEcho = ourDeviceId != null &&
         originDeviceId != null &&
@@ -480,6 +517,7 @@ class SyncPullApplier {
           posStatus: const Value('cancelled'),
           syncStatus: const Value('synced'),
           serverId: Value(serverId ?? local.serverId),
+          serverVersion: Value(version),
           updatedAt: Value(DateTime.now()),
           syncedAt: Value(DateTime.now()),
         ),
@@ -574,6 +612,7 @@ class SyncPullApplier {
                 now,
             updatedAt: now,
             syncedAt: Value(now),
+            serverVersion: Value(version),
           ),
         );
 
@@ -1034,6 +1073,21 @@ class SyncPullApplier {
     Object? openedAtRaw,
     String? currentSessionLocalId,
   }) async {
+    // 1. A local row already bound to this server sitting (open ACK or an
+    //    earlier pull) is the identity — never mint a second one for it.
+    final bound = await _sessionByServerId(workspaceId, serverSessionId);
+    if (bound != null) {
+      await _upsertOpenLocalSession(
+        sessionLocalId: bound.localId,
+        workspaceId: workspaceId,
+        tableLocalId: bound.tableLocalId,
+        openedAtRaw: openedAtRaw,
+        serverId: serverSessionId,
+      );
+      return bound.localId;
+    }
+    // 2. Adopt the sitting this device already has open (offline open that
+    //    Laravel unified into this server session).
     final current = (currentSessionLocalId ?? '').trim();
     if (current.isNotEmpty) {
       await _upsertOpenLocalSession(
@@ -1041,6 +1095,7 @@ class SyncPullApplier {
         workspaceId: workspaceId,
         tableLocalId: tableLocalId,
         openedAtRaw: openedAtRaw,
+        serverId: serverSessionId,
       );
       return current;
     }
@@ -1051,17 +1106,31 @@ class SyncPullApplier {
         workspaceId: workspaceId,
         tableLocalId: tableLocalId,
         openedAtRaw: openedAtRaw,
+        serverId: serverSessionId,
       );
       return open;
     }
+    // 3. Server-originated sitting (QR / web): deterministic local id.
     final generated = LocalIds.session(workspaceId, serverSessionId);
     await _upsertOpenLocalSession(
       sessionLocalId: generated,
       workspaceId: workspaceId,
       tableLocalId: tableLocalId,
       openedAtRaw: openedAtRaw,
+      serverId: serverSessionId,
     );
     return generated;
+  }
+
+  Future<LocalSession?> _sessionByServerId(int workspaceId, int serverId) {
+    return (_db.select(_db.localSessions)
+          ..where(
+            (t) =>
+                t.workspaceId.equals(workspaceId) & t.serverId.equals(serverId),
+          )
+          ..orderBy([(t) => OrderingTerm.desc(t.updatedAt)])
+          ..limit(1))
+        .getSingleOrNull();
   }
 
   Future<void> _upsertOpenLocalSession({
@@ -1069,6 +1138,7 @@ class SyncPullApplier {
     required int workspaceId,
     required String tableLocalId,
     Object? openedAtRaw,
+    int? serverId,
   }) async {
     final id = sessionLocalId.trim();
     if (id.isEmpty || tableLocalId.trim().isEmpty) return;
@@ -1077,8 +1147,23 @@ class SyncPullApplier {
     final existing = await (_db.select(
       _db.localSessions,
     )..where((t) => t.localId.equals(id))).getSingleOrNull();
+    final serverIdValue = serverId == null || serverId <= 0
+        ? const Value<int?>.absent()
+        : Value<int?>(serverId);
     if (existing != null) {
-      if (existing.status == 'open') return;
+      if (existing.status == 'open') {
+        if (serverIdValue.present && existing.serverId != serverId) {
+          await (_db.update(
+            _db.localSessions,
+          )..where((t) => t.localId.equals(id))).write(
+            LocalSessionsCompanion(
+              serverId: serverIdValue,
+              updatedAt: Value(now),
+            ),
+          );
+        }
+        return;
+      }
       await (_db.update(
         _db.localSessions,
       )..where((t) => t.localId.equals(id))).write(
@@ -1086,6 +1171,7 @@ class SyncPullApplier {
           status: const Value('open'),
           openedAt: Value(openedAt),
           closedAt: const Value(null),
+          serverId: serverIdValue,
           updatedAt: Value(now),
         ),
       );
@@ -1096,12 +1182,21 @@ class SyncPullApplier {
             localId: id,
             workspaceId: workspaceId,
             tableLocalId: tableLocalId,
+            serverId: serverIdValue,
             status: const Value('open'),
             openedAt: openedAt,
             createdAt: now,
             updatedAt: now,
           ),
         );
+  }
+
+  /// True when [incoming] is at or below the version already applied to the
+  /// row. Rows that never recorded a version (snapshot / legacy) always
+  /// accept the change.
+  bool _isStaleVersion(int? incoming, int? applied) {
+    if (incoming == null || applied == null) return false;
+    return incoming <= applied;
   }
 
   Future<bool> _hasPendingSessionClose(

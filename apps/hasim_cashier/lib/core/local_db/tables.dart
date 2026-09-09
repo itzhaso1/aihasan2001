@@ -148,6 +148,10 @@ class LocalOrders extends Table {
   DateTimeColumn get completedAt => dateTime().nullable()();
   DateTimeColumn get syncedAt => dateTime().nullable()();
 
+  /// Highest pos_sync_changes version applied to this row. Pull skips
+  /// changes at or below it so re-delivery (cursor rollback) is a no-op.
+  IntColumn get serverVersion => integer().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {localId};
 }
@@ -390,6 +394,10 @@ class LocalSequences extends Table {
 class LocalSessions extends Table {
   TextColumn get localId => text()();
   IntColumn get workspaceId => integer()();
+
+  /// Laravel table_sessions.id once known (open ACK or pull). One local row
+  /// per server sitting, whichever side created it first.
+  IntColumn get serverId => integer().nullable()();
   TextColumn get tableLocalId =>
       text().references(LocalTables, #localId, onDelete: KeyAction.restrict)();
   TextColumn get status => text().withDefault(const Constant('open'))();
