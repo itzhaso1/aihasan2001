@@ -30,4 +30,13 @@ abstract class PosBaseController extends Controller
 
         abort_unless($isElevatedMember, 403, 'ليس لديك صلاحية للوصول إلى وحدة الكاشير.');
     }
+
+    /**
+     * Web is management + QR only. Opening/closing sessions, checkout,
+     * kitchen status, and cart checkout belong to the Flutter cashier.
+     */
+    protected function abortWebPosOperation(): never
+    {
+        abort(403, 'تشغيل الجلسات والدفع يتم من تطبيق الكاشير فقط. هذه الواجهة للإدارة وQR Menu.');
+    }
 }

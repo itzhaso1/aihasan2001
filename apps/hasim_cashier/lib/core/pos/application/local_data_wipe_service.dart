@@ -23,6 +23,7 @@ class LocalDataWipeService {
   }) async {
     _require(permissions, StaffPermissions.invoicesDelete);
     _assertWorkspace(workspaceId);
+    await _assertNoUnsyncedBusiness(workspaceId);
     return _db.transaction(() async {
       final invoices = await (_db.select(
         _db.localInvoices,
@@ -62,6 +63,7 @@ class LocalDataWipeService {
   }) async {
     _require(permissions, StaffPermissions.menuManage);
     _assertWorkspace(workspaceId);
+    await _assertNoUnsyncedBusiness(workspaceId);
     final count = await _db.transaction(() async {
       await (_db.delete(
         _db.localDraftCartLines,
@@ -115,6 +117,7 @@ class LocalDataWipeService {
   }) async {
     _require(permissions, StaffPermissions.ordersManage);
     _assertWorkspace(workspaceId);
+    await _assertNoUnsyncedBusiness(workspaceId);
     return _deleteOrders(workspaceId: workspaceId);
   }
 
@@ -127,6 +130,7 @@ class LocalDataWipeService {
       throw const Forbidden();
     }
     _assertWorkspace(workspaceId);
+    await _assertNoUnsyncedBusiness(workspaceId);
     return _deleteOrders(
       workspaceId: workspaceId,
       posStatuses: KitchenLocalService.kitchenStatuses.toList(),
@@ -313,6 +317,77 @@ class LocalDataWipeService {
   }
 
   bool _hasId(String? value) => value != null && value.trim().isNotEmpty;
+
+  Future<void> _assertNoUnsyncedBusiness(int workspaceId) async {
+    final queue = _queue;
+    if (queue != null) {
+      final rows = await queue.pendingForWorkspace(workspaceId);
+      const business = {
+        'order',
+        'invoice',
+        'table_session',
+        'stock',
+        'stock_movement',
+        'customer',
+        'return',
+        'refund',
+      };
+      final blocking = rows.where(
+        (row) =>
+            business.contains(row.entityType) &&
+            (row.status == 'pending' ||
+                row.status == 'failed' ||
+                row.status == 'syncing'),
+      );
+      if (blocking.isNotEmpty) {
+        throw const UnsyncedWipeBlocked();
+      }
+    }
+
+    final unsyncedInvoices =
+        await (_db.select(_db.localInvoices)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) &
+                  t.serverId.isNull() &
+                  t.syncStatus.isNotValue('synced'),
+            ))
+            .get();
+    if (unsyncedInvoices.isNotEmpty) {
+      throw const UnsyncedWipeBlocked();
+    }
+
+    final unsyncedOrders =
+        await (_db.select(_db.localOrders)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) &
+                  t.serverId.isNull() &
+                  t.syncStatus.isIn(['pending', 'failed', 'syncing']),
+            ))
+            .get();
+    if (unsyncedOrders.isNotEmpty) {
+      throw const UnsyncedWipeBlocked();
+    }
+
+    final openSessions =
+        await (_db.select(_db.localSessions)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) & t.status.equals('open'),
+            ))
+            .get();
+    if (openSessions.isNotEmpty && queue != null) {
+      final rows = await queue.pendingForWorkspace(workspaceId);
+      final sessionPending = rows.any(
+        (row) =>
+            row.entityType == 'table_session' &&
+            (row.status == 'pending' ||
+                row.status == 'failed' ||
+                row.status == 'syncing'),
+      );
+      if (sessionPending) {
+        throw const UnsyncedWipeBlocked();
+      }
+    }
+  }
 
   void _assertWorkspace(int workspaceId) {
     if (workspaceId <= 0) {

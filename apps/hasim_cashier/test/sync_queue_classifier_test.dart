@@ -167,9 +167,9 @@ void main() {
     final classified = await SyncQueueClassifier(db).counts(workspaceId);
     expect(classified.totalOpen, 18);
     expect(classified.failed, 6);
-    expect(classified.ready, 4);
-    expect(classified.unsupported, 8);
-    expect(classified.invoicePending, 4);
+    expect(classified.ready, 12);
+    expect(classified.unsupported, 0);
+    expect(classified.invoicePending, 12);
     expect(classified.invoicePending, isNot(raw.waiting));
   });
 
@@ -238,7 +238,7 @@ void main() {
     expect((await SyncQueueClassifier(db).counts(workspaceId)).invoicePending, 1);
   });
 
-  test('menu and table-master rows are scoped pending, sessions are not', () async {
+  test('menu and table-master rows are scoped pending with sessions', () async {
     await insertQueue(
       entityType: 'category',
       entityId: 'cat-1',
@@ -260,9 +260,9 @@ void main() {
       status: 'pending',
     );
     final counts = await SyncQueueClassifier(db).counts(workspaceId);
-    expect(counts.ready, 2);
-    expect(counts.unsupported, 1);
-    expect(counts.scopedPending, 2);
+    expect(counts.ready, 3);
+    expect(counts.unsupported, 0);
+    expect(counts.scopedPending, 3);
   });
 
   test('takeaway waiting for a local customer is waitingParent, not Laravel-down',

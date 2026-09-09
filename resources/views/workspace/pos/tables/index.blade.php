@@ -66,7 +66,7 @@
         <section class="order-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:col-span-6">
             <div class="mb-3 flex items-center justify-between gap-2">
                 <h2 class="text-sm font-bold text-slate-900">الطاولات</h2>
-                <a href="{{ route('workspace.pos.cashier.index') }}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">فتح الكاشير</a>
+                <a href="{{ route('workspace.pos.qr-orders.index') }}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">طلبات QR</a>
             </div>
 
             <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -100,18 +100,7 @@
                                     @click.outside="openMenuId = null"
                                     class="absolute left-0 z-20 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-lg"
                                 >
-                                    <a :href="table.show_url" class="block px-3 py-2 text-slate-700 hover:bg-slate-50">عرض الطلب</a>
-                                    <a :href="table.show_url" class="block px-3 py-2 text-slate-700 hover:bg-slate-50">الحساب</a>
-                                    <button
-                                        type="button"
-                                        x-show="table.close_session_url"
-                                        @click="confirmClose(table); openMenuId = null"
-                                        class="block w-full px-3 py-2 text-right text-rose-700 hover:bg-rose-50"
-                                    >إغلاق الطاولة</button>
-                                    <form :action="table.open_session_url" method="POST" x-show="!table.session_id">
-                                        <input type="hidden" name="_token" :value="csrf">
-                                        <button class="block w-full px-3 py-2 text-right text-slate-700 hover:bg-slate-50">فتح جلسة</button>
-                                    </form>
+                                    <a :href="table.show_url" class="block px-3 py-2 text-slate-700 hover:bg-slate-50">عرض الطاولة</a>
                                     <form :action="table.qr_regen_url" method="POST">
                                         <input type="hidden" name="_token" :value="csrf">
                                         <button class="block w-full px-3 py-2 text-right text-slate-700 hover:bg-slate-50">تجديد QR</button>
@@ -158,20 +147,6 @@
             </article>
         </aside>
 
-        {{-- Close confirmation --}}
-        <div x-show="closeConfirmOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-            <div class="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl" @click.outside="closeConfirmOpen = false">
-                <h3 class="text-base font-bold text-slate-900">هل أنت متأكد من إغلاق الطاولة؟</h3>
-                <p class="mt-1 text-sm text-slate-500" x-text="pendingClose?.name"></p>
-                <div class="mt-5 grid grid-cols-2 gap-2">
-                    <button type="button" @click="closeConfirmOpen = false" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">إلغاء</button>
-                    <form :action="pendingClose?.close_session_url" method="POST">
-                        <input type="hidden" name="_token" :value="csrf">
-                        <button class="w-full rounded-lg bg-rose-600 px-3 py-2 text-sm font-bold text-white">إغلاق الطاولة</button>
-                    </form>
-                </div>
-            </div>
-        </div>
     </div>
 
     <script>
@@ -182,8 +157,6 @@
                 liveBoardUrl,
                 selected: null,
                 openMenuId: null,
-                closeConfirmOpen: false,
-                pendingClose: null,
                 pollTimer: null,
                 selectTable(table) {
                     this.selected = table;
@@ -191,11 +164,6 @@
                 },
                 toggleMenu(id) {
                     this.openMenuId = this.openMenuId === id ? null : id;
-                },
-                confirmClose(table) {
-                    if (!table?.close_session_url) return;
-                    this.pendingClose = table;
-                    this.closeConfirmOpen = true;
                 },
                 formatDuration(openedAt) {
                     if (!openedAt) return '';

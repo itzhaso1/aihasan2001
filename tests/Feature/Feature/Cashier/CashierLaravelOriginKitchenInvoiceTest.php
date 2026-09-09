@@ -22,16 +22,10 @@ class CashierLaravelOriginKitchenInvoiceTest extends TestCase
     {
         [$token, $owner, $workspace, $item] = $this->boot();
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'takeaway',
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
-            ])
-            ->assertCreated()
-            ->assertJsonPath('success', true);
-
-        $order = Order::query()->where('source', 'pos')->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'takeaway',
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
+        ]);
         $this->assertNotNull($order->pos_cashier_invoice_id);
         $this->assertSame(1, PosCashierInvoice::query()->count());
         $this->assertSame(1, Order::query()->count());
@@ -113,26 +107,20 @@ class CashierLaravelOriginKitchenInvoiceTest extends TestCase
         [$token, $owner, $workspace, $item] = $this->boot();
         $ref = 'web-pos-idem-'.uniqid();
 
-        $first = $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'takeaway',
-                'client_reference' => $ref,
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])
-            ->assertCreated();
+        $first = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'takeaway',
+            'client_reference' => $ref,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
 
-        $second = $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'takeaway',
-                'client_reference' => $ref,
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])
-            ->assertCreated();
+        $second = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'takeaway',
+            'client_reference' => $ref,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
 
-        $this->assertSame($first->json('order_id'), $second->json('order_id'));
-        $this->assertSame($first->json('invoice_id'), $second->json('invoice_id'));
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame($first->pos_cashier_invoice_id, $second->pos_cashier_invoice_id);
         $this->assertSame(1, Order::query()->count());
         $this->assertSame(1, PosCashierInvoice::query()->count());
         $this->assertNotNull($token);

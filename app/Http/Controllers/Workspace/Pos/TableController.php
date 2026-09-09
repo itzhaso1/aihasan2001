@@ -3,25 +3,21 @@
 namespace App\Http\Controllers\Workspace\Pos;
 
 use App\Http\Requests\Pos\StoreDiningTableRequest;
-use App\Http\Requests\Pos\StoreTableSessionOrderRequest;
 use App\Http\Requests\Pos\UpdateDiningTableRequest;
 use App\Models\DiningTable;
 use App\Models\Order;
 use App\Models\PosMenuItem;
 use App\Models\TableSession;
-use App\Services\Pos\PosOrderService;
 use App\Services\Pos\PosOrderStatsService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-use RuntimeException;
 
 class TableController extends PosBaseController
 {
     public function __construct(
-        private readonly PosOrderService $posOrderService,
         private readonly PosOrderStatsService $posOrderStatsService,
     ) {}
 
@@ -110,10 +106,6 @@ class TableController extends PosBaseController
                 'opened_at' => optional($openSession?->opened_at)?->toIso8601String(),
                 'session_id' => $openSession?->id,
                 'show_url' => route('workspace.pos.tables.show', $table),
-                'open_session_url' => route('workspace.pos.tables.sessions.open', $table),
-                'close_session_url' => $openSession
-                    ? route('workspace.pos.tables.sessions.close', ['table' => $table, 'session' => $openSession])
-                    : null,
                 'qr_regen_url' => route('workspace.pos.tables.qr.regenerate', $table),
                 'menu_url' => route('menu.table', ['workspace' => $workspace->slug, 'token' => $table->qr_token]),
                 'customer_name' => optional($orders->first()?->customer)->name,
@@ -162,6 +154,7 @@ class TableController extends PosBaseController
             'menuItems' => $menuItems,
             'otherTables' => $otherTables,
             'posStatuses' => $this->posStatusLabels(),
+            'operationalLocked' => true,
         ]);
     }
 
@@ -218,173 +211,47 @@ class TableController extends PosBaseController
 
     public function openSession(Request $request, DiningTable $table): RedirectResponse
     {
-        $this->authorizePos($request, 'tables.manage');
-        $this->authorize('update', $table);
-
-        $this->posOrderService->openSession($table);
-
-        return back()->with('success', 'تم فتح جلسة للطاولة.');
+        $this->abortWebPosOperation();
     }
 
     public function closeSession(Request $request, DiningTable $table, TableSession $session): RedirectResponse
     {
-        $this->authorizePos($request, 'tables.manage');
-        $this->authorize('update', $table);
-
-        abort_unless((int) $session->dining_table_id === (int) $table->id, 404);
-
-        try {
-            $invoice = $this->posOrderService->closeSession($session, (int) $request->user()?->id);
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        if ($invoice) {
-            return redirect()->route('workspace.pos.invoices.show', $invoice)->with('success', 'تم إغلاق الجلسة وإصدار فاتورة كاشير نهائية.');
-        }
-
-        return back()->with('success', 'تم إغلاق الجلسة.');
+        $this->abortWebPosOperation();
     }
 
     public function cancelSession(Request $request, DiningTable $table, TableSession $session): RedirectResponse
     {
-        $this->authorizePos($request, 'tables.manage');
-        $this->authorize('update', $table);
-
-        abort_unless((int) $session->dining_table_id === (int) $table->id, 404);
-
-        try {
-            $this->posOrderService->cancelSession($session, $request->user());
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return back()->with('success', 'تم إلغاء الجلسة وإلغاء الطلبات المرتبطة بالطاولة.');
+        $this->abortWebPosOperation();
     }
 
     public function applyDiscount(Request $request, DiningTable $table, TableSession $session): RedirectResponse
     {
-        $this->authorizePos($request, 'orders.manage');
-        $this->authorize('update', $table);
-
-        abort_unless((int) $session->dining_table_id === (int) $table->id, 404);
-
-        $validated = $request->validate([
-            'discount_amount' => ['required', 'numeric', 'min:0'],
-        ]);
-
-        try {
-            $this->posOrderService->applySessionDiscount($session, (float) $validated['discount_amount']);
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return back()->with('success', 'تم تطبيق خصم الجلسة بنجاح.');
+        $this->abortWebPosOperation();
     }
 
-    public function addOrder(StoreTableSessionOrderRequest $request, DiningTable $table): RedirectResponse
+    public function addOrder(Request $request, DiningTable $table): RedirectResponse
     {
-        $this->authorizePos($request, 'orders.manage');
-        $this->authorize('view', $table);
-
-        try {
-            $payload = $request->validated();
-            $payload['dining_table_id'] = $table->id;
-            $this->posOrderService->createPosOrder($this->currentWorkspace(), $payload, $request->user());
-        } catch (RuntimeException $exception) {
-            return back()->withInput()->with('error', $exception->getMessage());
-        }
-
-        return back()->with('success', 'تمت إضافة الطلب للطاولة بنجاح.');
+        $this->abortWebPosOperation();
     }
 
     public function transferSession(Request $request, DiningTable $table, TableSession $session): RedirectResponse
     {
-        $this->authorizePos($request, 'tables.manage');
-        $this->authorize('update', $table);
-        abort_unless((int) $session->dining_table_id === (int) $table->id, 404);
-
-        $validated = $request->validate([
-            'target_table_id' => ['required', 'integer'],
-        ]);
-
-        $target = DiningTable::query()->whereKey((int) $validated['target_table_id'])->firstOrFail();
-        $this->assertSameWorkspace($target->workspace_id);
-
-        try {
-            $this->posOrderService->transferSession($session, $target);
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return redirect()
-            ->route('workspace.pos.tables.show', $target)
-            ->with('success', 'تم نقل الطاولة وطلباتها بنجاح.');
+        $this->abortWebPosOperation();
     }
 
     public function mergeSession(Request $request, DiningTable $table, TableSession $session): RedirectResponse
     {
-        $this->authorizePos($request, 'tables.manage');
-        $this->authorize('update', $table);
-        abort_unless((int) $session->dining_table_id === (int) $table->id, 404);
-
-        $validated = $request->validate([
-            'target_table_id' => ['required', 'integer'],
-        ]);
-
-        $target = DiningTable::query()->whereKey((int) $validated['target_table_id'])->firstOrFail();
-        $this->assertSameWorkspace($target->workspace_id);
-
-        try {
-            $this->posOrderService->mergeSessions($session, $target);
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return redirect()
-            ->route('workspace.pos.tables.show', $target)
-            ->with('success', 'تم دمج الطاولة دون فقدان الطلبات.');
+        $this->abortWebPosOperation();
     }
 
     public function splitSession(Request $request, DiningTable $table, TableSession $session): RedirectResponse
     {
-        $this->authorizePos($request, 'orders.manage');
-        $this->authorize('update', $table);
-        abort_unless((int) $session->dining_table_id === (int) $table->id, 404);
-
-        $validated = $request->validate([
-            'groups' => ['required', 'array', 'min:2'],
-            'groups.*.items' => ['required', 'array', 'min:1'],
-            'groups.*.items.*.order_item_id' => ['required', 'integer'],
-            'groups.*.items.*.quantity' => ['required', 'integer', 'min:0'],
-        ]);
-
-        try {
-            $this->posOrderService->splitSessionByItems($session, $validated['groups'], $request->user());
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return back()->with('success', 'تم تقسيم الحساب مع الحفاظ على الإجماليات.');
+        $this->abortWebPosOperation();
     }
 
     public function updateSessionNote(Request $request, DiningTable $table, TableSession $session): RedirectResponse
     {
-        $this->authorizePos($request, 'orders.manage');
-        $this->authorize('update', $table);
-        abort_unless((int) $session->dining_table_id === (int) $table->id, 404);
-
-        $validated = $request->validate([
-            'notes' => ['required', 'string', 'max:2000'],
-        ]);
-
-        try {
-            $this->posOrderService->applySessionNote($session, $validated['notes']);
-        } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return back()->with('success', 'تم حفظ الملاحظة.');
+        $this->abortWebPosOperation();
     }
 
     public function regenerateQr(Request $request, DiningTable $table): RedirectResponse

@@ -8,6 +8,7 @@ import '../local_db/app_database.dart';
 import '../pos/domain/pricing_service.dart';
 import '../local_db/workspace_scope.dart';
 import '../repositories/sync_queue_repository.dart';
+import '../repositories/sync_conflict_repository.dart';
 import 'sync_pull_applier.dart';
 import 'sync_queue_classifier.dart';
 
@@ -616,9 +617,26 @@ class SyncEngineV2 {
   }
 
   Future<bool> _rowReadyForPush(SyncQueueItem row) async {
-    // Scoped batch: kitchen/sale orders + invoices + menu + table master.
-    // Table live sessions stay off.
+    // Scoped batch: kitchen/sale orders + invoices + menu + table master
+    // + table sessions. Sale stock.movement stays out (alreadyApplied).
     if (!_isScopedBatchOp(row)) return false;
+    if (row.entityType == 'table_session') {
+      if (row.operation == 'close') {
+        final payload = _decode(row.payloadJson);
+        final tableId = (payload['table_server_id'] as num?)?.toInt();
+        if (tableId != null &&
+            await _hasUnsyncedOrdersForTable(row.workspaceId, tableId)) {
+          return false;
+        }
+      }
+      if (_isSessionAction(row.operation)) {
+        return _sessionActionReady(row);
+      }
+      return true;
+    }
+    if (row.entityType == 'stock' || row.entityType == 'stock_movement') {
+      return true;
+    }
     if (row.entityType == 'order' && row.operation == 'update') {
       return _kitchenStatusReady(row);
     }
@@ -667,6 +685,22 @@ class SyncEngineV2 {
             row.operation == 'update' ||
             row.operation == 'delete')) {
       return true;
+    }
+    if (row.entityType == 'table_session') {
+      return row.operation == 'open' ||
+          row.operation == 'close' ||
+          row.operation == 'cancel' ||
+          row.operation == 'note' ||
+          row.operation == 'discount' ||
+          row.operation == 'transfer' ||
+          row.operation == 'merge' ||
+          row.operation == 'split';
+    }
+    if (row.entityType == 'stock' || row.entityType == 'stock_movement') {
+      final payload = SyncQueueClassifier.decodePayload(row.payloadJson);
+      final kind =
+          '${payload['kind'] ?? payload['type'] ?? ''}'.trim().toLowerCase();
+      return kind.isNotEmpty && kind != 'sale' && kind != 'remove';
     }
     return false;
   }
@@ -821,6 +855,12 @@ class SyncEngineV2 {
       return payload;
     }
     payload['client_reference'] = row.clientReference;
+    if (row.entityType == 'table_session') {
+      payload['device_id'] = row.deviceId;
+      if ('${payload['session_client_id'] ?? ''}'.trim().isEmpty) {
+        payload['session_client_id'] = row.clientReference;
+      }
+    }
     if (row.entityType == 'category' ||
         row.entityType == 'product' ||
         row.entityType == 'table') {
@@ -1035,6 +1075,9 @@ class SyncEngineV2 {
     if (row.entityType == 'order') return 5;
     if (row.entityType == 'invoice') return 6;
     if (row.entityType == 'table_session' && row.operation == 'close') return 7;
+    if (row.entityType == 'stock' || row.entityType == 'stock_movement') {
+      return 8;
+    }
     return 9;
   }
 
@@ -1391,7 +1434,9 @@ class SyncEngineV2 {
     SyncQueueItem row,
     Map<String, dynamic> data,
   ) async {
-    final sessionId = (data['session_id'] as num?)?.toInt();
+    final sessionId = (data['session_id'] as num?)?.toInt() ??
+        (data['accepted_session_id'] as num?)?.toInt() ??
+        (data['id'] as num?)?.toInt();
     final now = DateTime.now();
     await _db.transaction(() async {
       final table =
@@ -1423,6 +1468,28 @@ class SyncEngineV2 {
       }
       await _queue.markSynced(row.id);
     });
+    if (data['conflict'] == true || data['conflict_status'] == 'conflict') {
+      await SyncConflictRepository(_db).record(
+        workspaceId: row.workspaceId,
+        entityType: 'table_session',
+        entityId: row.clientReference,
+        strategy: 'detectAndRecord',
+        reason: '${data['reason'] ?? 'table_session_open_conflict_other_device'}',
+        deviceId: row.deviceId,
+        operation: 'open',
+        local: {
+          'local_session_id': data['local_session_id'] ?? row.clientReference,
+          'table_id': data['table_id'],
+          'device_id': data['device_id'] ?? row.deviceId,
+          'accepted_session_id': data['accepted_session_id'] ?? sessionId,
+        },
+        server: {
+          'server_session_id': data['server_session_id'],
+          'table_id': data['table_id'],
+          'conflict_status': data['conflict_status'] ?? 'conflict',
+        },
+      );
+    }
   }
 
   Future<void> _finalizeSessionClose(

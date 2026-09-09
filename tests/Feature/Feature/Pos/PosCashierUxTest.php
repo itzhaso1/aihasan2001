@@ -33,27 +33,10 @@ class PosCashierUxTest extends TestCase
             'is_active' => true,
         ]);
 
-        $html = $this->actingAs($owner)
+        $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
             ->get(route('workspace.pos.cashier.index'))
-            ->assertOk()
-            ->getContent();
-
-        $this->assertStringContainsString('data-pos-categories-sidebar', $html);
-        $this->assertStringContainsString('التصنيفات', $html);
-        $this->assertStringContainsString('الكل', $html);
-        $this->assertStringContainsString('data-pos-cart-nav', $html);
-        $this->assertStringContainsString('notifyAdded', $html);
-        $this->assertStringContainsString('xl:col-span-3', $html); // narrower cart
-        $this->assertStringContainsString('xl:col-span-7', $html); // wider products
-        $this->assertStringContainsString('إنشاء الطلب', $html);
-        $this->assertStringContainsString('طلب خارجي', $html);
-        $this->assertStringContainsString('طباعة الفاتورة', $html);
-        $this->assertStringContainsString('متابعة بدون طباعة', $html);
-        $this->assertStringNotContainsString('كل التصنيفات', $html);
-        $this->assertStringNotContainsString('إتمام عبر سلة الجلسة', $html);
-        $this->assertStringNotContainsString('إنشاء Order', $html);
-        $this->assertDoesNotMatchRegularExpression('/<select[^>]*x-model="selectedCategoryId"/', $html);
+            ->assertRedirect(route('workspace.pos.tables.index'));
     }
 
     public function test_create_order_json_returns_optional_print_without_forced_redirect(): void
@@ -69,21 +52,14 @@ class PosCashierUxTest extends TestCase
             'is_active' => true,
         ]);
 
-        $response = $this->actingAs($owner)
+        $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
             ->postJson(route('workspace.pos.orders.store'), [
                 'items' => [
                     ['pos_menu_item_id' => $item->id, 'quantity' => 1],
                 ],
-            ]);
-
-        $response->assertCreated()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('message', 'تم إنشاء الطلب بنجاح')
-            ->assertJsonStructure(['order_id', 'order_number', 'print_url']);
-
-        $this->assertNotEmpty($response->json('order_number'));
-        $this->assertNotEmpty($response->json('print_url'));
+            ])
+            ->assertForbidden();
     }
 
     public function test_create_order_form_stays_on_cashier(): void
@@ -107,7 +83,7 @@ class PosCashierUxTest extends TestCase
                     ['pos_menu_item_id' => $item->id, 'quantity' => 1],
                 ],
             ])
-            ->assertRedirect(route('workspace.pos.cashier.index'));
+            ->assertForbidden();
     }
 
     public function test_external_order_checkout_json_does_not_auto_redirect(): void
@@ -128,16 +104,12 @@ class PosCashierUxTest extends TestCase
             ->postJson(route('workspace.pos.cart.items.store'), [
                 'pos_menu_item_id' => $item->id,
                 'quantity' => 2,
-            ])->assertOk();
+            ])->assertForbidden();
 
-        $response = $this->actingAs($owner)
+        $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.cart.checkout'), []);
-
-        $response->assertCreated()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('redirect', null)
-            ->assertJsonStructure(['order_id', 'order_number', 'print_url']);
+            ->postJson(route('workspace.pos.cart.checkout'), [])
+            ->assertForbidden();
     }
 
     public function test_tables_board_separates_details_and_menu_actions(): void
@@ -154,10 +126,9 @@ class PosCashierUxTest extends TestCase
         $this->assertStringContainsString('data-table-order-details', $html);
         $this->assertStringContainsString('تفاصيل الطلب', $html);
         $this->assertStringContainsString('data-table-menu', $html);
-        $this->assertStringContainsString('الحساب', $html);
-        $this->assertStringContainsString('إغلاق الطاولة', $html);
-        $this->assertStringContainsString('confirmClose', $html);
-        $this->assertStringNotContainsString('إغلاق الجلسة</button>', $html);
+        $this->assertStringContainsString('تجديد QR', $html);
+        $this->assertStringNotContainsString('إغلاق الطاولة</button>', $html);
+        $this->assertStringNotContainsString('confirmClose', $html);
     }
 
     public function test_table_show_has_info_on_right_and_orders_on_left(): void
@@ -181,14 +152,12 @@ class PosCashierUxTest extends TestCase
         $this->assertStringContainsString('معلومات الطاولة', $html);
         $this->assertStringContainsString('خيارات الطاولة', $html);
         $this->assertStringContainsString('تفاصيل طلبات الطاولة', $html);
-        $this->assertStringContainsString('نقل الطاولة', $html);
-        $this->assertStringContainsString('تقسيم الحساب', $html);
-        $this->assertStringContainsString('دمج طاولة', $html);
-        $this->assertStringContainsString('إضافة طلب', $html);
-        $this->assertStringNotContainsString('إضافة صنف', $html);
-        $this->assertStringContainsString('إغلاق الطاولة', $html);
-        $this->assertStringContainsString('إلغاء الطاولة', $html);
+        $this->assertStringContainsString('تطبيق الكاشير', $html);
         $this->assertStringContainsString('الإجمالي الكلي', $html);
+        $this->assertStringNotContainsString('إضافة طلب', $html);
+        $this->assertStringNotContainsString('إضافة صنف', $html);
+        $this->assertStringNotContainsString('إغلاق الطاولة', $html);
+        $this->assertStringNotContainsString('إلغاء الطاولة', $html);
     }
 
     public function test_transfer_merge_and_split_preserve_orders(): void
@@ -223,11 +192,10 @@ class PosCashierUxTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.orders.store', $tableA), [
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
-            ])->assertRedirect();
+        $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $tableA->id,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
+        ]);
 
         $sessionA = \App\Models\TableSession::query()
             ->where('dining_table_id', $tableA->id)
@@ -237,12 +205,8 @@ class PosCashierUxTest extends TestCase
         $order = \App\Models\Order::query()->where('table_session_id', $sessionA->id)->firstOrFail();
         $this->assertSame(20.0, (float) $order->total_amount);
 
-        // Transfer A → B
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.transfer', ['table' => $tableA, 'session' => $sessionA]), [
-                'target_table_id' => $tableB->id,
-            ])->assertRedirect(route('workspace.pos.tables.show', $tableB));
+        $pos = app(\App\Services\Pos\PosOrderService::class);
+        $pos->transferSession($sessionA, $tableB);
 
         $order->refresh();
         $this->assertSame($tableB->id, (int) $order->dining_table_id);
@@ -254,22 +218,17 @@ class PosCashierUxTest extends TestCase
             ->firstOrFail();
 
         // Create order on C then merge C → B
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.orders.store', $tableC), [
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])->assertRedirect();
+        $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $tableC->id,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
 
         $sessionC = \App\Models\TableSession::query()
             ->where('dining_table_id', $tableC->id)
             ->where('status', 'open')
             ->firstOrFail();
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.merge', ['table' => $tableC, 'session' => $sessionC]), [
-                'target_table_id' => $tableB->id,
-            ])->assertRedirect(route('workspace.pos.tables.show', $tableB));
+        $pos->mergeSessions($sessionC, $tableB);
 
         $ordersOnB = \App\Models\Order::query()
             ->where('dining_table_id', $tableB->id)
@@ -310,11 +269,7 @@ class PosCashierUxTest extends TestCase
             }
         }
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.split', ['table' => $tableB, 'session' => $sessionB]), [
-                'groups' => $groups,
-            ])->assertRedirect();
+        $pos->splitSessionByItems($sessionB, $groups, $owner);
 
         $activeAfterSplit = \App\Models\Order::query()
             ->where('dining_table_id', $tableB->id)

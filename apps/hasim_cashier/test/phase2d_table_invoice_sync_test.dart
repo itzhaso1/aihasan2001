@@ -214,10 +214,10 @@ void main() {
     expect((payload['items'] as List).single['unit_price'], 10);
 
     final counts = await SyncQueueClassifier(db).counts(workspaceId);
-    expect(counts.invoicePending, 2);
-    expect(counts.ready, 1);
+    expect(counts.invoicePending, 3);
+    expect(counts.ready, 2);
     expect(counts.waitingParent, 1);
-    expect(counts.unsupported, greaterThanOrEqualTo(1));
+    expect(counts.unsupported, 0);
   });
 
   test('table invoice waits for order ACK then keeps local INV-*', () async {
@@ -245,8 +245,8 @@ void main() {
     );
 
     final report = await engine.pushPending(workspaceId: workspaceId);
-    expect(report.synced, 2);
-    expect(seen, ['order.created', 'invoice.created']);
+    expect(report.synced, 3);
+    expect(seen, ['table_session.open', 'order.created', 'invoice.created']);
     expect(orderData?['offline_sale'], isTrue);
     expect(orderData?['dining_table_id'], 4);
     expect(invoiceData?['order_server_id'], 4401);
@@ -263,7 +263,7 @@ void main() {
 
     final leftover = await SyncQueueClassifier(db).counts(workspaceId);
     expect(leftover.invoicePending, 0);
-    expect(leftover.unsupported, greaterThanOrEqualTo(1));
+    expect(leftover.unsupported, 0);
   });
 
   test('retry reuses the same table order and invoice UUIDs', () async {
@@ -297,7 +297,7 @@ void main() {
       },
     );
 
-    expect((await engine.pushPending(workspaceId: workspaceId)).synced, 2);
+    expect((await engine.pushPending(workspaceId: workspaceId)).synced, 3);
 
     await (db.update(db.syncQueueItems)..where((t) => t.id.equals(invoiceOp.id)))
         .write(
@@ -402,7 +402,7 @@ void main() {
         return ackBatch(body, orderId: 7701);
       },
     ).pushPending(workspaceId: workspaceId);
-    expect(kitchenPush, ['order.created']);
+    expect(kitchenPush, ['table_session.open', 'order.created']);
     expect(kitchenOrder?['offline_sale'], isTrue);
     expect(kitchenOrder?['dining_table_id'], 4);
     expect(kitchenOrder?['payment_status'], 'unpaid');

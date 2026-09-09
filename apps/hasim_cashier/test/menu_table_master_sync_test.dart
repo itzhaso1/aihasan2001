@@ -243,8 +243,7 @@ void main() {
     expect(queued.operation, 'create');
   });
 
-  test('table_session leftovers stay unsupported after menu/table master',
-      () async {
+  test('table_session open is auto-synced with menu/table master', () async {
     await queue.enqueue(
       workspaceId: workspaceId,
       deviceId: deviceId,
@@ -256,7 +255,7 @@ void main() {
     );
     final item = (await SyncQueueClassifier(db).classifyWorkspace(workspaceId))
         .single;
-    expect(item.bucket, SyncQueueBucket.unsupported);
-    expect((await SyncQueueClassifier(db).counts(workspaceId)).scopedPending, 0);
+    expect(item.bucket, SyncQueueBucket.ready);
+    expect((await SyncQueueClassifier(db).counts(workspaceId)).scopedPending, 1);
   });
 }

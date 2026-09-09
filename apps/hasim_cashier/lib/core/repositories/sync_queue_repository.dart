@@ -346,6 +346,26 @@ class SyncQueueRepository {
           row.operation == 'update' ||
           row.operation == 'delete';
     }
+    if (row.entityType == 'table_session') {
+      return row.operation == 'open' ||
+          row.operation == 'close' ||
+          row.operation == 'cancel' ||
+          row.operation == 'note' ||
+          row.operation == 'discount' ||
+          row.operation == 'transfer' ||
+          row.operation == 'merge' ||
+          row.operation == 'split';
+    }
+    if (row.entityType == 'stock' || row.entityType == 'stock_movement') {
+      Map<String, dynamic> payload = const {};
+      try {
+        final decoded = jsonDecode(row.payloadJson);
+        if (decoded is Map) payload = Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+      final kind =
+          '${payload['kind'] ?? payload['type'] ?? ''}'.trim().toLowerCase();
+      return kind.isNotEmpty && kind != 'sale' && kind != 'remove';
+    }
     return false;
   }
 

@@ -61,8 +61,8 @@ class SyncQueueCountsByBucket {
   final int standalone;
   final int blocked;
 
-  /// Kitchen orders + invoices + menu + table-master rows for the next push.
-  /// Session/stock leftovers stay out of this count.
+  /// Kitchen orders + invoices + menu + table-master + table sessions.
+  /// Sale stock leftovers are alreadyApplied, not this count.
   int get invoicePending => ready + waitingParent;
 
   int get scopedPending => invoicePending;
@@ -210,16 +210,19 @@ class SyncQueueClassifier {
       return _classifyKitchenStatus(row);
     }
 
-    if (row.entityType == 'table_session' ||
-        row.entityType == 'stock' ||
-        row.entityType == 'stock_movement' ||
-        (row.entityType == 'order' && row.operation == 'delete')) {
+    if (row.entityType == 'order' && row.operation == 'delete') {
       return SyncQueueClassification(
         row: row,
         bucket: SyncQueueBucket.unsupported,
         reason:
-            'خارج عقد المزامنة (طلبات المطبخ + فواتير + منيو + بيانات الطاولات الأساسية).',
+            'حذف الطلب خارج عقد المزامنة الحالي.',
       );
+    }
+    if (row.entityType == 'table_session') {
+      return _classifyTableSession(row);
+    }
+    if (row.entityType == 'stock' || row.entityType == 'stock_movement') {
+      return _classifyStock(row);
     }
 
     if (row.entityType == 'customer' && row.operation == 'create') {
@@ -473,6 +476,73 @@ class SyncQueueClassifier {
       row: row,
       bucket: SyncQueueBucket.ready,
       reason: 'بيانات الطاولة الأساسية جاهزة للدفع.',
+    );
+  }
+
+  static const _sessionOps = {
+    'open',
+    'close',
+    'cancel',
+    'note',
+    'discount',
+    'transfer',
+    'merge',
+    'split',
+  };
+
+  Future<SyncQueueClassification> _classifyTableSession(
+    SyncQueueItem row,
+  ) async {
+    if (!_sessionOps.contains(row.operation)) {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.unsupported,
+        reason: 'عملية جلسة غير معروفة: ${row.operation}.',
+      );
+    }
+    final payload = decodePayload(row.payloadJson);
+    final tableServerId = (payload['table_server_id'] as num?)?.toInt() ??
+        (payload['dining_table_id'] as num?)?.toInt() ??
+        0;
+    if (tableServerId <= 0) {
+      final waitingTable = await _tableNeedsServerId(row, payload);
+      if (waitingTable) {
+        return SyncQueueClassification(
+          row: row,
+          bucket: SyncQueueBucket.waitingParent,
+          reason: 'جلسة الطاولة تنتظر وصول الطاولة إلى Laravel أولاً.',
+        );
+      }
+    }
+    return SyncQueueClassification(
+      row: row,
+      bucket: SyncQueueBucket.ready,
+      reason: 'عملية جلسة الطاولة جاهزة للمزامنة.',
+    );
+  }
+
+  Future<SyncQueueClassification> _classifyStock(SyncQueueItem row) async {
+    final payload = decodePayload(row.payloadJson);
+    final kind =
+        '${payload['kind'] ?? payload['type'] ?? ''}'.trim().toLowerCase();
+    if (kind == 'sale' || kind == 'remove') {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.alreadyApplied,
+        reason: 'خصم البيع يتم عبر order.created — لا يُعاد إرسال الحركة.',
+      );
+    }
+    if (kind.isEmpty) {
+      return SyncQueueClassification(
+        row: row,
+        bucket: SyncQueueBucket.unsupported,
+        reason: 'حركة مخزون بلا نوع.',
+      );
+    }
+    return SyncQueueClassification(
+      row: row,
+      bucket: SyncQueueBucket.ready,
+      reason: 'حركة مخزون غير مرتبطة بالبيع جاهزة للمزامنة.',
     );
   }
 

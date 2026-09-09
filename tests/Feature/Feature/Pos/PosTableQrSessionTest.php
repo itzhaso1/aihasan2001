@@ -33,6 +33,11 @@ class PosTableQrSessionTest extends TestCase
         );
     }
 
+    private function closeSessionFromCashier(TableSession $session, User $actor): void
+    {
+        app(\App\Services\Pos\PosOrderService::class)->closeSession($session, (int) $actor->id);
+    }
+
     public function test_fixed_qr_opens_menu_and_creates_guest_and_table_session(): void
     {
         [$workspace, $table] = $this->seedTableWorkspace();
@@ -110,10 +115,7 @@ class PosTableQrSessionTest extends TestCase
 
         $session = TableSession::query()->where('dining_table_id', $table->id)->where('status', 'open')->firstOrFail();
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.close', ['table' => $table, 'session' => $session]))
-            ->assertRedirect();
+        $this->closeSessionFromCashier($session, $owner);
 
         $this->assertDatabaseHas('table_sessions', ['id' => $session->id, 'status' => 'closed']);
         $this->assertDatabaseHas('pos_customer_sessions', [
@@ -130,10 +132,7 @@ class PosTableQrSessionTest extends TestCase
         $guest = PosCustomerSession::query()->where('dining_table_id', $table->id)->firstOrFail();
         $session = $guest->tableSession;
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.close', ['table' => $table, 'session' => $session]))
-            ->assertRedirect();
+        $this->closeSessionFromCashier($session, $owner);
 
         $ordersBefore = Order::query()->count();
 
@@ -155,12 +154,7 @@ class PosTableQrSessionTest extends TestCase
         $this->get(route('menu.table', ['workspace' => $workspace->slug, 'token' => $originalQr]))->assertOk();
         $oldSessionId = (int) TableSession::query()->where('dining_table_id', $table->id)->value('id');
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.close', [
-                'table' => $table,
-                'session' => $oldSessionId,
-            ]))->assertRedirect();
+        $this->closeSessionFromCashier(TableSession::query()->whereKey($oldSessionId)->firstOrFail(), $owner);
 
         $this->get(route('menu.table', [
             'workspace' => $workspace->slug,
@@ -195,10 +189,7 @@ class PosTableQrSessionTest extends TestCase
         $this->get(route('menu.table', ['workspace' => $workspace->slug, 'token' => $before]))->assertOk();
         $session = TableSession::query()->where('dining_table_id', $table->id)->firstOrFail();
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.close', ['table' => $table, 'session' => $session]))
-            ->assertRedirect();
+        $this->closeSessionFromCashier($session, $owner);
 
         $table->refresh();
         $this->assertSame($before, $table->qr_token);
