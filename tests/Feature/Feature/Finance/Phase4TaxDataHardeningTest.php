@@ -65,8 +65,8 @@ class Phase4TaxDataHardeningTest extends TestCase
         $this->assertSame('100.00', (string) $standard->taxable_amount);
         $this->assertSame('115.00', (string) $standard->total);
         $this->assertSame(
-            (string) $standard->taxable_amount,
-            (string) $standard->items->sum(fn ($item) => (float) $item->taxable_amount)
+            number_format((float) $standard->taxable_amount, 2, '.', ''),
+            number_format((float) $standard->items->sum(fn ($item) => (float) $item->taxable_amount), 2, '.', '')
         );
         $this->assertSame(
             (string) $standard->tax_amount,
@@ -412,16 +412,21 @@ class Phase4TaxDataHardeningTest extends TestCase
     {
         [$owner, $workspace] = $this->createWorkspaceOwner();
         $item = $this->menuItem($workspace, 'Walk-in', 10);
-        $order = $this->createTakeawayOrder($workspace, $owner, [
-            ['pos_menu_item_id' => $item->id, 'quantity' => 1],
-        ]);
+        $placedAt = now()->subDay();
+        $order = app(PosOrderService::class)->createPosOrder($workspace, [
+            'order_type' => 'takeaway',
+            'offline_sale' => true,
+            'placed_at' => $placedAt->toIso8601String(),
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ], $owner);
         $invoice = app(PosOrderService::class)->createInvoiceFromOrder($order, (int) $owner->id);
         $snapshot = $this->posSnapshot($invoice);
 
         $this->assertSame('anonymous', data_get($snapshot->payload, 'buyer.kind'));
         $this->assertTrue((bool) data_get($snapshot->payload, 'buyer.walk_in'));
         $this->assertSame($invoice->closed_at?->toIso8601String(), data_get($snapshot->payload, 'document.issued_at'));
-        $this->assertNotSame($order->placed_at?->toIso8601String(), data_get($snapshot->payload, 'document.issued_at'));
+        $this->assertSame($placedAt->toDateString(), $order->fresh()->placed_at?->toDateString());
+        $this->assertNotSame($order->fresh()->placed_at?->toDateString(), $invoice->closed_at?->toDateString());
     }
 
     public function test_cross_workspace_pos_snapshot_is_still_rejected(): void
