@@ -17,6 +17,7 @@ use App\Models\Finance\FinanceTreasuryAccount;
 use App\Models\Product;
 use App\Models\Projects\FinanceProject;
 use App\Services\Finance\FinanceBootstrapService;
+use App\Services\Finance\InvoiceEmailService;
 use App\Services\Finance\InvoiceInboxService;
 use App\Services\Finance\InvoicePaymentService;
 use App\Services\Finance\InvoiceService;
@@ -42,6 +43,7 @@ class InvoiceController extends FinanceBaseController
         private readonly PdfInvoiceService $pdfInvoiceService,
         private readonly DomainNotificationService $domainNotificationService,
         private readonly InvoiceInboxService $invoiceInboxService,
+        private readonly InvoiceEmailService $invoiceEmailService,
     ) {}
 
     public function index(Request $request): View
@@ -261,6 +263,7 @@ class InvoiceController extends FinanceBaseController
                 'contract',
                 'creator',
                 'issuer',
+                'deliveries.sender',
             ]),
             'treasuryAccounts' => FinanceTreasuryAccount::query()->where('is_active', true)->orderBy('type')->get(),
             'journalEntries' => $journalEntries,
@@ -288,6 +291,43 @@ class InvoiceController extends FinanceBaseController
         );
 
         return redirect()->route('workspace.finance.invoices.show', $issued)->with('success', 'تم إصدار الفاتورة وترحيل القيد المحاسبي.');
+    }
+
+    public function send(Request $request, FinanceInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'invoices.send');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        $validated = $request->validate([
+            'email' => ['required', 'email:filter', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:32'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'message' => ['nullable', 'string', 'max:15000'],
+            'attach_pdf' => ['nullable', 'boolean'],
+        ], [
+            'email.required' => 'لا يوجد بريد إلكتروني للعميل.',
+            'email.email' => 'البريد الإلكتروني غير صالح.',
+        ]);
+
+        try {
+            $delivery = $this->invoiceEmailService->send(
+                $invoice,
+                [
+                    'email' => $validated['email'],
+                    'phone' => $validated['phone'] ?? null,
+                    'subject' => $validated['subject'] ?? null,
+                    'message' => $validated['message'] ?? null,
+                    'attach_pdf' => $request->boolean('attach_pdf', true),
+                ],
+                (int) $request->user()?->id,
+            );
+        } catch (RuntimeException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('workspace.finance.invoices.show', $invoice)
+            ->with('success', 'تم إرسال الفاتورة إلى '.$delivery->recipient);
     }
 
     public function cancel(Request $request, FinanceInvoice $invoice): RedirectResponse

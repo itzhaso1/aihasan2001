@@ -15,8 +15,22 @@ class PdfInvoiceService
 {
     public function download(FinanceInvoice $invoice): Response|Responsable
     {
-        $invoice->loadMissing(['customer', 'supplier', 'items.product']);
         $fileName = 'invoice-'.$invoice->invoice_number.'.pdf';
+
+        return $this->buildPdf($invoice)->download($fileName);
+    }
+
+    public function renderBinary(FinanceInvoice $invoice): string
+    {
+        return $this->buildPdf($invoice)->output();
+    }
+
+    /**
+     * @return PDF
+     */
+    private function buildPdf(FinanceInvoice $invoice)
+    {
+        $invoice->loadMissing(['customer', 'supplier', 'items.product']);
 
         if (! class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
             throw new RuntimeException('PDF generation is unavailable. Please install barryvdh/laravel-dompdf.');
@@ -31,7 +45,7 @@ class PdfInvoiceService
         $pdfSnapshot = is_array($invoice->pdf_snapshot) ? $invoice->pdf_snapshot : [];
         $logoPath = $companySnapshot['logo_path'] ?? ($snapshotsAuthoritative ? null : $setting?->logo_path);
 
-        $viewData = [
+        $html = view('workspace.finance.invoices.pdf', [
             'invoice' => $invoice,
             'setting' => $setting,
             'companySnapshot' => $companySnapshot,
@@ -39,15 +53,10 @@ class PdfInvoiceService
             'pdfSnapshot' => $pdfSnapshot,
             'snapshotsAuthoritative' => $snapshotsAuthoritative,
             'logoDataUri' => $this->resolveLogoDataUri(is_string($logoPath) ? $logoPath : null),
-        ];
-
-        $html = view('workspace.finance.invoices.pdf', $viewData)->render();
+        ])->render();
         $html = $this->shapeArabicForDompdf($html);
 
-        /** @var PDF $pdf */
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4');
-
-        return $pdf->download($fileName);
+        return \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4');
     }
 
     private function resolveLogoDataUri(?string $logoPath): ?string

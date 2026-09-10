@@ -3,8 +3,8 @@
 namespace App\Enums\Finance;
 
 /**
- * Finance documents that can later share finance_document_deliveries.
- * Phase C persists quote deliveries only.
+ * Finance documents that can share finance_document_deliveries.
+ * Quote and invoice email sends persist here; receipt remains reserved.
  */
 enum FinanceDocumentType: string
 {

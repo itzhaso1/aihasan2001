@@ -37,6 +37,8 @@ class FinanceDocumentDelivery extends WorkspaceScopedModel
 
     public const TYPE_QUOTE = 'quote';
 
+    public const TYPE_INVOICE = 'invoice';
+
     protected function casts(): array
     {
         return [
@@ -60,11 +62,23 @@ class FinanceDocumentDelivery extends WorkspaceScopedModel
         return $this->belongsTo(FinanceQuote::class, 'document_id');
     }
 
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(FinanceInvoice::class, 'document_id');
+    }
+
     public function scopeForQuote(Builder $query, int $quoteId): Builder
     {
         return $query
             ->where('document_type', FinanceDocumentType::Quote->value)
             ->where('document_id', $quoteId);
+    }
+
+    public function scopeForInvoice(Builder $query, int $invoiceId): Builder
+    {
+        return $query
+            ->where('document_type', FinanceDocumentType::Invoice->value)
+            ->where('document_id', $invoiceId);
     }
 
     public function deliveryStatus(): DocumentDeliveryStatus
