@@ -5,9 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
 import 'package:hasim_finance/core/layout/finance_charts.dart';
-import 'package:hasim_finance/core/layout/finance_chrome.dart';
 import 'package:hasim_finance/core/layout/finance_layout.dart';
-import 'package:hasim_finance/core/layout/kpi_card.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/core/providers/catalog_provider.dart';
@@ -132,6 +130,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     children: [
                       FinanceFilterBar(
                         margin: const EdgeInsets.only(bottom: 12),
+                        trailing: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: _load,
+                              icon: const Icon(Icons.filter_alt_rounded, size: 16),
+                              label: Text(l.applyFilters),
+                            ),
+                            OutlinedButton(onPressed: _resetFilters, child: Text(l.resetFilters)),
+                          ],
+                        ),
                         children: [
                           SizedBox(
                             width: 140,
@@ -207,12 +217,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               onChanged: (value) => setState(() => _paymentMethod = value),
                             ),
                           ),
-                          FilledButton.icon(
-                            onPressed: _load,
-                            icon: const Icon(Icons.filter_alt_rounded, size: 16),
-                            label: Text(l.applyFilters),
-                          ),
-                          OutlinedButton(onPressed: _resetFilters, child: Text(l.resetFilters)),
                         ],
                       ),
                       _heroRow(l),

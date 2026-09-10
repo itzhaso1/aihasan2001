@@ -46,7 +46,9 @@ class FormSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
       color: FinanceTokens.surface,
       shadowColor: const Color(0xFF152033).withValues(alpha: 0.06),
       elevation: 0,
@@ -68,6 +70,7 @@ class FormSection extends StatelessWidget {
             child,
           ],
         ),
+      ),
       ),
     );
   }

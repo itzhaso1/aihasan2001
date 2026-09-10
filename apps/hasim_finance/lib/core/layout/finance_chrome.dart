@@ -62,33 +62,61 @@ class FinancePageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final canPop = showBack && Navigator.of(context).canPop();
+    final stacked = MediaQuery.sizeOf(context).width < 720;
+    final titleBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, fontSize: stacked ? 20 : 24),
+        ),
+        if (subtitle != null && subtitle!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(subtitle!, maxLines: 2, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
+          ),
+      ],
+    );
+    final actionRow = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: actions);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-      child: Row(
-        children: [
-          if (canPop) ...[
-            IconButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: const Icon(Icons.arrow_back, size: 20),
-            ),
-            const SizedBox(width: 4),
-          ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: stacked
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(title, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800, fontSize: 24)),
-                if (subtitle != null && subtitle!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(subtitle!, style: theme.textTheme.bodySmall),
+                Row(
+                  children: [
+                    if (canPop) ...[
+                      IconButton(
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        icon: const Icon(Icons.arrow_back, size: 20),
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Expanded(child: titleBlock),
+                  ],
+                ),
+                if (actions.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  actionRow,
+                ],
+              ],
+            )
+          : Row(
+              children: [
+                if (canPop) ...[
+                  IconButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back, size: 20),
                   ),
+                  const SizedBox(width: 4),
+                ],
+                Expanded(child: titleBlock),
+                actionRow,
               ],
             ),
-          ),
-          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: actions),
-        ],
-      ),
     );
   }
 }
@@ -107,19 +135,42 @@ class FinanceFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: margin,
-      padding: const EdgeInsets.all(12),
-      decoration: FinanceTokens.card(radius: FinanceTokens.radiusLg),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.center,
+    final stacked = MediaQuery.sizeOf(context).width < 720;
+    final filters = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
         children: [
-          ...children,
-          ?trailing,
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0) const SizedBox(width: 10),
+            children[i],
+          ],
         ],
       ),
+    );
+    return Container(
+      margin: margin,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: FinanceTokens.card(radius: FinanceTokens.radiusLg),
+      child: stacked
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                filters,
+                if (trailing != null) ...[
+                  const SizedBox(height: 10),
+                  trailing!,
+                ],
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: filters),
+                if (trailing != null) ...[
+                  const SizedBox(width: 10),
+                  trailing!,
+                ],
+              ],
+            ),
     );
   }
 }

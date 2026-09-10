@@ -548,10 +548,11 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
     final l = AppLocalizations.of(context);
     final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
     return FinanceScaffold(
-        title: l.invoices,
-        showBack: true,
-        body: ListView(
-        padding: const EdgeInsets.all(16),
+      title: l.invoices,
+      showBack: true,
+      body: FinancePage(
+        child: ListView(
+        padding: EdgeInsets.zero,
         children: [
           FormSection(
             title: l.headerSection,
@@ -654,6 +655,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
           ),
           FilledButton(onPressed: _busy ? null : _save, child: Text(l.save)),
         ],
+      ),
       ),
     );
   }

@@ -169,50 +169,57 @@ class FinanceShell extends ConsumerWidget {
       ),
     );
 
+    final compact = MediaQuery.sizeOf(context).width < 720;
     final header = Container(
       height: FinanceTokens.headerHeight,
       decoration: const BoxDecoration(
         color: FinanceTokens.header,
         border: Border(bottom: BorderSide(color: FinanceTokens.border)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
           _HeaderIconButton(icon: Icons.search_rounded, onPressed: () => context.go('/search'), tooltip: l.globalSearch),
-          const SizedBox(width: 10),
-          Expanded(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
-              child: InkWell(
-                onTap: () => context.go('/search'),
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  height: 40,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(
-                    color: FinanceTokens.canvasAlt,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: FinanceTokens.border),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.search_rounded, size: 18, color: FinanceTokens.textFaint),
-                      const SizedBox(width: 8),
-                      Text(l.searchPlaceholder, style: const TextStyle(color: FinanceTokens.textFaint, fontSize: 13)),
-                    ],
+          if (!compact) ...[
+            const SizedBox(width: 10),
+            Expanded(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: InkWell(
+                  onTap: () => context.go('/search'),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: FinanceTokens.canvasAlt,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: FinanceTokens.border),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.search_rounded, size: 18, color: FinanceTokens.textFaint),
+                        const SizedBox(width: 8),
+                        Text(l.searchPlaceholder, style: const TextStyle(color: FinanceTokens.textFaint, fontSize: 13)),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
+          ] else
+            const Spacer(),
+          const SizedBox(width: 8),
           _HeaderIconButton(icon: Icons.notifications_none_rounded, onPressed: () => context.go('/alerts'), tooltip: l.alerts),
           const SizedBox(width: 4),
-          _HeaderIconButton(icon: Icons.settings_outlined, onPressed: () => context.go('/settings'), tooltip: l.settings),
-          const SizedBox(width: 8),
+          if (!compact) ...[
+            _HeaderIconButton(icon: Icons.settings_outlined, onPressed: () => context.go('/settings'), tooltip: l.settings),
+            const SizedBox(width: 8),
+          ],
           _UserChip(
             name: auth.user?.name ?? '',
             workspace: auth.workspace?.name ?? '',
+            compact: compact,
             onPressed: () => context.go('/settings'),
           ),
         ],
@@ -363,11 +370,12 @@ class _HeaderIconButton extends StatelessWidget {
 }
 
 class _UserChip extends StatelessWidget {
-  const _UserChip({required this.name, required this.workspace, required this.onPressed});
+  const _UserChip({required this.name, required this.workspace, required this.onPressed, this.compact = false});
 
   final String name;
   final String workspace;
   final VoidCallback onPressed;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -390,16 +398,18 @@ class _UserChip extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w800, color: FinanceTokens.brandDark, fontSize: 12),
               ),
             ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, height: 1.1)),
-                Text(workspace, style: const TextStyle(fontSize: 10, color: FinanceTokens.textMuted, height: 1.1)),
-              ],
-            ),
-            const SizedBox(width: 4),
+            if (!compact) ...[
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, height: 1.1)),
+                  Text(workspace, style: const TextStyle(fontSize: 10, color: FinanceTokens.textMuted, height: 1.1)),
+                ],
+              ),
+              const SizedBox(width: 4),
+            ],
           ],
         ),
       ),
