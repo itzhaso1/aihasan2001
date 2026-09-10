@@ -135,6 +135,8 @@ class FinanceFilterField extends StatelessWidget {
   final double width;
 
   static const double labelGap = 6;
+  static const double labelSlotHeight = 24;
+  static const double stackHeight = labelSlotHeight + labelGap + FinanceTokens.controlHeight;
 
   static InputDecoration decoration({
     String? hintText,
@@ -163,12 +165,20 @@ class FinanceFilterField extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            label,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: FinanceTokens.textMuted,
-              fontWeight: FontWeight.w600,
-              height: 1.4,
+          SizedBox(
+            height: labelSlotHeight,
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.visible,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: FinanceTokens.textMuted,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: labelGap),
@@ -200,7 +210,6 @@ class FinanceFilterBar extends StatelessWidget {
     final filters = SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       clipBehavior: Clip.none,
-      padding: const EdgeInsets.only(top: 2, bottom: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -213,14 +222,14 @@ class FinanceFilterBar extends StatelessWidget {
     );
     return Container(
       margin: margin,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: FinanceTokens.card(radius: FinanceTokens.radiusLg),
       clipBehavior: Clip.none,
       child: stacked
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                filters,
+                SizedBox(height: FinanceFilterField.stackHeight, child: filters),
                 if (trailing != null) ...[
                   const SizedBox(height: 12),
                   Align(
@@ -230,20 +239,16 @@ class FinanceFilterBar extends StatelessWidget {
                 ],
               ],
             )
-          : IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(child: filters),
-                  if (trailing != null) ...[
-                    const SizedBox(width: 12),
-                    Align(
-                      alignment: AlignmentDirectional.bottomEnd,
-                      child: trailing!,
-                    ),
-                  ],
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const SizedBox(height: FinanceFilterField.stackHeight),
+                Expanded(child: filters),
+                if (trailing != null) ...[
+                  const SizedBox(width: 12),
+                  trailing!,
                 ],
-              ),
+              ],
             ),
     );
   }
