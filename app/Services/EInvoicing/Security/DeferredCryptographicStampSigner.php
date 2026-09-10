@@ -2,10 +2,13 @@
 
 namespace App\Services\EInvoicing\Security;
 
+use App\EInvoicing\Security\CryptographicStamp;
 use App\EInvoicing\Security\CryptographicStampResult;
 use App\EInvoicing\Security\CryptographicStampSigner;
+use App\EInvoicing\Security\Exceptions\CryptographicStampException;
 use App\EInvoicing\Security\Exceptions\EInvoiceSecurityException;
 use App\EInvoicing\Security\InvoiceHash;
+use App\EInvoicing\Security\SigningInput;
 
 /**
  * Default signer: production stamping is deferred until CSID provisioning.
@@ -23,6 +26,17 @@ final class DeferredCryptographicStampSigner implements CryptographicStampSigner
         unset($hash);
 
         return CryptographicStampResult::deferred();
+    }
+
+    public function sign(SigningInput $input): CryptographicStamp
+    {
+        unset($input);
+
+        throw new CryptographicStampException(
+            'Cryptographic stamp is deferred until a ZATCA-issued CSID is provisioned. This signer is not a production identity.',
+            operation: 'cryptographic_stamp',
+            reason: 'stamp_deferred',
+        );
     }
 
     public function assertNotProduction(): void

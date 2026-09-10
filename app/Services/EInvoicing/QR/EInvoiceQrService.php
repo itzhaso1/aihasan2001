@@ -4,6 +4,7 @@ namespace App\Services\EInvoicing\QR;
 
 use App\EInvoicing\EInvoiceDocument;
 use App\EInvoicing\QR\CryptographicQrFields;
+use App\EInvoicing\QR\CryptographicStampQrMapper;
 use App\EInvoicing\QR\QrEncoder;
 use App\EInvoicing\QR\QrEncodingException;
 use App\EInvoicing\QR\QrField;
@@ -12,6 +13,7 @@ use App\EInvoicing\QR\QrPayload;
 use App\EInvoicing\QR\QrPayloadProfile;
 use App\EInvoicing\QR\QrTag;
 use App\EInvoicing\QR\QrTimestamp;
+use App\EInvoicing\Security\CryptographicStamp;
 use App\EInvoicing\Security\InvoiceHash;
 use App\Models\EInvoicing\EInvoiceSecurityRecord;
 
@@ -61,13 +63,17 @@ final class EInvoiceQrService
         ];
 
         if ($cryptographicFields->ecdsaSignature !== null) {
-            $fields[] = new QrField(QrTag::fromInt(QrTag::ECDSA_SIGNATURE), $cryptographicFields->ecdsaSignature);
+            $fields[] = QrField::of(QrTag::ECDSA_SIGNATURE, $cryptographicFields->ecdsaSignature);
         }
         if ($cryptographicFields->ecdsaPublicKey !== null) {
-            $fields[] = new QrField(QrTag::fromInt(QrTag::ECDSA_PUBLIC_KEY), $cryptographicFields->ecdsaPublicKey);
+            $fields[] = mb_check_encoding($cryptographicFields->ecdsaPublicKey, 'UTF-8')
+                ? QrField::of(QrTag::ECDSA_PUBLIC_KEY, $cryptographicFields->ecdsaPublicKey)
+                : QrField::binary(QrTag::ECDSA_PUBLIC_KEY, $cryptographicFields->ecdsaPublicKey);
         }
         if ($cryptographicFields->zatcaCaSignature !== null) {
-            $fields[] = new QrField(QrTag::fromInt(QrTag::ZATCA_CA_SIGNATURE), $cryptographicFields->zatcaCaSignature);
+            $fields[] = mb_check_encoding($cryptographicFields->zatcaCaSignature, 'UTF-8')
+                ? QrField::of(QrTag::ZATCA_CA_SIGNATURE, $cryptographicFields->zatcaCaSignature)
+                : QrField::binary(QrTag::ZATCA_CA_SIGNATURE, $cryptographicFields->zatcaCaSignature);
         }
 
         $profile = $cryptographicFields->hasAny()
@@ -93,6 +99,27 @@ final class EInvoiceQrService
             $document,
             InvoiceHash::fromString((string) $security->invoice_hash),
             CryptographicQrFields::none(),
+        );
+    }
+
+    public function generateWithStamp(
+        EInvoiceDocument $document,
+        EInvoiceSecurityRecord $security,
+        CryptographicStamp $stamp,
+        ?string $externallyProvisionedZatcaCaSignature = null,
+    ): QrPayload {
+        if (! $stamp->invoiceHash->equals(InvoiceHash::fromString((string) $security->invoice_hash))) {
+            throw new QrEncodingException(
+                'Cryptographic stamp hash does not match the Phase 7 security record.',
+                documentIdentity: $this->identity($document),
+                reason: 'hash_mismatch',
+            );
+        }
+
+        return $this->generate(
+            $document,
+            InvoiceHash::fromString((string) $security->invoice_hash),
+            (new CryptographicStampQrMapper)->fields($stamp, $externallyProvisionedZatcaCaSignature),
         );
     }
 
