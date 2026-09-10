@@ -201,6 +201,51 @@ Flutter still does not recompute tax, totals, balances, or report numbers. Check
 
 Exact command results for this pass are recorded after the suites are run (see the appended “Data parity test results” section). Historical 42-test / 738-PHPUnit figures above are the previous landing and must not be treated as this pass.
 
+### Data parity test results (this pass)
+
+#### `flutter analyze` (cwd `apps/hasim_finance`)
+
+```
+Analyzing hasim_finance...
+No issues found! (ran in 1.2s)
+```
+
+#### `flutter test` (cwd `apps/hasim_finance`)
+
+```
+00:05 +56: All tests passed!
+```
+
+56 tests (previous 42 plus `field_coverage_test` and `data_parity_screens_test`).
+
+#### Laravel data-parity test
+
+```
+php vendor/bin/phpunit tests/Feature/Feature/Finance/FinanceFlutterDataParityTest.php --no-coverage
+```
+
+Result: **2 passed**, 63 assertions.
+
+#### Laravel Finance feature suite + checkout flow
+
+```
+php vendor/bin/phpunit tests/Feature/Feature/Finance tests/Feature/Feature/Api/OrderPaymentFlowTest.php --no-coverage
+```
+
+Result: **324 tests, 322 passed, 2 skipped, 1 risky**, 2917 assertions.
+
+#### Full PHPUnit
+
+```
+php vendor/bin/phpunit --no-coverage
+```
+
+Result: **740 tests, 736 passed, 4 skipped, 1 warning, 1 risky**, 5517 assertions.
+
+Delta vs the Google/auth landing (738 / 734 passed): **+2 tests**, both passing (`FinanceFlutterDataParityTest`). Skipped/risky/warning set is unchanged (DomPDF, local crypto fixtures, UBL XML risky, X509 warning).
+
+`vendor/bin/pint --dirty` passed.
+
 ## Intentionally excluded
 
 POS/cashier, Booking, Inbox/WhatsApp/Instagram/Messenger, AI, payroll UI, inventory, second gateway, local ZATCA private-key logic, dummy Orders, Stripe/Local from Flutter.

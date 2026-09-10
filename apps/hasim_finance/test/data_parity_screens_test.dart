@@ -99,18 +99,15 @@ void main() {
       ),
     );
     await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
 
     expect(find.text('تحميل المزيد'), findsOneWidget);
     await tester.tap(find.text('تحميل المزيد'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<int>));
-    await tester.pumpAndSettle();
-    expect(find.text('عميل 26'), findsWidgets);
+    expect(find.text('عميل 26', skipOffstage: false), findsWidgets);
 
     await tester.enterText(find.byType(TextField).first, 'PARITY');
     await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<int>));
     await tester.pumpAndSettle();
     expect(find.text('PARITY CUSTOMER 001'), findsWidgets);
   });

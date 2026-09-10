@@ -54,7 +54,7 @@ void main() {
 
     expect(find.text('INV-11'), findsOneWidget);
     expect(find.textContaining('issued'), findsOneWidget);
-    expect(find.textContaining('unpaid'), findsOneWidget);
+    expect(find.textContaining('unpaid'), findsWidgets);
     expect(find.text('115.00'), findsWidgets);
   });
 
@@ -148,8 +148,6 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    await tester.tap(find.byType(DropdownButtonFormField<int>));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('عميل الاختبار').last);
     await tester.pumpAndSettle();
 

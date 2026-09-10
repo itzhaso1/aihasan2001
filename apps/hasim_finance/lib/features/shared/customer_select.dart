@@ -24,8 +24,9 @@ class _CustomerSelectFieldState extends ConsumerState<CustomerSelectField> {
   final _search = TextEditingController();
   Timer? _debounce;
   List<CustomerRecord> _customers = [];
-  int _page = 1;
+  int _page = 0;
   int _lastPage = 1;
+  int _requestId = 0;
   bool _loading = false;
 
   @override
@@ -41,40 +42,47 @@ class _CustomerSelectFieldState extends ConsumerState<CustomerSelectField> {
     super.dispose();
   }
 
+  List<CustomerRecord> _unique(List<CustomerRecord> items) {
+    final seen = <int>{};
+    return [
+      for (final row in items)
+        if (seen.add(row.id)) row,
+    ];
+  }
+
   Future<void> _load({bool reset = false}) async {
-    if (reset) {
-      _page = 1;
-    }
+    final requestId = ++_requestId;
+    final pageNum = reset ? 1 : _page + 1;
     setState(() => _loading = true);
     try {
       final page = await ref.read(financeApiProvider).customers(
             search: _search.text.trim(),
-            page: _page,
+            page: pageNum,
           );
-      if (!mounted) return;
+      if (!mounted || requestId != _requestId) return;
       var items = reset ? page.items : [..._customers, ...page.items];
       final selectedId = widget.selectedId;
       if (selectedId != null && !items.any((row) => row.id == selectedId)) {
         try {
           final selected = await ref.read(financeApiProvider).customer(selectedId);
+          if (!mounted || requestId != _requestId) return;
           items = [selected, ...items.where((row) => row.id != selected.id)];
         } catch (_) {}
       }
       setState(() {
-        _customers = items;
+        _customers = _unique(items);
+        _page = page.page;
         _lastPage = page.lastPage;
         _loading = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && requestId == _requestId) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final ids = {for (final c in _customers) c.id};
-    final value = widget.selectedId != null && ids.contains(widget.selectedId) ? widget.selectedId : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -86,28 +94,32 @@ class _CustomerSelectFieldState extends ConsumerState<CustomerSelectField> {
             _debounce = Timer(const Duration(milliseconds: 300), () => _load(reset: true));
           },
         ),
-        DropdownButtonFormField<int>(
-          // ignore: deprecated_member_use
-          value: value,
-          decoration: InputDecoration(labelText: l.selectCustomer),
-          items: [
-            for (final customer in _customers)
-              DropdownMenuItem(value: customer.id, child: Text(customer.name)),
-          ],
-          onChanged: (id) {
-            if (id != null) widget.onSelected(id);
-          },
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 220,
+          child: _customers.isEmpty && _loading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  key: const Key('customer-select-list'),
+                  child: Column(
+                    children: [
+                      for (final customer in _customers)
+                        ListTile(
+                          dense: true,
+                          selected: widget.selectedId == customer.id,
+                          title: Text(customer.name),
+                          subtitle: Text(customer.outstandingBalance),
+                          onTap: () => widget.onSelected(customer.id),
+                        ),
+                    ],
+                  ),
+                ),
         ),
-        if (_page < _lastPage)
+        if (_page >= 1 && _page < _lastPage)
           Align(
             alignment: AlignmentDirectional.centerStart,
             child: TextButton(
-              onPressed: _loading
-                  ? null
-                  : () {
-                      _page += 1;
-                      _load();
-                    },
+              onPressed: _loading ? null : () => _load(),
               child: Text(l.loadMore),
             ),
           ),

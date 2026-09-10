@@ -24,8 +24,9 @@ class _SupplierSelectFieldState extends ConsumerState<SupplierSelectField> {
   final _search = TextEditingController();
   Timer? _debounce;
   List<SupplierRecord> _suppliers = [];
-  int _page = 1;
+  int _page = 0;
   int _lastPage = 1;
+  int _requestId = 0;
   bool _loading = false;
 
   @override
@@ -41,32 +42,38 @@ class _SupplierSelectFieldState extends ConsumerState<SupplierSelectField> {
     super.dispose();
   }
 
+  List<SupplierRecord> _unique(List<SupplierRecord> items) {
+    final seen = <int>{};
+    return [
+      for (final row in items)
+        if (seen.add(row.id)) row,
+    ];
+  }
+
   Future<void> _load({bool reset = false}) async {
-    if (reset) {
-      _page = 1;
-    }
+    final requestId = ++_requestId;
+    final pageNum = reset ? 1 : _page + 1;
     setState(() => _loading = true);
     try {
       final page = await ref.read(financeApiProvider).suppliers(
             search: _search.text.trim(),
-            page: _page,
+            page: pageNum,
           );
-      if (!mounted) return;
+      if (!mounted || requestId != _requestId) return;
       setState(() {
-        _suppliers = reset ? page.items : [..._suppliers, ...page.items];
+        _suppliers = _unique(reset ? page.items : [..._suppliers, ...page.items]);
+        _page = page.page;
         _lastPage = page.lastPage;
         _loading = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && requestId == _requestId) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final ids = {for (final supplier in _suppliers) supplier.id};
-    final value = widget.selectedId != null && ids.contains(widget.selectedId) ? widget.selectedId : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -78,28 +85,34 @@ class _SupplierSelectFieldState extends ConsumerState<SupplierSelectField> {
             _debounce = Timer(const Duration(milliseconds: 300), () => _load(reset: true));
           },
         ),
-        DropdownButtonFormField<int>(
-          // ignore: deprecated_member_use
-          value: value,
-          decoration: InputDecoration(labelText: l.selectSupplier),
-          items: [
-            for (final supplier in _suppliers)
-              DropdownMenuItem(value: supplier.id, child: Text(supplier.name)),
-          ],
-          onChanged: (id) {
-            if (id != null) widget.onSelected(id);
-          },
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 220,
+          child: _suppliers.isEmpty && _loading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final supplier in _suppliers)
+                        ListTile(
+                          dense: true,
+                          selected: widget.selectedId == supplier.id,
+                          title: Text(supplier.name),
+                          subtitle: Text([
+                            if ((supplier.vatNumber ?? '').isNotEmpty) supplier.vatNumber,
+                            if ((supplier.commercialRegistration ?? '').isNotEmpty) supplier.commercialRegistration,
+                          ].join(' · ')),
+                          onTap: () => widget.onSelected(supplier.id),
+                        ),
+                    ],
+                  ),
+                ),
         ),
-        if (_page < _lastPage)
+        if (_page >= 1 && _page < _lastPage)
           Align(
             alignment: AlignmentDirectional.centerStart,
             child: TextButton(
-              onPressed: _loading
-                  ? null
-                  : () {
-                      _page += 1;
-                      _load();
-                    },
+              onPressed: _loading ? null : () => _load(),
               child: Text(l.loadMore),
             ),
           ),
