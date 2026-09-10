@@ -7,6 +7,7 @@ use App\EInvoicing\Security\CertificateFingerprint;
 use App\EInvoicing\Security\CryptographicStamp;
 use App\EInvoicing\Security\CryptographicStampSigner;
 use App\EInvoicing\Security\Exceptions\CryptographicStampException;
+use App\EInvoicing\Security\Harness\CryptographicProfileGuard;
 use App\EInvoicing\Security\InvoiceHash;
 use App\EInvoicing\Security\SigningAlgorithm;
 use App\EInvoicing\Security\SigningInput;
@@ -105,7 +106,7 @@ final class EInvoiceCryptographicStampService
                 'signature_algorithm' => $produced->signatureAlgorithm,
                 'signature_value' => $produced->signatureDerBase64,
                 'public_key_spki' => base64_encode($produced->publicKeySpkiDer),
-                'signed_input_identifier' => SigningAlgorithm::SIGNED_INPUT,
+                'signed_input_identifier' => $produced->signedInputIdentifier,
                 'stamp_status' => StampStatus::TestSigned->value,
                 'finalized_at' => now(),
             ]);
@@ -237,13 +238,7 @@ final class EInvoiceCryptographicStampService
 
     private function assertSignerBoundary(): void
     {
-        if ($this->signer->isProductionIdentity()) {
-            throw new CryptographicStampException(
-                'A production ZATCA identity must not be used in Phase 9.',
-                operation: 'stamp',
-                reason: 'production_identity_forbidden',
-            );
-        }
+        (new CryptographicProfileGuard(app()))->assertSignerMayRun($this->signer);
 
         if ($this->signer instanceof DeferredCryptographicStampSigner) {
             throw new CryptographicStampException(

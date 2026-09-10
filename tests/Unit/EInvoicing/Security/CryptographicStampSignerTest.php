@@ -17,6 +17,7 @@ class CryptographicStampSignerTest extends TestCase
         $result = $signer->signCanonicalDigest($hash);
 
         $this->assertFalse($signer->isProductionIdentity());
+        $this->assertFalse($signer->isTestOnly());
         $this->assertFalse($result->isProductionIdentity());
         $this->assertSame(CryptographicStampResult::STATUS_DEFERRED, $result->status);
         $this->assertNull($result->value);
