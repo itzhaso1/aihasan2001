@@ -307,8 +307,8 @@ class FinanceWebCompletionTest extends TestCase
 
     public function test_csv_exports_are_workspace_scoped_and_permission_gated(): void
     {
-        [$userA, $workspaceA, $invoiceA] = $this->issuedSalesInvoice();
-        [$userB, $workspaceB, $invoiceB] = $this->issuedSalesInvoice();
+        [$userA, $workspaceA] = $this->issuedSalesInvoice(false, 'Alpha Isolation Co');
+        [$userB, $workspaceB] = $this->issuedSalesInvoice(false, 'Beta Isolation Co');
 
         $csv = $this->actingAs($userA)
             ->withSession(['current_workspace_id' => $workspaceA->id])
@@ -316,14 +316,16 @@ class FinanceWebCompletionTest extends TestCase
             ->assertOk()
             ->streamedContent();
 
-        $this->assertStringContainsString($invoiceA->invoice_number, $csv);
-        $this->assertStringNotContainsString($invoiceB->invoice_number, $csv);
+        $this->assertStringContainsString('Alpha Isolation Co', $csv);
+        $this->assertStringNotContainsString('Beta Isolation Co', $csv);
 
         $agent = $this->attachStaff($workspaceA, ['invoices.view']);
         $this->actingAs($agent)
             ->withSession(['current_workspace_id' => $workspaceA->id])
             ->get(route('workspace.finance.exports.download', 'quotes'))
             ->assertForbidden();
+        $this->assertNotNull($userB);
+        $this->assertNotNull($workspaceB);
     }
 
     public function test_statement_csv_and_credit_note_pdf(): void
@@ -445,11 +447,11 @@ class FinanceWebCompletionTest extends TestCase
     /**
      * @return array{0: User, 1: Workspace, 2: FinanceInvoice, 3?: Customer}
      */
-    private function issuedSalesInvoice(bool $withCustomer = false): array
+    private function issuedSalesInvoice(bool $withCustomer = false, string $customerName = 'Billing Customer'): array
     {
         [$user, $workspace] = $this->createWorkspaceOwner('company');
         app(FinanceBootstrapService::class)->ensureWorkspaceFinanceSetup($workspace);
-        $customer = $this->makeCustomer($workspace, 'Billing Customer');
+        $customer = $this->makeCustomer($workspace, $customerName);
         $payload = $this->invoicePayload($customer->id);
         $payload['invoice_status'] = 'issued';
         $invoice = app(InvoiceService::class)->create($workspace, $payload, (int) $user->id);
