@@ -4,11 +4,19 @@
     $status = $quote->status;
     $isDraft = $quote->isDraft();
     $isCancelled = $quote->isCancelled();
+    $outcome = $quote->quoteOutcome();
     $statusClass = match ($status) {
         'cancelled' => 'bg-slate-100 text-slate-600',
         'draft' => 'bg-slate-50 text-slate-500',
         'issued' => 'bg-indigo-50 text-indigo-700',
         default => 'bg-amber-50 text-amber-700',
+    };
+    $outcomeClass = match ($outcome->value) {
+        'accepted' => 'bg-emerald-50 text-emerald-700',
+        'rejected' => 'bg-rose-50 text-rose-700',
+        'converted' => 'bg-sky-50 text-sky-700',
+        'expired' => 'bg-amber-50 text-amber-700',
+        default => 'bg-slate-50 text-slate-600',
     };
     $statusLabels = ['draft' => 'مسودة', 'issued' => 'صادر', 'cancelled' => 'ملغى'];
     $taxProfileLabels = [
@@ -40,6 +48,7 @@
                 <p class="mt-1 text-xs text-slate-500">{{ $recipientName }}</p>
                 <div class="mt-2 flex flex-wrap items-center gap-2">
                     <span class="rounded-full px-3 py-1 text-xs font-bold {{ $statusClass }}">{{ $statusLabels[$status] ?? $status }}</span>
+                    <span class="rounded-full px-3 py-1 text-xs font-bold {{ $outcomeClass }}">النتيجة: {{ $outcome->labelAr() }}</span>
                     <span class="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600">{{ $quote->currency }}</span>
                 </div>
             </div>
@@ -60,10 +69,27 @@
                 @endif
                 @if($quote->isIssued())
                     <a href="#quote-send" class="rounded-lg bg-[#06C2A4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">إرسال عرض السعر</a>
-                    <form method="POST" action="{{ route('workspace.finance.quotes.cancel', $quote) }}" onsubmit="return confirm('إلغاء عرض السعر الصادر؟')">
-                        @csrf
-                        <button class="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50">إلغاء</button>
-                    </form>
+                    @if($quote->isAcceptable())
+                        <form method="POST" action="{{ route('workspace.finance.quotes.accept', $quote) }}" onsubmit="return confirm('قبول عرض السعر؟ لن تُنشأ فاتورة تلقائياً.')">
+                            @csrf
+                            <button class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">قبول العرض</button>
+                        </form>
+                    @endif
+                    @if($quote->isConvertible())
+                        <form method="POST" action="{{ route('workspace.finance.quotes.convert', $quote) }}" onsubmit="return confirm('تحويل عرض السعر إلى فاتورة مسودة؟ لن تُصدر الفاتورة تلقائياً.')">
+                            @csrf
+                            <button class="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700">تحويل إلى فاتورة</button>
+                        </form>
+                    @endif
+                    @if($quote->convertedInvoice)
+                        <a href="{{ route('workspace.finance.invoices.show', $quote->convertedInvoice) }}" class="rounded-lg border border-sky-300 px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50">فاتورة {{ $quote->convertedInvoice->invoice_number }}</a>
+                    @endif
+                    @if(! $quote->isConverted())
+                        <form method="POST" action="{{ route('workspace.finance.quotes.cancel', $quote) }}" onsubmit="return confirm('إلغاء عرض السعر الصادر؟')">
+                            @csrf
+                            <button class="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50">إلغاء</button>
+                        </form>
+                    @endif
                 @endif
             </div>
         </div>
@@ -85,6 +111,39 @@
         </div>
 
         <p class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">عرض السعر ليس فاتورة ضريبية ولا ينشئ قيدًا محاسبيًا ولا دفعة ولا يدخل سلسلة ZATCA.</p>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 class="text-sm font-bold text-slate-900">النتيجة التجارية</h3>
+            <p class="mt-1 text-xs text-slate-500">منفصلة عن حالة المستند ({{ $statusLabels[$status] ?? $status }}) وعن حالة الإرسال.</p>
+            <p class="mt-2 text-sm font-semibold {{ $outcomeClass }} inline-flex rounded-full px-3 py-1">{{ $outcome->labelAr() }}</p>
+            @if($quote->isPastExpiry() && $quote->isPendingOutcome())
+                <p class="mt-2 text-xs text-amber-700">انتهت صلاحية العرض. لا يمكن القبول أو التحويل. يمكن رفضه داخلياً.</p>
+            @endif
+            @if($quote->isAccepted())
+                <p class="mt-2 text-sm text-emerald-800">قُبل داخلياً{{ $quote->accepted_at ? ' في '.$quote->accepted_at->timezone(config('app.timezone'))->format('Y-m-d H:i') : '' }}{{ $quote->acceptedByUser?->name ? ' بواسطة '.$quote->acceptedByUser->name : '' }}. القبول لا ينشئ فاتورة.</p>
+            @endif
+            @if($quote->isRejected())
+                <p class="mt-2 text-sm text-rose-800">رُفض داخلياً{{ $quote->rejected_at ? ' في '.$quote->rejected_at->timezone(config('app.timezone'))->format('Y-m-d H:i') : '' }}{{ $quote->rejectedByUser?->name ? ' بواسطة '.$quote->rejectedByUser->name : '' }}.</p>
+                @if($quote->rejection_reason)
+                    <p class="mt-1 text-sm text-slate-600">سبب الرفض: {{ $quote->rejection_reason }}</p>
+                @endif
+            @endif
+            @if($quote->isConverted() && $quote->convertedInvoice)
+                <p class="mt-2 text-sm text-sky-800">حُوّل إلى فاتورة مسودة
+                    <a href="{{ route('workspace.finance.invoices.show', $quote->convertedInvoice) }}" class="font-semibold underline">{{ $quote->convertedInvoice->invoice_number }}</a>
+                    {{ $quote->converted_at ? ' في '.$quote->converted_at->timezone(config('app.timezone'))->format('Y-m-d H:i') : '' }}.
+                    إصدار الفاتورة يتم من شاشة الفاتورة.</p>
+            @endif
+            @if($quote->isRejectable())
+                <form method="POST" action="{{ route('workspace.finance.quotes.reject', $quote) }}" class="mt-4 space-y-2" onsubmit="return confirm('رفض عرض السعر؟ لا يمكن قبوله أو تحويله بعد الرفض.')">
+                    @csrf
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">سبب الرفض (اختياري)</label>
+                    <textarea name="rejection_reason" rows="2" maxlength="2000" class="w-full rounded-lg border-slate-300 text-sm" placeholder="سبب الرفض الداخلي">{{ old('rejection_reason') }}</textarea>
+                    @error('rejection_reason')<p class="text-xs font-semibold text-red-600">{{ $message }}</p>@enderror
+                    <button class="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50">رفض العرض</button>
+                </form>
+            @endif
+        </div>
 
         @php
             $sendEmail = old('email', $quote->customer?->email);

@@ -106,7 +106,17 @@ class QuoteController extends FinanceBaseController
         $this->assertSameWorkspace($quote->workspace_id);
 
         return view('workspace.finance.quotes.show', [
-            'quote' => $quote->load(['customer', 'items', 'creator', 'issuer', 'deliveries.sender']),
+            'quote' => $quote->load([
+                'customer',
+                'items',
+                'creator',
+                'issuer',
+                'deliveries.sender',
+                'convertedInvoice',
+                'acceptedByUser',
+                'rejectedByUser',
+                'convertedByUser',
+            ]),
         ]);
     }
 
@@ -183,6 +193,67 @@ class QuoteController extends FinanceBaseController
         }
 
         return redirect()->route('workspace.finance.quotes.show', $quote)->with('success', 'تم إلغاء عرض السعر.');
+    }
+
+    public function accept(Request $request, FinanceQuote $quote): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.accept');
+        $this->assertSameWorkspace($quote->workspace_id);
+
+        try {
+            $accepted = $this->quoteService->accept($quote, (int) $request->user()?->id);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('workspace.finance.quotes.show', $accepted)
+            ->with('success', 'تم قبول عرض السعر. القبول لا ينشئ فاتورة تلقائياً.');
+    }
+
+    public function reject(Request $request, FinanceQuote $quote): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.reject');
+        $this->assertSameWorkspace($quote->workspace_id);
+
+        $validated = $request->validate([
+            'rejection_reason' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $rejected = $this->quoteService->reject(
+                $quote,
+                (int) $request->user()?->id,
+                $validated['rejection_reason'] ?? null,
+            );
+        } catch (RuntimeException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('workspace.finance.quotes.show', $rejected)
+            ->with('success', 'تم رفض عرض السعر.');
+    }
+
+    public function convert(Request $request, FinanceQuote $quote): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.convert');
+        $this->assertSameWorkspace($quote->workspace_id);
+
+        try {
+            $converted = $this->quoteService->convert($quote, (int) $request->user()?->id);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        $invoice = $converted->convertedInvoice;
+        $message = $invoice
+            ? 'تم تحويل عرض السعر إلى فاتورة مسودة '.$invoice->invoice_number.' دون إصدارها.'
+            : 'تم تحويل عرض السعر.';
+
+        return redirect()
+            ->route('workspace.finance.quotes.show', $converted)
+            ->with('success', $message);
     }
 
     public function send(Request $request, FinanceQuote $quote): RedirectResponse

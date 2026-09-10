@@ -2,6 +2,7 @@
 
 namespace App\Services\Finance;
 
+use App\Enums\Finance\QuoteOutcomeStatus;
 use App\Enums\Finance\QuoteStatus;
 use App\Enums\Finance\TaxPriceMode;
 use App\Models\Customer;
@@ -9,7 +10,9 @@ use App\Models\Finance\FinanceQuote;
 use App\Models\Finance\FinanceQuoteItem;
 use App\Models\Finance\FinanceSetting;
 use App\Models\Product;
+use App\Models\User;
 use App\Models\Workspace;
+use App\Services\Audit\AuditLogService;
 use App\Services\Finance\Tax\TaxCalculationService;
 use App\Support\Money\Money;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -21,6 +24,8 @@ class QuoteService
 {
     public function __construct(
         private readonly TaxCalculationService $taxCalculator,
+        private readonly InvoiceService $invoiceService,
+        private readonly AuditLogService $auditLogService,
     ) {}
 
     /**
@@ -50,6 +55,7 @@ class QuoteService
                 'customer_id' => $customer->id,
                 'quote_number' => $this->nextQuoteNumber((int) $workspace->id),
                 'status' => QuoteStatus::Draft->value,
+                'outcome' => QuoteOutcomeStatus::Pending->value,
                 'issue_date' => (string) $payload['issue_date'],
                 'expiry_date' => ($payload['expiry_date'] ?? null) ?: null,
                 'currency' => (string) ($payload['currency'] ?? 'SAR'),
@@ -174,6 +180,7 @@ class QuoteService
 
             $locked->update([
                 'status' => QuoteStatus::Issued->value,
+                'outcome' => QuoteOutcomeStatus::Pending->value,
                 'issued_by' => $actorUserId,
                 'issued_at' => now(config('app.timezone')),
                 'company_snapshot' => $snapshots['company'],
@@ -196,6 +203,9 @@ class QuoteService
             if ($locked->isDraft()) {
                 throw new RuntimeException('احذف المسودة بدل إلغائها، أو أصدرها أولاً.');
             }
+            if ($locked->isConverted()) {
+                throw new RuntimeException('لا يمكن إلغاء عرض تم تحويله إلى فاتورة.');
+            }
 
             $locked->update([
                 'status' => QuoteStatus::Cancelled->value,
@@ -215,6 +225,240 @@ class QuoteService
             }
             $locked->delete();
         });
+    }
+
+    /**
+     * Internal commercial acceptance. Does not create an invoice or post GL.
+     */
+    public function accept(FinanceQuote $quote, int $actorUserId): FinanceQuote
+    {
+        return DB::transaction(function () use ($quote, $actorUserId): FinanceQuote {
+            $locked = FinanceQuote::withoutGlobalScopes()
+                ->where('workspace_id', $quote->workspace_id)
+                ->whereKey($quote->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->isPastExpiry()) {
+                throw new RuntimeException('انتهت صلاحية العرض ولا يمكن قبوله.');
+            }
+
+            if (! $locked->isAcceptable()) {
+                throw new RuntimeException('يمكن قبول العروض الصادرة المعلقة فقط.');
+            }
+
+            $locked->update([
+                'outcome' => QuoteOutcomeStatus::Accepted->value,
+                'accepted_at' => now(config('app.timezone')),
+                'accepted_by' => $actorUserId,
+            ]);
+
+            $fresh = $locked->fresh(['items', 'customer']);
+            $this->recordOutcomeAudit(
+                action: 'quote_accepted',
+                quote: $fresh,
+                actorUserId: $actorUserId,
+                newValues: [
+                    'outcome' => QuoteOutcomeStatus::Accepted->value,
+                    'accepted_at' => optional($fresh->accepted_at)?->toIso8601String(),
+                    'accepted_by' => $actorUserId,
+                ],
+            );
+
+            return $fresh;
+        });
+    }
+
+    /**
+     * Internal commercial rejection. Does not create an invoice.
+     */
+    public function reject(FinanceQuote $quote, int $actorUserId, ?string $reason = null): FinanceQuote
+    {
+        $reason = is_string($reason) ? trim($reason) : null;
+        if ($reason === '') {
+            $reason = null;
+        }
+
+        return DB::transaction(function () use ($quote, $actorUserId, $reason): FinanceQuote {
+            $locked = FinanceQuote::withoutGlobalScopes()
+                ->where('workspace_id', $quote->workspace_id)
+                ->whereKey($quote->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (! $locked->isRejectable()) {
+                throw new RuntimeException('يمكن رفض العروض الصادرة المعلقة فقط.');
+            }
+
+            $locked->update([
+                'outcome' => QuoteOutcomeStatus::Rejected->value,
+                'rejected_at' => now(config('app.timezone')),
+                'rejected_by' => $actorUserId,
+                'rejection_reason' => $reason,
+            ]);
+
+            $fresh = $locked->fresh(['items', 'customer']);
+            $this->recordOutcomeAudit(
+                action: 'quote_rejected',
+                quote: $fresh,
+                actorUserId: $actorUserId,
+                newValues: [
+                    'outcome' => QuoteOutcomeStatus::Rejected->value,
+                    'rejected_at' => optional($fresh->rejected_at)?->toIso8601String(),
+                    'rejected_by' => $actorUserId,
+                    'rejection_reason' => $reason,
+                ],
+                extraMeta: ['rejection_reason' => $reason],
+            );
+
+            return $fresh;
+        });
+    }
+
+    /**
+     * Convert an accepted quote into a draft sales invoice via InvoiceService.
+     * Does not issue, post GL, or create ZATCA snapshots.
+     */
+    public function convert(FinanceQuote $quote, int $actorUserId): FinanceQuote
+    {
+        return DB::transaction(function () use ($quote, $actorUserId): FinanceQuote {
+            $locked = FinanceQuote::withoutGlobalScopes()
+                ->where('workspace_id', $quote->workspace_id)
+                ->whereKey($quote->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->isConverted() && $locked->converted_invoice_id) {
+                return $locked->fresh(['items', 'customer', 'convertedInvoice']);
+            }
+
+            if ($locked->isPastExpiry()) {
+                throw new RuntimeException('انتهت صلاحية العرض ولا يمكن تحويله إلى فاتورة.');
+            }
+
+            if (! $locked->isConvertible()) {
+                throw new RuntimeException('يمكن تحويل العروض الصادرة المقبولة فقط، ولمرة واحدة.');
+            }
+
+            $workspace = Workspace::query()->findOrFail((int) $locked->workspace_id);
+            $this->requireCustomer((int) $workspace->id, $locked->customer_id);
+
+            $invoice = $this->invoiceService->create(
+                $workspace,
+                $this->invoicePayloadFromQuote($locked),
+                $actorUserId,
+            );
+
+            if ((int) $invoice->workspace_id !== (int) $locked->workspace_id) {
+                throw new RuntimeException('لا يمكن إنشاء فاتورة في مساحة عمل مختلفة.');
+            }
+
+            $locked->update([
+                'outcome' => QuoteOutcomeStatus::Converted->value,
+                'converted_invoice_id' => $invoice->id,
+                'converted_at' => now(config('app.timezone')),
+                'converted_by' => $actorUserId,
+            ]);
+
+            $fresh = $locked->fresh(['items', 'customer', 'convertedInvoice']);
+            $this->recordOutcomeAudit(
+                action: 'quote_converted',
+                quote: $fresh,
+                actorUserId: $actorUserId,
+                newValues: [
+                    'outcome' => QuoteOutcomeStatus::Converted->value,
+                    'converted_invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'converted_at' => optional($fresh->converted_at)?->toIso8601String(),
+                    'converted_by' => $actorUserId,
+                ],
+                extraMeta: [
+                    'invoice_id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                ],
+            );
+
+            return $fresh;
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function invoicePayloadFromQuote(FinanceQuote $quote): array
+    {
+        $quoteItems = FinanceQuoteItem::withoutGlobalScopes()
+            ->where('quote_id', $quote->id)
+            ->orderBy('id')
+            ->get();
+
+        $items = [];
+        foreach ($quoteItems as $item) {
+            $items[] = [
+                'product_id' => $item->product_id,
+                'product_name' => $item->product_name,
+                'description' => $item->description,
+                'unit' => $item->unit,
+                'unit_code' => $item->unit_code,
+                'quantity' => $item->quantity,
+                'unit_price' => $item->unit_price,
+                'discount' => $item->discount,
+                'tax_profile_type' => $item->tax_profile_type,
+                'tax_type' => $item->tax_profile_type,
+                'tax_rate' => $item->tax_rate,
+                'exemption_reason' => $item->exemption_reason,
+                'exemption_code' => $item->exemption_code,
+            ];
+        }
+
+        $notes = trim((string) ($quote->notes ?? ''));
+        $sourceNote = 'مبني على عرض السعر '.$quote->quote_number;
+        $notes = $notes === '' ? $sourceNote : $notes."\n".$sourceNote;
+
+        return [
+            'type' => 'sales',
+            'customer_id' => $quote->customer_id,
+            'invoice_status' => 'draft',
+            'status' => 'draft',
+            'issue_date' => now(config('app.timezone'))->toDateString(),
+            'due_date' => $quote->expiry_date?->toDateString(),
+            'currency' => $quote->currency,
+            'tax_profile_type' => $quote->tax_profile_type,
+            'tax_rate' => $quote->tax_rate,
+            'tax_price_mode' => $quote->tax_price_mode,
+            'notes' => $notes,
+            'payment_terms' => $quote->terms,
+            'items' => $items,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $newValues
+     * @param  array<string, mixed>  $extraMeta
+     */
+    private function recordOutcomeAudit(
+        string $action,
+        FinanceQuote $quote,
+        int $actorUserId,
+        array $newValues,
+        array $extraMeta = [],
+    ): void {
+        $actor = $actorUserId > 0 ? User::query()->find($actorUserId) : null;
+
+        $this->auditLogService->log(
+            action: $action,
+            entityType: FinanceQuote::class,
+            entityId: (int) $quote->id,
+            oldValues: null,
+            newValues: $newValues,
+            actor: $actor instanceof User ? $actor : null,
+            workspaceId: (int) $quote->workspace_id,
+            meta: array_merge([
+                'quote_id' => $quote->id,
+                'quote_number' => $quote->quote_number,
+                'workspace_id' => $quote->workspace_id,
+            ], $extraMeta),
+        );
     }
 
     /**
