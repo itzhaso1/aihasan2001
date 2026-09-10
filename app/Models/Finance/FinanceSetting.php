@@ -27,6 +27,8 @@ use Illuminate\Support\Facades\Schema;
     'currency',
     'invoice_prefix',
     'next_invoice_sequence',
+    'quote_prefix',
+    'next_quote_sequence',
     'allow_manual_invoice_numbers',
     'credit_note_prefix',
     'next_credit_note_sequence',
@@ -54,6 +56,7 @@ class FinanceSetting extends WorkspaceScopedModel
         return [
             'default_vat_rate' => 'decimal:2',
             'next_invoice_sequence' => 'integer',
+            'next_quote_sequence' => 'integer',
             'allow_manual_invoice_numbers' => 'boolean',
             'zatca_last_synced_at' => 'datetime',
             'invoice_primary_color' => 'string',

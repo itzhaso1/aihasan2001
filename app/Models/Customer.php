@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Appointment\AppointmentBooking;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Finance\FinanceInvoice;
+use App\Models\Finance\FinanceQuote;
 use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -95,6 +96,11 @@ class Customer extends WorkspaceScopedModel
     public function financeInvoices(): HasMany
     {
         return $this->hasMany(FinanceInvoice::class);
+    }
+
+    public function financeQuotes(): HasMany
+    {
+        return $this->hasMany(FinanceQuote::class);
     }
 
     public function bookings(): HasMany

@@ -47,6 +47,7 @@ use App\Http\Controllers\Workspace\Finance\PayrollAdjustmentController as Financ
 use App\Http\Controllers\Workspace\Finance\PriceListController as FinancePriceListController;
 use App\Http\Controllers\Workspace\Finance\ProjectController as FinanceProjectController;
 use App\Http\Controllers\Workspace\Finance\PurchaseOrderController as FinancePurchaseOrderController;
+use App\Http\Controllers\Workspace\Finance\QuoteController as FinanceQuoteController;
 use App\Http\Controllers\Workspace\Finance\ReportController as FinanceReportController;
 use App\Http\Controllers\Workspace\Finance\SalaryAdvanceController as FinanceSalaryAdvanceController;
 use App\Http\Controllers\Workspace\Finance\SalesController as FinanceSalesController;
@@ -389,6 +390,18 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::post('invoices/{invoice}/credit-notes', [FinanceCreditNoteController::class, 'store'])->name('invoices.credit-notes.store');
             Route::post('invoices/{invoice}/credit-notes/{creditNote}/issue', [FinanceCreditNoteController::class, 'issue'])->name('invoices.credit-notes.issue');
             Route::post('invoices/{invoice}/credit-notes/{creditNote}/cancel', [FinanceCreditNoteController::class, 'cancel'])->name('invoices.credit-notes.cancel');
+
+            Route::get('quotes', [FinanceQuoteController::class, 'index'])->name('quotes.index');
+            Route::get('quotes/create', [FinanceQuoteController::class, 'create'])->name('quotes.create');
+            Route::post('quotes', [FinanceQuoteController::class, 'store'])->name('quotes.store');
+            Route::get('quotes/{quote}', [FinanceQuoteController::class, 'show'])->name('quotes.show');
+            Route::get('quotes/{quote}/edit', [FinanceQuoteController::class, 'edit'])->name('quotes.edit');
+            Route::put('quotes/{quote}', [FinanceQuoteController::class, 'update'])->name('quotes.update');
+            Route::delete('quotes/{quote}', [FinanceQuoteController::class, 'destroy'])->name('quotes.destroy');
+            Route::get('quotes/{quote}/pdf', [FinanceQuoteController::class, 'downloadPdf'])->name('quotes.pdf');
+            Route::post('quotes/{quote}/issue', [FinanceQuoteController::class, 'issue'])->name('quotes.issue');
+            Route::post('quotes/{quote}/cancel', [FinanceQuoteController::class, 'cancel'])->name('quotes.cancel');
+
             Route::post('contracts/{contract}/billing-schedules', [FinanceBillingScheduleController::class, 'store'])->name('contracts.billing-schedules.store');
             Route::post('contracts/{contract}/billing-schedules/{schedule}/activate', [FinanceBillingScheduleController::class, 'activate'])->name('contracts.billing-schedules.activate');
             Route::post('contracts/{contract}/billing-schedules/{schedule}/pause', [FinanceBillingScheduleController::class, 'pause'])->name('contracts.billing-schedules.pause');
