@@ -2,16 +2,17 @@
 
 namespace Tests\Feature\Feature\Finance;
 
+use App\EInvoicing\Xml\EInvoiceXmlMappingException;
 use App\EInvoicing\Xml\UblMapper;
 use App\Enums\EInvoicing\ElectronicDocumentKind;
 use App\Enums\EInvoicing\InvoiceTransactionCode;
-use App\Enums\EInvoicing\InvoiceTypeCode;
 use App\Enums\Finance\TaxProfileType;
 use App\Models\Customer;
 use App\Models\Finance\FinanceCreditNote;
 use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\FinanceInvoicePayment;
 use App\Models\Finance\FinanceSetting;
+use App\Models\Finance\FinanceSupplier;
 use App\Models\Finance\IssuedDocumentSnapshot;
 use App\Models\Plan;
 use App\Models\PosCashierInvoice;
@@ -532,7 +533,7 @@ class Phase5ASnapshotCompletenessTest extends TestCase
     public function test_purchase_invoices_are_not_sales_einvoices(): void
     {
         [$owner, $workspace] = $this->createWorkspaceOwner();
-        $supplier = \App\Models\Finance\FinanceSupplier::withoutGlobalScopes()->create([
+        $supplier = FinanceSupplier::withoutGlobalScopes()->create([
             'workspace_id' => $workspace->id,
             'name' => 'Supplier Co',
             'vat_number' => '310000000000003',
@@ -560,7 +561,7 @@ class Phase5ASnapshotCompletenessTest extends TestCase
         $this->assertSame('purchase', data_get($this->financeSnapshot($invoice)->payload, 'document.type'));
         $this->assertSame(ElectronicDocumentKind::PurchaseInvoice, $document->kind());
         $this->assertNull($document->typeCode());
-        $this->expectException(\App\EInvoicing\Xml\EInvoiceXmlMappingException::class);
+        $this->expectException(EInvoiceXmlMappingException::class);
         app(UblMapper::class)->map($document);
     }
 
