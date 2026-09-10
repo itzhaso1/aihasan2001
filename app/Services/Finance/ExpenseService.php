@@ -122,6 +122,58 @@ class ExpenseService
         });
     }
 
+    /**
+     * @param  array<string,mixed>  $payload
+     */
+    public function updateDraft(FinanceExpense $expense, array $payload, int $actorUserId): FinanceExpense
+    {
+        return DB::transaction(function () use ($expense, $payload): FinanceExpense {
+            $locked = FinanceExpense::withoutGlobalScopes()
+                ->whereKey($expense->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->status !== 'draft') {
+                throw new RuntimeException('يمكن تعديل مسودات المصروفات غير المرحّلة فقط.');
+            }
+
+            $amount = round((float) ($payload['amount'] ?? $locked->amount), 2);
+            if ($amount <= 0) {
+                throw new RuntimeException('Expense amount must be greater than zero.');
+            }
+
+            $taxType = (string) ($payload['tax_profile_type'] ?? 'standard');
+            $taxRate = (float) ($payload['tax_rate'] ?? $locked->tax_rate);
+            $calc = $this->taxService->calculateAmount($amount, $taxType, $taxRate);
+
+            $attachmentPath = $locked->attachment_path;
+            if (($payload['attachment_file'] ?? null) instanceof UploadedFile) {
+                if ($attachmentPath) {
+                    app(SecureUpload::class)->delete($attachmentPath);
+                }
+                $attachmentPath = app(SecureUpload::class)->store(
+                    $payload['attachment_file'],
+                    'workspaces/'.$locked->workspace_id.'/finance/expenses',
+                    'public',
+                    4096
+                );
+            }
+
+            $locked->update([
+                'expense_date' => (string) ($payload['expense_date'] ?? $locked->expense_date?->toDateString()),
+                'description' => $payload['description'] ?? $locked->description,
+                'amount' => $amount,
+                'tax_rate' => $taxRate,
+                'tax_amount' => $calc['tax_amount'],
+                'total' => $calc['total'],
+                'payment_method' => (string) ($payload['payment_method'] ?? $locked->payment_method),
+                'attachment_path' => $attachmentPath,
+            ]);
+
+            return $locked->fresh();
+        });
+    }
+
     public function delete(FinanceExpense $expense, ?int $actorUserId = null): void
     {
         DB::transaction(function () use ($expense, $actorUserId): void {

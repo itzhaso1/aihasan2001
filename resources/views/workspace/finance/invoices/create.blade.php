@@ -232,10 +232,12 @@
                                         <select class="w-40 rounded-md border-slate-300 text-xs" :value="item.product_id" @change="applyProduct(idx, $event)">
                                             <option value="">بند حر</option>
                                             @foreach($products as $product)
+                                                @php $listed = ($listPrices ?? [])[$product->id] ?? null; @endphp
                                                 <option
                                                     value="{{ $product->id }}"
                                                     data-name="{{ $product->name }}"
-                                                    data-price="{{ $product->price }}"
+                                                    data-price="{{ $listed['price'] ?? $product->price }}"
+                                                    data-tax-rate="{{ $listed['tax_rate'] ?? '' }}"
                                                 >
                                                     {{ $product->name }} ({{ $product->sku }})
                                                 </option>
@@ -388,6 +390,9 @@
                     }
                     if (option.dataset.price) {
                         this.items[index].unit_price = Number(option.dataset.price);
+                    }
+                    if (option.dataset.taxRate !== undefined && option.dataset.taxRate !== '') {
+                        this.items[index].tax_rate = Number(option.dataset.taxRate);
                     }
                     this.recalculate();
                 },

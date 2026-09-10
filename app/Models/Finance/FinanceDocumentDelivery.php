@@ -39,6 +39,10 @@ class FinanceDocumentDelivery extends WorkspaceScopedModel
 
     public const TYPE_INVOICE = 'invoice';
 
+    public const TYPE_RECEIPT = 'receipt';
+
+    public const TYPE_INVOICE_REMINDER = 'invoice_reminder';
+
     protected function casts(): array
     {
         return [
@@ -67,6 +71,11 @@ class FinanceDocumentDelivery extends WorkspaceScopedModel
         return $this->belongsTo(FinanceInvoice::class, 'document_id');
     }
 
+    public function receipt(): BelongsTo
+    {
+        return $this->belongsTo(FinanceReceipt::class, 'document_id');
+    }
+
     public function scopeForQuote(Builder $query, int $quoteId): Builder
     {
         return $query
@@ -77,8 +86,18 @@ class FinanceDocumentDelivery extends WorkspaceScopedModel
     public function scopeForInvoice(Builder $query, int $invoiceId): Builder
     {
         return $query
-            ->where('document_type', FinanceDocumentType::Invoice->value)
+            ->whereIn('document_type', [
+                FinanceDocumentType::Invoice->value,
+                FinanceDocumentType::InvoiceReminder->value,
+            ])
             ->where('document_id', $invoiceId);
+    }
+
+    public function scopeForReceipt(Builder $query, int $receiptId): Builder
+    {
+        return $query
+            ->where('document_type', FinanceDocumentType::Receipt->value)
+            ->where('document_id', $receiptId);
     }
 
     public function deliveryStatus(): DocumentDeliveryStatus

@@ -5,6 +5,7 @@ namespace App\Observers;
 use App\Models\Finance\FinanceCreditNote;
 use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\FinanceInvoicePayment;
+use App\Models\Finance\FinanceReceipt;
 use App\Models\User;
 use App\Services\Audit\AuditLogService;
 use Illuminate\Database\Eloquent\Model;
@@ -97,6 +98,15 @@ class WorkspaceAuditObserver
             return $model->type === FinanceCreditNote::TYPE_DEBIT
                 ? 'debit_note_created'
                 : 'credit_note_created';
+        }
+
+        if ($model instanceof FinanceReceipt) {
+            if ($event === 'created') {
+                return 'receipt_created';
+            }
+            if ($event === 'updated' && (($model->status ?? null) === FinanceReceipt::STATUS_VOIDED)) {
+                return 'receipt_voided';
+            }
         }
 
         return $event;

@@ -17,11 +17,14 @@ use App\Models\Finance\FinanceTreasuryAccount;
 use App\Models\Product;
 use App\Models\Projects\FinanceProject;
 use App\Services\Finance\FinanceBootstrapService;
+use App\Services\Finance\InvoiceCheckoutService;
 use App\Services\Finance\InvoiceEmailService;
 use App\Services\Finance\InvoiceInboxService;
 use App\Services\Finance\InvoicePaymentService;
+use App\Services\Finance\InvoiceReminderEmailService;
 use App\Services\Finance\InvoiceService;
 use App\Services\Finance\PdfInvoiceService;
+use App\Services\Finance\PriceListService;
 use App\Services\Finance\Tax\TaxCalculationService;
 use App\Services\Notification\DomainNotificationService;
 use Illuminate\Http\RedirectResponse;
@@ -44,6 +47,9 @@ class InvoiceController extends FinanceBaseController
         private readonly DomainNotificationService $domainNotificationService,
         private readonly InvoiceInboxService $invoiceInboxService,
         private readonly InvoiceEmailService $invoiceEmailService,
+        private readonly InvoiceReminderEmailService $invoiceReminderEmailService,
+        private readonly InvoiceCheckoutService $invoiceCheckoutService,
+        private readonly PriceListService $priceListService,
     ) {}
 
     public function index(Request $request): View
@@ -258,6 +264,7 @@ class InvoiceController extends FinanceBaseController
                 'payments.treasuryAccount',
                 'payments.creator',
                 'payments.reversedBy',
+                'payments.receipt',
                 'attachments',
                 'creditNotes.items',
                 'contract',
@@ -269,6 +276,7 @@ class InvoiceController extends FinanceBaseController
             'journalEntries' => $journalEntries,
             'auditLogs' => $auditLogs,
             'canViewAccounting' => $request->user()?->can('accounting.view') ?? false,
+            'checkout' => $this->invoiceCheckoutService->availability($invoice),
         ]);
     }
 
@@ -330,6 +338,44 @@ class InvoiceController extends FinanceBaseController
             ->with('success', 'تم إرسال الفاتورة إلى '.$delivery->recipient);
     }
 
+    public function remind(Request $request, FinanceInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'invoices.remind');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        $validated = $request->validate([
+            'email' => ['required', 'email:filter', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:32'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'message' => ['nullable', 'string', 'max:15000'],
+            'attach_pdf' => ['nullable', 'boolean'],
+        ], [
+            'email.required' => 'لا يوجد بريد إلكتروني للعميل.',
+            'email.email' => 'البريد الإلكتروني غير صالح.',
+        ]);
+
+        try {
+            $delivery = $this->invoiceReminderEmailService->send(
+                $invoice,
+                [
+                    'email' => $validated['email'],
+                    'phone' => $validated['phone'] ?? null,
+                    'subject' => $validated['subject'] ?? null,
+                    'message' => $validated['message'] ?? null,
+                    'attach_pdf' => $request->boolean('attach_pdf', true),
+                    'source' => 'manual',
+                ],
+                (int) $request->user()?->id,
+            );
+        } catch (RuntimeException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('workspace.finance.invoices.show', $invoice)
+            ->with('success', 'تم إرسال تذكير إلى '.$delivery->recipient);
+    }
+
     public function cancel(Request $request, FinanceInvoice $invoice): RedirectResponse
     {
         $this->authorizeFinance($request, 'invoices.cancel');
@@ -382,7 +428,7 @@ class InvoiceController extends FinanceBaseController
 
     public function reversePayment(Request $request, FinanceInvoice $invoice, FinanceInvoicePayment $payment): RedirectResponse
     {
-        $this->authorizeFinance($request, 'invoices.cancel');
+        $this->authorizeFinance($request, 'invoices.reverse_payment');
         $this->assertSameWorkspace($invoice->workspace_id);
         abort_unless((int) $payment->invoice_id === (int) $invoice->id, 404);
 
@@ -478,6 +524,7 @@ class InvoiceController extends FinanceBaseController
                 : collect(),
             'allowManualInvoiceNumbers' => $setting?->allowsManualInvoiceNumbers() ?? false,
             'defaultTaxRate' => (float) ($setting?->default_vat_rate ?? TaxCalculationService::FALLBACK_STANDARD_RATE),
+            'listPrices' => $this->priceListService->effectivePricesByProductId((int) $workspace->id),
         ];
     }
 

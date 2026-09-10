@@ -177,6 +177,48 @@ class PriceListService
         return $priceList->refresh();
     }
 
+    /**
+     * Newest approved, currently effective list wins per product_id.
+     *
+     * @return array<int, array{price:float, tax_rate:float}>
+     */
+    public function effectivePricesByProductId(int $workspaceId, ?string $onDate = null): array
+    {
+        $date = $onDate ?: now()->toDateString();
+
+        $lists = FinancePriceList::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceId)
+            ->where('status', 'approved')
+            ->where(function ($query) use ($date): void {
+                $query->whereNull('effective_from')->orWhereDate('effective_from', '<=', $date);
+            })
+            ->where(function ($query) use ($date): void {
+                $query->whereNull('effective_to')->orWhereDate('effective_to', '>=', $date);
+            })
+            ->with(['items' => function ($query): void {
+                $query->where('is_active', true)->whereNotNull('product_id');
+            }])
+            ->orderByDesc('approved_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $map = [];
+        foreach ($lists as $list) {
+            foreach ($list->items as $item) {
+                $productId = (int) $item->product_id;
+                if ($productId <= 0 || array_key_exists($productId, $map)) {
+                    continue;
+                }
+                $map[$productId] = [
+                    'price' => round((float) $item->price, 2),
+                    'tax_rate' => round((float) $item->tax_rate, 2),
+                ];
+            }
+        }
+
+        return $map;
+    }
+
     private function normalizeNullable(mixed $value): ?string
     {
         if (! is_string($value)) {

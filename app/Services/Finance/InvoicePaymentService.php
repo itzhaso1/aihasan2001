@@ -18,6 +18,7 @@ class InvoicePaymentService
         private readonly InvoiceStateService $invoiceStateService,
         private readonly FinancialPeriodGuardService $financialPeriodGuardService,
         private readonly TreasuryBalanceService $treasuryBalanceService,
+        private readonly ReceiptService $receiptService,
     ) {}
 
     /**
@@ -56,6 +57,8 @@ class InvoicePaymentService
                     ->first();
 
                 if ($existingPayment) {
+                    $this->receiptService->ensureForPostedPayment($existingPayment, $lockedInvoice, $actorUserId);
+
                     return $existingPayment;
                 }
             }
@@ -131,6 +134,8 @@ class InvoicePaymentService
                     ->first();
 
                 if ($existingPayment) {
+                    $this->receiptService->ensureForPostedPayment($existingPayment, $lockedInvoice, $actorUserId);
+
                     return $existingPayment;
                 }
 
@@ -168,6 +173,8 @@ class InvoicePaymentService
             if ($treasuryAccount) {
                 $this->treasuryBalanceService->adjust($treasuryAccount, $amount);
             }
+
+            $this->receiptService->ensureForPostedPayment($payment, $lockedInvoice, $actorUserId);
 
             return $payment;
         });
@@ -256,6 +263,8 @@ class InvoicePaymentService
                 'invoice_status' => $invoiceStatus,
                 'payment_status' => $paymentStatus,
             ] : []));
+
+            $this->receiptService->voidForPayment($lockedPayment, $actorUserId);
 
             return $lockedPayment->fresh();
         });

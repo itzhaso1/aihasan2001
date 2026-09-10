@@ -10,6 +10,7 @@ use App\Models\Finance\FinanceTaxRate;
 use App\Models\Product;
 use App\Services\Finance\FinanceBootstrapService;
 use App\Services\Finance\PdfQuoteService;
+use App\Services\Finance\PriceListService;
 use App\Services\Finance\QuoteEmailService;
 use App\Services\Finance\QuoteService;
 use App\Services\Finance\Tax\TaxCalculationService;
@@ -28,6 +29,7 @@ class QuoteController extends FinanceBaseController
         private readonly QuoteEmailService $quoteEmailService,
         private readonly FinanceBootstrapService $financeBootstrapService,
         private readonly PdfQuoteService $pdfQuoteService,
+        private readonly PriceListService $priceListService,
     ) {}
 
     public function index(Request $request): View
@@ -318,6 +320,7 @@ class QuoteController extends FinanceBaseController
             'products' => Product::query()->orderBy('name')->get(['id', 'name', 'price', 'currency', 'sku']),
             'taxRates' => FinanceTaxRate::query()->where('is_active', true)->orderByDesc('is_default')->get(['id', 'name', 'type', 'rate', 'code']),
             'defaultTaxRate' => (float) ($setting?->default_vat_rate ?? TaxCalculationService::FALLBACK_STANDARD_RATE),
+            'listPrices' => $this->priceListService->effectivePricesByProductId((int) $workspace->id),
         ];
     }
 

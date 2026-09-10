@@ -37,6 +37,7 @@ use App\Http\Controllers\Workspace\Finance\CreditNoteController as FinanceCredit
 use App\Http\Controllers\Workspace\Finance\CustomerStatementController as FinanceCustomerStatementController;
 use App\Http\Controllers\Workspace\Finance\DashboardController as FinanceDashboardController;
 use App\Http\Controllers\Workspace\Finance\ExpenseController as FinanceExpenseController;
+use App\Http\Controllers\Workspace\Finance\ExportController as FinanceExportController;
 use App\Http\Controllers\Workspace\Finance\FinanceEmployeeController;
 use App\Http\Controllers\Workspace\Finance\FiscalYearController as FinanceFiscalYearController;
 use App\Http\Controllers\Workspace\Finance\IntelligenceController as FinanceIntelligenceController;
@@ -44,10 +45,12 @@ use App\Http\Controllers\Workspace\Finance\InvoiceController as FinanceInvoiceCo
 use App\Http\Controllers\Workspace\Finance\LeadController as FinanceLeadController;
 use App\Http\Controllers\Workspace\Finance\ModulePageController as FinanceModulePageController;
 use App\Http\Controllers\Workspace\Finance\PayrollAdjustmentController as FinancePayrollAdjustmentController;
+use App\Http\Controllers\Workspace\Finance\PaymentController as FinancePaymentController;
 use App\Http\Controllers\Workspace\Finance\PriceListController as FinancePriceListController;
 use App\Http\Controllers\Workspace\Finance\ProjectController as FinanceProjectController;
 use App\Http\Controllers\Workspace\Finance\PurchaseOrderController as FinancePurchaseOrderController;
 use App\Http\Controllers\Workspace\Finance\QuoteController as FinanceQuoteController;
+use App\Http\Controllers\Workspace\Finance\ReceiptController as FinanceReceiptController;
 use App\Http\Controllers\Workspace\Finance\ReportController as FinanceReportController;
 use App\Http\Controllers\Workspace\Finance\SalaryAdvanceController as FinanceSalaryAdvanceController;
 use App\Http\Controllers\Workspace\Finance\SalesController as FinanceSalesController;
@@ -381,6 +384,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::get('invoices/{invoice}/pdf', [FinanceInvoiceController::class, 'downloadPdf'])->name('invoices.pdf');
             Route::post('invoices/{invoice}/issue', [FinanceInvoiceController::class, 'issue'])->name('invoices.issue');
             Route::post('invoices/{invoice}/send', [FinanceInvoiceController::class, 'send'])->name('invoices.send');
+            Route::post('invoices/{invoice}/remind', [FinanceInvoiceController::class, 'remind'])->name('invoices.remind');
             Route::post('invoices/{invoice}/cancel', [FinanceInvoiceController::class, 'cancel'])->name('invoices.cancel');
             Route::post('invoices/{invoice}/payments', [FinanceInvoiceController::class, 'storePayment'])->name('invoices.payments.store');
             Route::post('invoices/{invoice}/payments/{payment}/reverse', [FinanceInvoiceController::class, 'reversePayment'])->name('invoices.payments.reverse');
@@ -389,8 +393,17 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::delete('invoices/{invoice}/attachments/{attachment}', [FinanceInvoiceController::class, 'destroyAttachment'])->name('invoices.attachments.destroy');
             Route::get('invoices/{invoice}/credit-notes/create', [FinanceCreditNoteController::class, 'create'])->name('invoices.credit-notes.create');
             Route::post('invoices/{invoice}/credit-notes', [FinanceCreditNoteController::class, 'store'])->name('invoices.credit-notes.store');
+            Route::get('invoices/{invoice}/credit-notes/{creditNote}/pdf', [FinanceCreditNoteController::class, 'downloadPdf'])->name('invoices.credit-notes.pdf');
             Route::post('invoices/{invoice}/credit-notes/{creditNote}/issue', [FinanceCreditNoteController::class, 'issue'])->name('invoices.credit-notes.issue');
             Route::post('invoices/{invoice}/credit-notes/{creditNote}/cancel', [FinanceCreditNoteController::class, 'cancel'])->name('invoices.credit-notes.cancel');
+
+            Route::get('payments', [FinancePaymentController::class, 'index'])->name('payments.index');
+            Route::get('receipts', [FinanceReceiptController::class, 'index'])->name('receipts.index');
+            Route::get('receipts/{receipt}', [FinanceReceiptController::class, 'show'])->name('receipts.show');
+            Route::get('receipts/{receipt}/pdf', [FinanceReceiptController::class, 'downloadPdf'])->name('receipts.pdf');
+            Route::post('receipts/{receipt}/send', [FinanceReceiptController::class, 'send'])->name('receipts.send');
+            Route::get('exports', [FinanceExportController::class, 'index'])->name('exports.index');
+            Route::get('exports/{dataset}', [FinanceExportController::class, 'download'])->name('exports.download');
 
             Route::get('quotes', [FinanceQuoteController::class, 'index'])->name('quotes.index');
             Route::get('quotes/create', [FinanceQuoteController::class, 'create'])->name('quotes.create');
@@ -419,6 +432,9 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
 
             Route::get('expenses', [FinanceExpenseController::class, 'index'])->name('expenses.index');
             Route::post('expenses', [FinanceExpenseController::class, 'store'])->name('expenses.store');
+            Route::get('expenses/{expense}/edit', [FinanceExpenseController::class, 'edit'])->name('expenses.edit');
+            Route::put('expenses/{expense}', [FinanceExpenseController::class, 'update'])->name('expenses.update');
+            Route::get('expenses/{expense}/attachment', [FinanceExpenseController::class, 'downloadAttachment'])->name('expenses.attachment');
             Route::delete('expenses/{expense}', [FinanceExpenseController::class, 'destroy'])->name('expenses.destroy');
 
             Route::get('accounting', [FinanceAccountingController::class, 'dashboard'])->name('accounting.dashboard');
