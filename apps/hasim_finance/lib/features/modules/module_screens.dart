@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -729,6 +731,71 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                       onTap: () => context.push('/invoices/${invoice.id}'),
                     ),
                 ],
+                FormSection(
+                  title: l.attachment,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (c.attachments.isEmpty) Text(l.empty, style: Theme.of(context).textTheme.bodySmall),
+                      for (final row in c.attachments)
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('${row['file_name'] ?? l.attachment}'),
+                          subtitle: Text('${row['file_type'] ?? ''}'),
+                          trailing: Wrap(spacing: 4, children: [
+                            IconButton(
+                              icon: const Icon(Icons.download_outlined),
+                              onPressed: () async {
+                                try {
+                                  final id = int.parse('${row['id']}');
+                                  final bytes = await ref.read(financeApiProvider).downloadContractAttachment(c.id, id);
+                                  await saveAndOpenBytes(bytes, '${row['file_name'] ?? 'attachment-$id'}');
+                                } catch (e) {
+                                  if (context.mounted) showApiError(context, e);
+                                }
+                              },
+                            ),
+                            if (ref.watch(authControllerProvider).permissions.contractsManage)
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () => confirmAndRun(context, () async {
+                                  await ref.read(financeApiProvider).deleteContractAttachment(c.id, int.parse('${row['id']}'));
+                                  await _load();
+                                }),
+                              ),
+                          ]),
+                        ),
+                      if (ref.watch(authControllerProvider).permissions.contractsManage &&
+                          c.status != 'closed' &&
+                          c.status != 'cancelled')
+                        OutlinedButton(
+                          onPressed: () async {
+                            final result = await FilePicker.platform.pickFiles(
+                              allowMultiple: true,
+                              type: FileType.custom,
+                              allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'],
+                            );
+                            if (result == null || result.files.isEmpty) return;
+                            try {
+                              final form = FormData();
+                              for (final file in result.files) {
+                                final part = await multipartFromPicked(file);
+                                if (part == null) continue;
+                                form.files.add(MapEntry('attachments[]', part));
+                              }
+                              if (form.files.isEmpty) return;
+                              await ref.read(financeApiProvider).uploadContractAttachments(c.id, form);
+                              await _load();
+                            } catch (e) {
+                              if (context.mounted) showApiError(context, e);
+                            }
+                          },
+                          child: Text(l.attachment),
+                        ),
+                    ],
+                  ),
+                ),
                 Wrap(spacing: 8, children: [
                   if (c.status == 'draft') FilledButton(onPressed: () => context.push('/contracts/${c.id}/edit'), child: Text(l.edit)),
                   if (c.status == 'draft') FilledButton(onPressed: () async { await ref.read(financeApiProvider).contractAction(c.id, 'activate'); await _load(); }, child: Text(l.signContract)),
@@ -818,6 +885,7 @@ class _ContractFormScreenState extends ConsumerState<ContractFormScreen> {
   final _end = TextEditingController();
   final _notes = TextEditingController();
   final _terms = TextEditingController();
+  final List<PlatformFile> _pendingFiles = [];
 
   @override
   void initState() {
@@ -862,7 +930,11 @@ class _ContractFormScreenState extends ConsumerState<ContractFormScreen> {
             child: Column(
               children: [
                 TextField(controller: _title, decoration: InputDecoration(labelText: l.fieldName)),
-                CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
+                CustomerSelectField(
+                  selectedId: _customerId,
+                  onSelected: (id) => setState(() => _customerId = id),
+                  compact: true,
+                ),
                 FormGrid(children: [
                   TextField(controller: _value, decoration: InputDecoration(labelText: l.amount)),
                   TextField(controller: _currency, decoration: InputDecoration(labelText: l.currency)),
@@ -874,6 +946,28 @@ class _ContractFormScreenState extends ConsumerState<ContractFormScreen> {
           ),
           TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 2),
           TextField(controller: _terms, decoration: InputDecoration(labelText: l.terms), maxLines: 2),
+          FormSection(
+            title: l.attachment,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final file in _pendingFiles)
+                  ListTile(dense: true, contentPadding: EdgeInsets.zero, title: Text(file.name)),
+                OutlinedButton(
+                  onPressed: () async {
+                    final result = await FilePicker.platform.pickFiles(
+                      allowMultiple: true,
+                      type: FileType.custom,
+                      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'doc', 'docx'],
+                    );
+                    if (result == null || result.files.isEmpty) return;
+                    setState(() => _pendingFiles.addAll(result.files));
+                  },
+                  child: Text(l.attachment),
+                ),
+              ],
+            ),
+          ),
           FilledButton(
             onPressed: _customerId == null
                 ? null
@@ -889,6 +983,17 @@ class _ContractFormScreenState extends ConsumerState<ContractFormScreen> {
                         'notes': _notes.text.trim(),
                         'terms': _terms.text.trim(),
                       }, id: widget.id);
+                      if (_pendingFiles.isNotEmpty) {
+                        final form = FormData();
+                        for (final file in _pendingFiles) {
+                          final part = await multipartFromPicked(file);
+                          if (part == null) continue;
+                          form.files.add(MapEntry('attachments[]', part));
+                        }
+                        if (form.files.isNotEmpty) {
+                          await ref.read(financeApiProvider).uploadContractAttachments(saved.id, form);
+                        }
+                      }
                       if (context.mounted) context.go('/contracts/${saved.id}');
                     } catch (e) {
                       if (context.mounted) showFormError(context, e);
@@ -1711,6 +1816,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _bankName = TextEditingController();
   final _accountNumber = TextEditingController();
   Map<String, dynamic>? _settings;
+  Uint8List? _logoBytes;
+  bool _logoBusy = false;
 
   @override
   void initState() {
@@ -1742,6 +1849,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _country.text = '${s['country_code'] ?? 'SA'}';
     _allowManual = s['allow_manual_invoice_numbers'] == true;
     if (mounted) setState(() => _settings = s);
+    _loadLogo(s['has_logo'] == true);
+  }
+
+  Future<void> _loadLogo(bool hasLogo) async {
+    if (!hasLogo) {
+      if (mounted) setState(() => _logoBytes = null);
+      return;
+    }
+    try {
+      final bytes = await ref.read(financeApiProvider).downloadCompanyLogo();
+      if (mounted) setState(() => _logoBytes = bytes);
+    } catch (_) {
+      if (mounted) setState(() => _logoBytes = null);
+    }
   }
 
   @override
@@ -1833,6 +1954,66 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 TextField(controller: _website, decoration: InputDecoration(labelText: l.website)),
               ]),
             ),
+            if (auth.permissions.settings)
+              FormSection(
+                title: l.companyLogo,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_logoBytes != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Image.memory(_logoBytes!, height: 72, fit: BoxFit.contain),
+                      )
+                    else
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Text(l.empty, style: Theme.of(context).textTheme.bodySmall),
+                      ),
+                    if (_logoBusy) const LinearProgressIndicator(),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      FilledButton.tonal(
+                        onPressed: _logoBusy
+                            ? null
+                            : () async {
+                                final result = await FilePicker.platform.pickFiles(type: FileType.image);
+                                if (result == null || result.files.isEmpty) return;
+                                final part = await multipartFromPicked(result.files.first);
+                                if (part == null) return;
+                                setState(() => _logoBusy = true);
+                                try {
+                                  final form = FormData();
+                                  form.files.add(MapEntry('logo', part));
+                                  final next = await ref.read(financeApiProvider).uploadCompanyLogo(form);
+                                  _applySettings(next);
+                                  if (context.mounted) showSnack(context, l.success);
+                                } catch (e) {
+                                  if (context.mounted) showApiError(context, e);
+                                } finally {
+                                  if (mounted) setState(() => _logoBusy = false);
+                                }
+                              },
+                        child: Text(_logoBytes == null ? l.chooseLogo : l.replaceLogo),
+                      ),
+                      if (_logoBytes != null)
+                        OutlinedButton(
+                          onPressed: _logoBusy
+                              ? null
+                              : () => confirmAndRun(context, () async {
+                                    setState(() => _logoBusy = true);
+                                    try {
+                                      final next = await ref.read(financeApiProvider).removeCompanyLogo();
+                                      _applySettings(next);
+                                    } finally {
+                                      if (mounted) setState(() => _logoBusy = false);
+                                    }
+                                  }),
+                          child: Text(l.removeLogo),
+                        ),
+                    ]),
+                  ],
+                ),
+              ),
             FormSection(
               title: l.addressLine,
               child: FormGrid(children: [

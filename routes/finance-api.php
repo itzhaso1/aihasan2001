@@ -100,6 +100,9 @@ Route::post('/contracts/{contract}/activate', [ContractClientController::class, 
 Route::post('/contracts/{contract}/close', [ContractClientController::class, 'close'])->middleware('throttle:mobile-write');
 Route::post('/contracts/{contract}/cancel', [ContractClientController::class, 'cancel'])->middleware('throttle:mobile-write');
 Route::get('/contracts/{contract}/pdf', [ContractClientController::class, 'pdf']);
+Route::post('/contracts/{contract}/attachments', [ContractClientController::class, 'storeAttachment'])->middleware('throttle:mobile-write');
+Route::get('/contracts/{contract}/attachments/{attachment}', [ContractClientController::class, 'downloadAttachment']);
+Route::delete('/contracts/{contract}/attachments/{attachment}', [ContractClientController::class, 'destroyAttachment'])->middleware('throttle:mobile-write');
 Route::post('/contracts/{contract}/billing-schedules', [ContractClientController::class, 'storeSchedule'])->middleware('throttle:mobile-write');
 Route::post('/contracts/{contract}/billing-schedules/{schedule}/activate', [ContractClientController::class, 'activateSchedule'])->middleware('throttle:mobile-write');
 Route::post('/contracts/{contract}/billing-schedules/{schedule}/pause', [ContractClientController::class, 'pauseSchedule'])->middleware('throttle:mobile-write');
@@ -168,6 +171,13 @@ Route::post('/leads/{lead}/lost', [LeadClientController::class, 'markLost'])->mi
 
 Route::get('/treasury', [TreasuryClientController::class, 'index']);
 Route::post('/treasury/transfers', [TreasuryClientController::class, 'transfer'])->middleware('throttle:mobile-write');
+Route::post('/treasury/statements', [TreasuryClientController::class, 'storeStatement'])->middleware('throttle:mobile-write');
+Route::get('/treasury/statements/{statement}', [TreasuryClientController::class, 'showStatement']);
+Route::post('/treasury/statements/{statement}/lines', [TreasuryClientController::class, 'storeLines'])->middleware('throttle:mobile-write');
+Route::post('/treasury/statements/{statement}/suggest', [TreasuryClientController::class, 'suggest'])->middleware('throttle:mobile-write');
+Route::post('/treasury/statements/{statement}/lines/{line}/match', [TreasuryClientController::class, 'matchLine'])->middleware('throttle:mobile-write');
+Route::post('/treasury/statements/{statement}/lines/{line}/ignore', [TreasuryClientController::class, 'ignoreLine'])->middleware('throttle:mobile-write');
+Route::post('/treasury/statements/{statement}/complete', [TreasuryClientController::class, 'complete'])->middleware('throttle:mobile-write');
 
 Route::post('/copilot/ask', [CopilotClientController::class, 'ask'])->middleware('throttle:mobile-write');
 
@@ -185,6 +195,9 @@ Route::get('/reports/{report}', [ReportController::class, 'show']);
 Route::get('/exports/{dataset}', [ExportController::class, 'download']);
 Route::get('/settings', [SettingsController::class, 'show']);
 Route::put('/settings', [SettingsController::class, 'update'])->middleware('throttle:mobile-write');
+Route::get('/settings/logo', [SettingsController::class, 'logo']);
+Route::post('/settings/logo', [SettingsController::class, 'uploadLogo'])->middleware('throttle:mobile-write');
+Route::delete('/settings/logo', [SettingsController::class, 'removeLogo'])->middleware('throttle:mobile-write');
 Route::post('/settings/tax-rates', [SettingsController::class, 'storeTaxRate'])->middleware('throttle:mobile-write');
 Route::post('/settings/treasury-accounts', [SettingsController::class, 'storeTreasuryAccount'])->middleware('throttle:mobile-write');
 

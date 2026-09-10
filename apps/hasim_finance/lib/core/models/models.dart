@@ -931,6 +931,7 @@ class ContractRecord {
     this.scheduleRecords = const [],
     this.generatedInvoices = const [],
     this.billingSummary = const {},
+    this.attachments = const [],
   });
 
   final int id;
@@ -949,6 +950,7 @@ class ContractRecord {
   final List<BillingScheduleRecord> scheduleRecords;
   final List<InvoiceRecord> generatedInvoices;
   final Map<String, dynamic> billingSummary;
+  final List<Map<String, dynamic>> attachments;
 
   List<Map<String, dynamic>> get schedules => scheduleRecords.map((row) => row.toLegacyMap()).toList();
 
@@ -972,6 +974,10 @@ class ContractRecord {
       billingSummary: json['billing_summary'] is Map
           ? Map<String, dynamic>.from(json['billing_summary'] as Map)
           : const {},
+      attachments: (json['attachments'] as List? ?? [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(),
     );
   }
 }

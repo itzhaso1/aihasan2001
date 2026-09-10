@@ -6,6 +6,7 @@ use App\Exceptions\Api\ApiErrorCode;
 use App\Http\Controllers\Api\Finance\Concerns\HandlesFinanceClient;
 use App\Http\Controllers\Api\Finance\FinanceApiController;
 use App\Models\Contract\Contract;
+use App\Models\Contract\ContractAttachment;
 use App\Models\Finance\FinanceBillingSchedule;
 use App\Services\Contracts\ContractPdfService;
 use App\Services\Contracts\ContractService;
@@ -15,6 +16,7 @@ use App\Services\Finance\FinanceBootstrapService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class ContractClientController extends FinanceApiController
@@ -43,7 +45,7 @@ class ContractClientController extends FinanceApiController
         ]);
 
         $page = Contract::query()
-            ->with(['customer', 'billingSchedules', 'items'])
+            ->with(['customer', 'billingSchedules', 'items', 'attachments'])
             ->when($validated['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($validated['search'] ?? null, function ($query, $search): void {
                 $query->where(function ($inner) use ($search): void {
@@ -65,7 +67,7 @@ class ContractClientController extends FinanceApiController
     {
         $workspace = $this->clientWorkspace($this->workspaceContext);
         $this->clientActor($request, $workspace, 'contracts.view');
-        $contract->load(['customer', 'billingSchedules', 'invoices', 'items']);
+        $contract->load(['customer', 'billingSchedules', 'invoices', 'items', 'attachments']);
 
         $payload = $this->presenter->contract($contract);
         $payload['billing_summary'] = [
@@ -96,7 +98,7 @@ class ContractClientController extends FinanceApiController
         );
 
         return $this->ok(
-            $this->presenter->contract($contract->load(['customer', 'billingSchedules'])),
+            $this->presenter->contract($contract->load(['customer', 'billingSchedules', 'attachments'])),
             message: 'تم إنشاء العقد.',
             status: 201,
         );
@@ -111,7 +113,7 @@ class ContractClientController extends FinanceApiController
             fn () => $this->contractService->update($contract, $payload, $request->file('attachments', []) ?: [])
         );
 
-        return $this->ok($this->presenter->contract($updated->load(['customer', 'billingSchedules'])), message: 'تم تحديث العقد.');
+        return $this->ok($this->presenter->contract($updated->load(['customer', 'billingSchedules', 'attachments'])), message: 'تم تحديث العقد.');
     }
 
     public function activate(Request $request, Contract $contract): JsonResponse
@@ -120,7 +122,7 @@ class ContractClientController extends FinanceApiController
         $user = $this->clientActor($request, $workspace, 'contracts.manage');
         $activated = $this->runFinanceDomain(fn () => $this->contractService->activate($contract, (int) $user->id));
 
-        return $this->ok($this->presenter->contract($activated->load(['customer', 'billingSchedules'])), message: 'تم تفعيل العقد.');
+        return $this->ok($this->presenter->contract($activated->load(['customer', 'billingSchedules', 'attachments'])), message: 'تم تفعيل العقد.');
     }
 
     public function close(Request $request, Contract $contract): JsonResponse
@@ -129,7 +131,7 @@ class ContractClientController extends FinanceApiController
         $this->clientActor($request, $workspace, 'contracts.manage');
         $closed = $this->runFinanceDomain(fn () => $this->contractService->close($contract));
 
-        return $this->ok($this->presenter->contract($closed->load(['customer', 'billingSchedules'])), message: 'تم إغلاق العقد.');
+        return $this->ok($this->presenter->contract($closed->load(['customer', 'billingSchedules', 'attachments'])), message: 'تم إغلاق العقد.');
     }
 
     public function cancel(Request $request, Contract $contract): JsonResponse
@@ -138,7 +140,7 @@ class ContractClientController extends FinanceApiController
         $this->clientActor($request, $workspace, 'contracts.manage');
         $cancelled = $this->runFinanceDomain(fn () => $this->contractService->cancel($contract));
 
-        return $this->ok($this->presenter->contract($cancelled->load(['customer', 'billingSchedules'])), message: 'تم إلغاء العقد.');
+        return $this->ok($this->presenter->contract($cancelled->load(['customer', 'billingSchedules', 'attachments'])), message: 'تم إلغاء العقد.');
     }
 
     public function pdf(Request $request, Contract $contract): mixed
@@ -147,6 +149,50 @@ class ContractClientController extends FinanceApiController
         $this->clientActor($request, $workspace, 'contracts.view');
 
         return $this->contractPdfService->download($contract);
+    }
+
+    public function storeAttachment(Request $request, Contract $contract): JsonResponse
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'contracts.manage');
+        if (in_array((string) $contract->status, ['closed', 'cancelled'], true)) {
+            return $this->fail('لا يمكن إرفاق ملفات بعقد مغلق أو ملغي.', ApiErrorCode::ValidationFailed, 422);
+        }
+        $request->validate([
+            'attachments' => ['required', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:10240'],
+        ]);
+
+        $updated = $this->runFinanceDomain(
+            fn () => $this->contractService->storeAttachments($contract, $request->file('attachments', []) ?: [])
+        );
+
+        return $this->ok(
+            $this->presenter->contract($updated->load(['customer', 'billingSchedules', 'attachments'])),
+            message: 'تم رفع المرفق.',
+        );
+    }
+
+    public function downloadAttachment(Request $request, Contract $contract, ContractAttachment $attachment): mixed
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'contracts.view');
+        abort_unless((int) $attachment->contract_id === (int) $contract->id, 404);
+
+        return Storage::disk('public')->download(
+            $attachment->file_path,
+            $attachment->file_name ?: ('contract-attachment-'.$attachment->id)
+        );
+    }
+
+    public function destroyAttachment(Request $request, Contract $contract, ContractAttachment $attachment): JsonResponse
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'contracts.manage');
+        abort_unless((int) $attachment->contract_id === (int) $contract->id, 404);
+        $this->runFinanceDomain(fn () => $this->contractService->deleteAttachment($attachment));
+
+        return $this->ok(
+            $this->presenter->contract($contract->fresh()->load(['customer', 'billingSchedules', 'attachments', 'items'])),
+            message: 'تم حذف المرفق.',
+        );
     }
 
     public function storeSchedule(Request $request, Contract $contract): JsonResponse

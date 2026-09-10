@@ -169,6 +169,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/copilot', builder: (_, _) => const CopilotScreen()),
           GoRoute(path: '/banks', builder: (_, _) => const BanksScreen()),
           GoRoute(path: '/treasury', builder: (_, _) => const TreasuryScreen()),
+          GoRoute(
+            path: '/treasury/statements/:id',
+            builder: (_, state) => BankStatementScreen(id: int.parse(state.pathParameters['id']!)),
+          ),
           GoRoute(path: '/exports', builder: (_, _) => const ExportsScreen()),
           GoRoute(path: '/fiscal-years', builder: (_, _) => const FiscalYearsScreen()),
           GoRoute(

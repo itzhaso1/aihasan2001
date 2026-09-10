@@ -1014,6 +1014,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get applyFilters => 'تطبيق التصفية';
 
   @override
+  String get resetFilters => 'إعادة تعيين التصفية';
+
+  @override
   String get decisionPeriod => 'فترة القرار';
 
   @override
@@ -1030,4 +1033,52 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get comparePrevious => 'مقارنة بالفترة السابقة';
+
+  @override
+  String get paymentMethod => 'طريقة الدفع';
+
+  @override
+  String get companyLogo => 'شعار المنشأة';
+
+  @override
+  String get chooseLogo => 'اختيار الشعار';
+
+  @override
+  String get replaceLogo => 'استبدال الشعار';
+
+  @override
+  String get removeLogo => 'حذف الشعار';
+
+  @override
+  String get bankStatements => 'كشوف البنك';
+
+  @override
+  String get addStatement => 'كشف جديد';
+
+  @override
+  String get addStatementLines => 'إضافة حركات';
+
+  @override
+  String get suggestMatches => 'اقتراح مطابقة';
+
+  @override
+  String get acceptSuggestion => 'قبول الاقتراح';
+
+  @override
+  String get ignoreLine => 'تجاهل الحركة';
+
+  @override
+  String get completeReconciliation => 'إكمال التسوية';
+
+  @override
+  String get statementDate => 'تاريخ الكشف';
+
+  @override
+  String get monthlyCashFlow => 'التدفق النقدي الشهري';
+
+  @override
+  String get journalEntries => 'قيود اليومية';
+
+  @override
+  String get uploading => 'جاري الرفع…';
 }

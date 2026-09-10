@@ -2096,6 +2096,12 @@ abstract class AppLocalizations {
   /// **'تطبيق التصفية'**
   String get applyFilters;
 
+  /// No description provided for @resetFilters.
+  ///
+  /// In ar, this message translates to:
+  /// **'إعادة تعيين التصفية'**
+  String get resetFilters;
+
   /// No description provided for @decisionPeriod.
   ///
   /// In ar, this message translates to:
@@ -2131,6 +2137,102 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'مقارنة بالفترة السابقة'**
   String get comparePrevious;
+
+  /// No description provided for @paymentMethod.
+  ///
+  /// In ar, this message translates to:
+  /// **'طريقة الدفع'**
+  String get paymentMethod;
+
+  /// No description provided for @companyLogo.
+  ///
+  /// In ar, this message translates to:
+  /// **'شعار المنشأة'**
+  String get companyLogo;
+
+  /// No description provided for @chooseLogo.
+  ///
+  /// In ar, this message translates to:
+  /// **'اختيار الشعار'**
+  String get chooseLogo;
+
+  /// No description provided for @replaceLogo.
+  ///
+  /// In ar, this message translates to:
+  /// **'استبدال الشعار'**
+  String get replaceLogo;
+
+  /// No description provided for @removeLogo.
+  ///
+  /// In ar, this message translates to:
+  /// **'حذف الشعار'**
+  String get removeLogo;
+
+  /// No description provided for @bankStatements.
+  ///
+  /// In ar, this message translates to:
+  /// **'كشوف البنك'**
+  String get bankStatements;
+
+  /// No description provided for @addStatement.
+  ///
+  /// In ar, this message translates to:
+  /// **'كشف جديد'**
+  String get addStatement;
+
+  /// No description provided for @addStatementLines.
+  ///
+  /// In ar, this message translates to:
+  /// **'إضافة حركات'**
+  String get addStatementLines;
+
+  /// No description provided for @suggestMatches.
+  ///
+  /// In ar, this message translates to:
+  /// **'اقتراح مطابقة'**
+  String get suggestMatches;
+
+  /// No description provided for @acceptSuggestion.
+  ///
+  /// In ar, this message translates to:
+  /// **'قبول الاقتراح'**
+  String get acceptSuggestion;
+
+  /// No description provided for @ignoreLine.
+  ///
+  /// In ar, this message translates to:
+  /// **'تجاهل الحركة'**
+  String get ignoreLine;
+
+  /// No description provided for @completeReconciliation.
+  ///
+  /// In ar, this message translates to:
+  /// **'إكمال التسوية'**
+  String get completeReconciliation;
+
+  /// No description provided for @statementDate.
+  ///
+  /// In ar, this message translates to:
+  /// **'تاريخ الكشف'**
+  String get statementDate;
+
+  /// No description provided for @monthlyCashFlow.
+  ///
+  /// In ar, this message translates to:
+  /// **'التدفق النقدي الشهري'**
+  String get monthlyCashFlow;
+
+  /// No description provided for @journalEntries.
+  ///
+  /// In ar, this message translates to:
+  /// **'قيود اليومية'**
+  String get journalEntries;
+
+  /// No description provided for @uploading.
+  ///
+  /// In ar, this message translates to:
+  /// **'جاري الرفع…'**
+  String get uploading;
 }
 
 class _AppLocalizationsDelegate

@@ -24,7 +24,8 @@ class FinancePermissions {
   bool get purchasesCreate => can('purchases.create') || can('purchases.edit') || can('purchases.manage');
   bool get purchasesManage => can('purchases.manage') || can('purchases.create');
   bool get expensesCreate => can('expenses.create') || can('expenses.edit');
-  bool get contractsCreate => can('contracts.create') || can('contracts.edit');
+  bool get contractsCreate => can('contracts.create') || can('contracts.edit') || can('contracts.manage');
+  bool get contractsManage => can('contracts.manage') || can('contracts.edit') || can('contracts.create');
   bool get notesCreate => can('notes.create') || can('invoices.credit');
   bool get reportsView => can('reports.view');
   bool get settings => can('finance.settings');

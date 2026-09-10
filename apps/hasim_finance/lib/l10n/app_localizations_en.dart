@@ -1016,6 +1016,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get applyFilters => 'Apply filters';
 
   @override
+  String get resetFilters => 'Reset filters';
+
+  @override
   String get decisionPeriod => 'Decision period';
 
   @override
@@ -1032,4 +1035,52 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get comparePrevious => 'Compared with previous period';
+
+  @override
+  String get paymentMethod => 'Payment method';
+
+  @override
+  String get companyLogo => 'Company logo';
+
+  @override
+  String get chooseLogo => 'Choose logo';
+
+  @override
+  String get replaceLogo => 'Replace logo';
+
+  @override
+  String get removeLogo => 'Remove logo';
+
+  @override
+  String get bankStatements => 'Bank statements';
+
+  @override
+  String get addStatement => 'New statement';
+
+  @override
+  String get addStatementLines => 'Add statement lines';
+
+  @override
+  String get suggestMatches => 'Suggest matches';
+
+  @override
+  String get acceptSuggestion => 'Accept suggestion';
+
+  @override
+  String get ignoreLine => 'Ignore line';
+
+  @override
+  String get completeReconciliation => 'Complete reconciliation';
+
+  @override
+  String get statementDate => 'Statement date';
+
+  @override
+  String get monthlyCashFlow => 'Monthly cash inflow';
+
+  @override
+  String get journalEntries => 'Journal entries';
+
+  @override
+  String get uploading => 'Uploading…';
 }

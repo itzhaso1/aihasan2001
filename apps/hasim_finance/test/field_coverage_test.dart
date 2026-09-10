@@ -202,6 +202,9 @@ void main() {
       'generated_invoices': [
         {'id': 11, 'invoice_number': 'INV-11', 'total': '100.00'},
       ],
+      'attachments': [
+        {'id': 4, 'file_name': 'scan.pdf', 'file_type': 'application/pdf', 'file_size': 1200},
+      ],
     });
     expect(contract.terms, 'شروط عربية');
     expect(contract.items.single.title, 'صيانة شهرية');
@@ -209,6 +212,7 @@ void main() {
     expect(contract.scheduleRecords.single.nextRunOn, '2026-10-01');
     expect(contract.billingSummary['outstanding'], '100.00');
     expect(contract.generatedInvoices.single.invoiceNumber, 'INV-11');
+    expect(contract.attachments.single['file_name'], 'scan.pdf');
   });
 
   test('ExpenseRecord and PaymentRecord retain treasury and method fields', () {

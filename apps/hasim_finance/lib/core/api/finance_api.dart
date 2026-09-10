@@ -128,8 +128,10 @@ class FinanceApi {
     return Map<String, dynamic>.from(res.data as Map? ?? {});
   }
 
-  Future<PagedResult<CustomerRecord>> customers({String? search, int page = 1}) {
-    return _paged('customers', (raw) => CustomerRecord.fromJson(raw), search: search, page: page);
+  Future<PagedResult<CustomerRecord>> customers({String? search, int page = 1, int perPage = 25}) {
+    return _paged('customers', (raw) => CustomerRecord.fromJson(raw), search: search, page: page, extra: {
+      'per_page': perPage,
+    });
   }
 
   Future<CustomerRecord> customer(int id) async {
@@ -357,6 +359,27 @@ class FinanceApi {
     return res.data!;
   }
 
+  Future<ContractRecord> uploadContractAttachments(int contractId, FormData form) async {
+    final res = await _client.upload(
+      'contracts/$contractId/attachments',
+      formData: form,
+      mapData: (raw) => ContractRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<Uint8List> downloadContractAttachment(int contractId, int attachmentId) {
+    return _client.downloadBytes('contracts/$contractId/attachments/$attachmentId');
+  }
+
+  Future<ContractRecord> deleteContractAttachment(int contractId, int attachmentId) async {
+    final res = await _client.delete(
+      'contracts/$contractId/attachments/$attachmentId',
+      mapData: (raw) => ContractRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
   Future<InvoiceRecord?> generateScheduleInvoice(int contractId, int scheduleId) async {
     final res = await _client.post('contracts/$contractId/billing-schedules/$scheduleId/generate');
     final map = Map<String, dynamic>.from(res.data as Map? ?? {});
@@ -459,6 +482,18 @@ class FinanceApi {
     return Map<String, dynamic>.from(res.data as Map? ?? {});
   }
 
+  Future<Map<String, dynamic>> uploadCompanyLogo(FormData form) async {
+    final res = await _client.upload('settings/logo', formData: form);
+    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  }
+
+  Future<Uint8List> downloadCompanyLogo() => _client.downloadBytes('settings/logo');
+
+  Future<Map<String, dynamic>> removeCompanyLogo() async {
+    final res = await _client.delete('settings/logo');
+    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  }
+
   Future<Map<String, dynamic>> search(String q) async {
     final res = await _client.get('search', query: {'q': q});
     return Map<String, dynamic>.from(res.data as Map? ?? {});
@@ -505,6 +540,44 @@ class FinanceApi {
 
   Future<Map<String, dynamic>> treasuryTransfer(Map<String, dynamic> body) async {
     final res = await _client.post('treasury/transfers', body: body);
+    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  }
+
+  Future<Map<String, dynamic>> createBankStatement(Map<String, dynamic> body) async {
+    final res = await _client.post('treasury/statements', body: body);
+    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  }
+
+  Future<Map<String, dynamic>> bankStatement(int id) async {
+    final res = await _client.get('treasury/statements/$id');
+    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  }
+
+  Future<Map<String, dynamic>> addBankStatementLines(int id, List<Map<String, dynamic>> lines) async {
+    final res = await _client.post('treasury/statements/$id/lines', body: {'lines': lines});
+    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  }
+
+  Future<Map<String, dynamic>> suggestBankStatementMatches(int id) async {
+    final res = await _client.post('treasury/statements/$id/suggest');
+    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  }
+
+  Future<Map<String, dynamic>> matchBankStatementLine(int statementId, int lineId, {required String matchedType, required int matchedId}) async {
+    final res = await _client.post(
+      'treasury/statements/$statementId/lines/$lineId/match',
+      body: {'matched_type': matchedType, 'matched_id': matchedId},
+    );
+    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  }
+
+  Future<Map<String, dynamic>> ignoreBankStatementLine(int statementId, int lineId) async {
+    final res = await _client.post('treasury/statements/$statementId/lines/$lineId/ignore');
+    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  }
+
+  Future<Map<String, dynamic>> completeBankStatement(int id) async {
+    final res = await _client.post('treasury/statements/$id/complete');
     return Map<String, dynamic>.from(res.data as Map? ?? {});
   }
 

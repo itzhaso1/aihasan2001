@@ -8,6 +8,8 @@ use App\Models\Crm\CrmLead;
 use App\Models\Customer;
 use App\Models\Finance\FinanceAccount;
 use App\Models\Finance\FinanceAccountingPeriod;
+use App\Models\Finance\FinanceBankStatement;
+use App\Models\Finance\FinanceBankStatementLine;
 use App\Models\Finance\FinanceCreditNote;
 use App\Models\Finance\FinanceDocumentDelivery;
 use App\Models\Finance\FinanceExpense;
@@ -37,6 +39,7 @@ use App\Services\Payment\Contracts\BillableCheckoutResult;
 use App\Support\Money\Money;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 
 class FinanceClientPresenter
 {
@@ -423,6 +426,22 @@ class FinanceClientPresenter
                     'notes' => $schedule->notes,
                 ])->values()->all()
                 : [],
+            'attachments' => $contract->relationLoaded('attachments')
+                ? $contract->attachments->map(fn ($attachment) => $this->contractAttachment($attachment))->values()->all()
+                : [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function contractAttachment(mixed $attachment): array
+    {
+        return [
+            'id' => (int) $attachment->id,
+            'file_name' => $attachment->file_name,
+            'file_type' => $attachment->file_type,
+            'file_size' => $attachment->file_size,
         ];
     }
 
@@ -640,6 +659,8 @@ class FinanceClientPresenter
             'default_payment_terms' => $setting->default_payment_terms,
             'allow_manual_invoice_numbers' => (bool) $setting->allow_manual_invoice_numbers,
             'zatca_integration_mode' => $setting->zatca_integration_mode,
+            'has_logo' => filled($setting->logo_path),
+            'logo_url' => $this->publicFileUrl($setting->logo_path),
         ];
     }
 
@@ -882,6 +903,45 @@ class FinanceClientPresenter
     /**
      * @return array<string, mixed>
      */
+    public function bankStatement(FinanceBankStatement $statement): array
+    {
+        return [
+            'id' => (int) $statement->id,
+            'treasury_account_id' => (int) $statement->treasury_account_id,
+            'treasury_account_name' => $statement->treasuryAccount?->name,
+            'statement_date' => $this->date($statement->statement_date),
+            'opening_balance' => $this->money($statement->opening_balance ?? 0),
+            'closing_balance' => $this->money($statement->closing_balance ?? 0),
+            'status' => $statement->status,
+            'notes' => $statement->notes,
+            'reconciled_at' => $statement->reconciled_at?->toIso8601String(),
+            'lines' => $statement->relationLoaded('lines')
+                ? $statement->lines->map(fn (FinanceBankStatementLine $line) => $this->bankStatementLine($line))->values()->all()
+                : [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function bankStatementLine(FinanceBankStatementLine $line): array
+    {
+        return [
+            'id' => (int) $line->id,
+            'posted_date' => $this->date($line->posted_date),
+            'description' => $line->description,
+            'reference' => $line->reference,
+            'amount' => $this->money($line->amount ?? 0),
+            'status' => $line->status,
+            'suggested_type' => $line->suggested_type,
+            'suggested_id' => $line->suggested_id ? (int) $line->suggested_id : null,
+            'suggestion_confidence' => $line->suggestion_confidence,
+            'suggestion_reason' => $line->suggestion_reason,
+            'matched_type' => $line->matched_type,
+            'matched_id' => $line->matched_id ? (int) $line->matched_id : null,
+        ];
+    }
+
     public function treasuryTransfer(FinanceTreasuryTransfer $transfer): array
     {
         return [
@@ -987,6 +1047,20 @@ class FinanceClientPresenter
                 'credit' => $this->money($line->credit ?? 0),
             ])->values()->all() ?? [],
         ];
+    }
+
+    private function publicFileUrl(?string $path): ?string
+    {
+        if (! filled($path)) {
+            return null;
+        }
+
+        $url = Storage::disk('public')->url($path);
+        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+            return $url;
+        }
+
+        return rtrim((string) config('app.url'), '/').'/'.ltrim($url, '/');
     }
 
     private function date(mixed $value): ?string

@@ -306,8 +306,9 @@ class _AccountingHubScreenState extends ConsumerState<AccountingHubScreen> {
           loading: _loading,
           error: _error,
           onRetry: _load,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
+          child: FinancePage(
+            child: ListView(
+            padding: EdgeInsets.zero,
             children: [
               MetricGrid(metrics: [
                 (l.statementDebit, '${totals['debit'] ?? '0.00'}'),
@@ -329,14 +330,25 @@ class _AccountingHubScreenState extends ConsumerState<AccountingHubScreen> {
                   title: Text('${row['code'] ?? ''} · ${row['name'] ?? ''}'),
                   trailing: Text('${row['balance'] ?? row['debit_total'] ?? ''}'),
                 ),
-              Text(l.snapshots, style: Theme.of(context).textTheme.titleMedium),
+              Text(l.journalEntries, style: Theme.of(context).textTheme.titleMedium),
               for (final row in entries.take(20))
                 ListTile(
                   dense: true,
+                  isThreeLine: true,
                   title: Text('${row['entry_number'] ?? row['id'] ?? ''}'),
-                  subtitle: Text('${row['description'] ?? row['status'] ?? ''}'),
+                  subtitle: Text(
+                    '${row['entry_date'] ?? ''} · ${row['status'] ?? ''}\n${row['description'] ?? ''}',
+                  ),
+                ),
+              Text(l.monthlyCashFlow, style: Theme.of(context).textTheme.titleMedium),
+              for (final row in (_data?['monthly_cash_flow'] as List? ?? []).whereType<Map>())
+                ListTile(
+                  dense: true,
+                  title: Text('${row['month'] ?? ''}'),
+                  trailing: Text('${row['inflow'] ?? '0.00'}'),
                 ),
             ],
+          ),
           ),
         ),
       ),
@@ -614,6 +626,22 @@ class _TreasuryScreenState extends ConsumerState<TreasuryScreen> {
                   subtitle: Text('${transfer.transferDate ?? ''} · ${transfer.reference ?? ''}'),
                   trailing: Text(transfer.amount),
                 ),
+              const SizedBox(height: 12),
+              Text(l.bankStatements, style: Theme.of(context).textTheme.titleMedium),
+              if (ref.watch(authControllerProvider).permissions.accountingManage)
+                FormSection(
+                  title: l.addStatement,
+                  child: _CreateStatementForm(accounts: accounts, onCreated: (id) {
+                    if (context.mounted) context.push('/treasury/statements/$id');
+                  }),
+                ),
+              for (final row in (_data?['statements'] as List? ?? []).whereType<Map>())
+                ListTile(
+                  title: Text('${row['treasury_account_name'] ?? l.bankStatements}'),
+                  subtitle: Text('${row['statement_date'] ?? ''} · ${row['status'] ?? ''}'),
+                  trailing: Text('${row['closing_balance'] ?? ''}'),
+                  onTap: row['id'] == null ? null : () => context.push('/treasury/statements/${row['id']}'),
+                ),
             ],
           ),
         ),
@@ -856,3 +884,263 @@ class _FiscalYearDetailScreenState extends ConsumerState<FiscalYearDetailScreen>
     );
   }
 }
+
+class _CreateStatementForm extends ConsumerStatefulWidget {
+  const _CreateStatementForm({required this.accounts, required this.onCreated});
+
+  final List<TreasuryAccountRecord> accounts;
+  final ValueChanged<int> onCreated;
+
+  @override
+  ConsumerState<_CreateStatementForm> createState() => _CreateStatementFormState();
+}
+
+class _CreateStatementFormState extends ConsumerState<_CreateStatementForm> {
+  int? _accountId;
+  final _date = TextEditingController(text: isoDate());
+  final _opening = TextEditingController(text: '0');
+  final _closing = TextEditingController(text: '0');
+  final _notes = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _date.dispose();
+    _opening.dispose();
+    _closing.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FormGrid(children: [
+          OptionPicker(
+            label: l.banks,
+            options: [for (final a in widget.accounts) NamedOption(id: a.id, name: a.name)],
+            value: _accountId,
+            onChanged: (id) => setState(() => _accountId = id),
+          ),
+          TextField(controller: _date, decoration: InputDecoration(labelText: l.statementDate)),
+          TextField(controller: _opening, decoration: InputDecoration(labelText: l.openingBalance)),
+          TextField(controller: _closing, decoration: InputDecoration(labelText: l.closingBalance)),
+          TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField)),
+        ]),
+        const SizedBox(height: 8),
+        FilledButton(
+          onPressed: _busy || _accountId == null
+              ? null
+              : () async {
+                  setState(() => _busy = true);
+                  try {
+                    final created = await ref.read(financeApiProvider).createBankStatement({
+                      'treasury_account_id': _accountId,
+                      'statement_date': _date.text.trim(),
+                      'opening_balance': _opening.text.trim(),
+                      'closing_balance': _closing.text.trim(),
+                      'notes': _notes.text.trim(),
+                    });
+                    final id = int.parse('${created['id']}');
+                    widget.onCreated(id);
+                  } catch (e) {
+                    if (context.mounted) showFormError(context, e);
+                  } finally {
+                    if (mounted) setState(() => _busy = false);
+                  }
+                },
+          child: Text(l.addStatement),
+        ),
+      ],
+    );
+  }
+}
+
+class BankStatementScreen extends ConsumerStatefulWidget {
+  const BankStatementScreen({super.key, required this.id});
+  final int id;
+
+  @override
+  ConsumerState<BankStatementScreen> createState() => _BankStatementScreenState();
+}
+
+class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
+  Map<String, dynamic>? _data;
+  bool _loading = true;
+  String? _error;
+  bool _busy = false;
+  final _amount = TextEditingController();
+  final _date = TextEditingController(text: isoDate());
+  final _description = TextEditingController();
+  final _reference = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _date.dispose();
+    _description.dispose();
+    _reference.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await ref.read(financeApiProvider).bankStatement(widget.id);
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _run(Future<Map<String, dynamic>> Function() action) async {
+    setState(() => _busy = true);
+    try {
+      final data = await action();
+      if (!mounted) return;
+      setState(() => _data = data);
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final manage = ref.watch(authControllerProvider).permissions.accountingManage;
+    final lines = (_data?['lines'] as List? ?? []).whereType<Map>().toList();
+    final open = _data?['status'] != 'reconciled';
+    return PermissionGate(
+      allowed: ref.watch(authControllerProvider).permissions.financeView,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(l.bankStatements),
+          actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+        ),
+        body: AsyncBody(
+          loading: _loading,
+          error: _error,
+          onRetry: _load,
+          child: FinancePage(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                StatusChip(label: '${_data?['status'] ?? ''}'),
+                Text('${_data?['treasury_account_name'] ?? ''} · ${_data?['statement_date'] ?? ''}'),
+                MetricGrid(metrics: [
+                  (l.openingBalance, '${_data?['opening_balance'] ?? '0.00'}'),
+                  (l.closingBalance, '${_data?['closing_balance'] ?? '0.00'}'),
+                ]),
+                if (manage && open) ...[
+                  FormSection(
+                    title: l.addStatementLines,
+                    child: FormGrid(children: [
+                      TextField(controller: _date, decoration: InputDecoration(labelText: l.date)),
+                      TextField(controller: _amount, decoration: InputDecoration(labelText: l.amount)),
+                      TextField(controller: _description, decoration: InputDecoration(labelText: l.notesField)),
+                      TextField(controller: _reference, decoration: InputDecoration(labelText: l.reference)),
+                    ]),
+                  ),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    FilledButton(
+                      onPressed: _busy
+                          ? null
+                          : () async {
+                              if (_amount.text.trim().isEmpty) return;
+                              await _run(() => ref.read(financeApiProvider).addBankStatementLines(widget.id, [
+                                    {
+                                      'posted_date': _date.text.trim(),
+                                      'amount': _amount.text.trim(),
+                                      'description': _description.text.trim(),
+                                      'reference': _reference.text.trim(),
+                                    },
+                                  ]));
+                            },
+                      child: Text(l.addStatementLines),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: _busy ? null : () => _run(() => ref.read(financeApiProvider).suggestBankStatementMatches(widget.id)),
+                      child: Text(l.suggestMatches),
+                    ),
+                    FilledButton(
+                      onPressed: _busy
+                          ? null
+                          : () => confirmAndRun(context, () async {
+                                await _run(() => ref.read(financeApiProvider).completeBankStatement(widget.id));
+                              }),
+                      child: Text(l.completeReconciliation),
+                    ),
+                  ]),
+                ],
+                const SizedBox(height: 12),
+                for (final line in lines)
+                  Card(
+                    child: ListTile(
+                      title: Text('${line['description'] ?? l.bankStatements} · ${line['amount'] ?? ''}'),
+                      subtitle: Text(
+                        '${line['posted_date'] ?? ''} · ${line['status'] ?? ''}'
+                        '${line['suggestion_reason'] != null ? '\n${line['suggestion_reason']} (${line['suggestion_confidence'] ?? ''}%)' : ''}',
+                      ),
+                      isThreeLine: line['suggestion_reason'] != null,
+                      trailing: manage && open && (line['status'] == 'unmatched' || line['status'] == 'suggested')
+                          ? Wrap(children: [
+                              if (line['suggested_type'] != null && line['suggested_id'] != null)
+                                TextButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => _run(
+                                            () => ref.read(financeApiProvider).matchBankStatementLine(
+                                                  widget.id,
+                                                  int.parse('${line['id']}'),
+                                                  matchedType: '${line['suggested_type']}',
+                                                  matchedId: int.parse('${line['suggested_id']}'),
+                                                ),
+                                          ),
+                                  child: Text(l.acceptSuggestion),
+                                ),
+                              TextButton(
+                                onPressed: _busy
+                                    ? null
+                                    : () => _run(
+                                          () => ref.read(financeApiProvider).ignoreBankStatementLine(
+                                                widget.id,
+                                                int.parse('${line['id']}'),
+                                              ),
+                                        ),
+                                child: Text(l.ignoreLine),
+                              ),
+                            ])
+                          : StatusChip(label: '${line['status'] ?? ''}'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

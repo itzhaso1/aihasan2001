@@ -49,10 +49,10 @@ class FinanceFlutterFeatureParityTest extends TestCase
 
         $this->withHeaders($headers)->getJson('/api/finance/v1/alerts')->assertOk();
         $this->withHeaders($headers)->getJson('/api/finance/v1/accounting')->assertOk()
-            ->assertJsonStructure(['data' => ['accounts', 'trial_balance', 'trial_totals']]);
+            ->assertJsonStructure(['data' => ['accounts', 'entries', 'trial_balance', 'trial_totals', 'monthly_cash_flow']]);
         $this->withHeaders($headers)->getJson('/api/finance/v1/banks')->assertOk();
         $this->withHeaders($headers)->getJson('/api/finance/v1/treasury')->assertOk()
-            ->assertJsonStructure(['data' => ['accounts', 'transfers']]);
+            ->assertJsonStructure(['data' => ['accounts', 'transfers', 'statements']]);
         $this->withHeaders($headers)->getJson('/api/finance/v1/exports')->assertOk();
         $this->assertSame('invoices', $this->withHeaders($headers)->getJson('/api/finance/v1/exports')->json('data.0.dataset'));
         $this->withHeaders($headers)->getJson('/api/finance/v1/fiscal-years')->assertOk();
@@ -221,6 +221,133 @@ class FinanceFlutterFeatureParityTest extends TestCase
 
         $this->withHeaders($headers)->getJson('/api/finance/v1/purchases?supplier_id='.$supplier['id'])
             ->assertOk();
+    }
+
+    public function test_contract_attachments_logo_dashboard_filters_and_bank_matching(): void
+    {
+        [$owner, $workspace] = $this->createWorkspaceOwner('Attachment Workspace');
+        Sanctum::actingAs($owner);
+        $headers = $this->workspaceHeader($workspace);
+        $this->withHeaders($headers)->getJson('/api/finance/v1/bootstrap')->assertOk();
+        app(WorkspaceContext::class)->set($workspace);
+
+        $customer = Customer::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'عميل المرفقات',
+            'phone' => '0509998877',
+            'email' => 'attachments@example.com',
+        ]);
+
+        $contract = $this->withHeaders($headers)->postJson('/api/finance/v1/contracts', [
+            'title' => 'عقد المرفقات',
+            'customer_id' => $customer->id,
+            'value' => 500,
+            'currency' => 'SAR',
+            'start_date' => now()->toDateString(),
+        ])->assertCreated()->json('data');
+
+        $upload = $this->withHeaders($headers)
+            ->post('/api/finance/v1/contracts/'.$contract['id'].'/attachments', [
+                'attachments' => [UploadedFile::fake()->create('contract-scan.pdf', 18, 'application/pdf')],
+            ])
+            ->assertOk();
+        $this->assertSame('contract-scan.pdf', $upload->json('data.attachments.0.file_name'));
+        $attachmentId = $upload->json('data.attachments.0.id');
+
+        $this->withHeaders($headers)
+            ->get('/api/finance/v1/contracts/'.$contract['id'].'/attachments/'.$attachmentId)
+            ->assertOk();
+
+        $this->withHeaders($headers)
+            ->deleteJson('/api/finance/v1/contracts/'.$contract['id'].'/attachments/'.$attachmentId)
+            ->assertOk()
+            ->assertJsonPath('data.attachments', []);
+
+        $this->withHeaders($headers)->postJson('/api/finance/v1/contracts/'.$contract['id'].'/activate')->assertOk();
+        $this->withHeaders($headers)->postJson('/api/finance/v1/contracts/'.$contract['id'].'/close')->assertOk();
+        $this->withHeaders($headers)
+            ->post('/api/finance/v1/contracts/'.$contract['id'].'/attachments', [
+                'attachments' => [UploadedFile::fake()->create('late.pdf', 8, 'application/pdf')],
+            ])
+            ->assertStatus(422);
+
+        $this->withHeaders($headers)
+            ->post('/api/finance/v1/settings/logo', [
+                'logo' => UploadedFile::fake()->image('company.png', 80, 80),
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.has_logo', true);
+        $this->assertNotEmpty($this->withHeaders($headers)->getJson('/api/finance/v1/settings')->json('data.logo_url'));
+        $this->withHeaders($headers)->get('/api/finance/v1/settings/logo')->assertOk();
+        $this->withHeaders($headers)->deleteJson('/api/finance/v1/settings/logo')
+            ->assertOk()
+            ->assertJsonPath('data.has_logo', false);
+
+        $this->withHeaders($headers)->getJson('/api/finance/v1/dashboard?'.http_build_query([
+            'from' => now()->startOfMonth()->toDateString(),
+            'to' => now()->toDateString(),
+            'customer_id' => $customer->id,
+            'lifecycle' => 'sent',
+            'payment_method' => 'cash',
+        ]))->assertOk()->assertJsonPath('success', true);
+
+        $treasury = $this->withHeaders($headers)->getJson('/api/finance/v1/treasury')->assertOk()->json('data');
+        $accountId = $treasury['accounts'][0]['id'] ?? null;
+        if (! $accountId) {
+            $accountId = $this->withHeaders($headers)->postJson('/api/finance/v1/settings/treasury-accounts', [
+                'name' => 'بنك الاختبار',
+                'type' => 'bank',
+                'currency' => 'SAR',
+            ])->assertOk()->json('data.id');
+        }
+        $this->assertNotEmpty($accountId);
+
+        $statement = $this->withHeaders($headers)->postJson('/api/finance/v1/treasury/statements', [
+            'treasury_account_id' => $accountId,
+            'statement_date' => now()->toDateString(),
+            'opening_balance' => 0,
+            'closing_balance' => 100,
+            'notes' => 'كشف اختبار',
+        ])->assertCreated()->json('data');
+
+        $withLines = $this->withHeaders($headers)->postJson('/api/finance/v1/treasury/statements/'.$statement['id'].'/lines', [
+            'lines' => [[
+                'posted_date' => now()->toDateString(),
+                'amount' => 100,
+                'description' => 'إيداع',
+                'reference' => 'DEP-1',
+            ]],
+        ])->assertOk()->json('data');
+        $lineId = $withLines['lines'][0]['id'];
+
+        $this->withHeaders($headers)
+            ->postJson('/api/finance/v1/treasury/statements/'.$statement['id'].'/suggest')
+            ->assertOk();
+
+        $this->withHeaders($headers)
+            ->postJson('/api/finance/v1/treasury/statements/'.$statement['id'].'/lines/'.$lineId.'/ignore')
+            ->assertOk()
+            ->assertJsonPath('data.lines.0.status', 'ignored');
+
+        $this->withHeaders($headers)
+            ->postJson('/api/finance/v1/treasury/statements/'.$statement['id'].'/complete')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'reconciled');
+
+        $this->withHeaders($headers)
+            ->postJson('/api/finance/v1/treasury/statements/'.$statement['id'].'/lines', [
+                'lines' => [['amount' => 10, 'description' => 'بعد الإغلاق']],
+            ])
+            ->assertStatus(422);
+
+        [$ownerB, $workspaceB] = $this->createWorkspaceOwner('Other Attachment Co');
+        Sanctum::actingAs($ownerB);
+        $this->withHeaders($this->workspaceHeader($workspaceB))
+            ->getJson('/api/finance/v1/contracts/'.$contract['id'])
+            ->assertStatus(404);
+        $this->withHeaders($this->workspaceHeader($workspaceB))
+            ->getJson('/api/finance/v1/treasury/statements/'.$statement['id'])
+            ->assertStatus(404);
     }
 
     public function test_feature_endpoints_respect_workspace_and_permissions(): void

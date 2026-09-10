@@ -7,6 +7,7 @@ import 'package:hasim_finance/core/auth/auth_controller.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/core/layout/finance_layout.dart';
+import 'package:hasim_finance/core/providers/catalog_provider.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
 import 'package:hasim_finance/features/shared/customer_select.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
@@ -25,6 +26,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   final _from = TextEditingController();
   final _to = TextEditingController();
   int? _customerId;
+  int? _productId;
+  int? _projectId;
+  String? _lifecycle;
+  String? _paymentMethod;
 
   @override
   void initState() {
@@ -52,6 +57,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             from: _from.text.trim(),
             to: _to.text.trim(),
             customerId: _customerId,
+            productId: _productId,
+            projectId: _projectId,
+            lifecycle: _lifecycle,
+            paymentMethod: _paymentMethod,
           );
       if (!mounted) return;
       setState(() {
@@ -69,6 +78,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _loading = false;
       });
     }
+  }
+
+  void _resetFilters() {
+    final now = DateTime.now();
+    setState(() {
+      _from.text = isoDate(DateTime(now.year, now.month, 1));
+      _to.text = isoDate(now);
+      _customerId = null;
+      _productId = null;
+      _projectId = null;
+      _lifecycle = null;
+      _paymentMethod = null;
+    });
+    _load();
   }
 
   @override
@@ -107,10 +130,65 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         CustomerSelectField(
                           selectedId: _customerId,
                           onSelected: (id) => setState(() => _customerId = id),
+                          compact: true,
+                          allowClear: true,
+                          label: l.customers,
                         ),
-                        Align(
-                          alignment: AlignmentDirectional.centerStart,
-                          child: FilledButton(onPressed: _load, child: Text(l.applyFilters)),
+                        OptionPicker(
+                          label: l.products,
+                          options: [
+                            for (final product in ref.watch(financeCatalogProvider).valueOrNull?.products ?? const <CatalogOption>[])
+                              NamedOption(id: product.id, name: product.name),
+                          ],
+                          value: _productId,
+                          onChanged: (id) => setState(() => _productId = id),
+                        ),
+                        OptionPicker(
+                          label: l.projects,
+                          options: [
+                            for (final project in ref.watch(financeCatalogProvider).valueOrNull?.projects ?? const <CatalogOption>[])
+                              NamedOption(id: project.id, name: project.name),
+                          ],
+                          value: _projectId,
+                          onChanged: (id) => setState(() => _projectId = id),
+                        ),
+                        DropdownButtonFormField<String?>(
+                          // ignore: deprecated_member_use
+                          value: _lifecycle,
+                          isExpanded: true,
+                          decoration: InputDecoration(labelText: l.documentStatus),
+                          items: [
+                            DropdownMenuItem<String?>(value: null, child: Text(l.filterAll)),
+                            DropdownMenuItem(value: 'draft', child: Text(l.lifecycleDraft)),
+                            DropdownMenuItem(value: 'sent', child: Text(l.lifecycleSent)),
+                            DropdownMenuItem(value: 'partial', child: Text(l.partial)),
+                            DropdownMenuItem(value: 'paid', child: Text(l.paid)),
+                            DropdownMenuItem(value: 'overdue', child: Text(l.overdue)),
+                            DropdownMenuItem(value: 'cancelled', child: Text(l.cancelled)),
+                          ],
+                          onChanged: (value) => setState(() => _lifecycle = value),
+                        ),
+                        DropdownButtonFormField<String?>(
+                          // ignore: deprecated_member_use
+                          value: _paymentMethod,
+                          isExpanded: true,
+                          decoration: InputDecoration(labelText: l.paymentMethod),
+                          items: [
+                            DropdownMenuItem<String?>(value: null, child: Text(l.filterAll)),
+                            DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),
+                            DropdownMenuItem(value: 'bank_transfer', child: Text(l.methodBank)),
+                            DropdownMenuItem(value: 'card', child: Text(l.methodCard)),
+                            DropdownMenuItem(value: 'other', child: Text(l.methodOther)),
+                          ],
+                          onChanged: (value) => setState(() => _paymentMethod = value),
+                        ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            FilledButton(onPressed: _load, child: Text(l.applyFilters)),
+                            OutlinedButton(onPressed: _resetFilters, child: Text(l.resetFilters)),
+                          ],
                         ),
                       ]),
                     ),

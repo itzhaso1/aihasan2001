@@ -192,6 +192,16 @@ class ContractService
             ]);
     }
 
+    /**
+     * @param  array<int, mixed>  $uploadedFiles
+     */
+    public function storeAttachments(Contract $contract, array $uploadedFiles): Contract
+    {
+        $this->storeUploadedAttachments($contract, $uploadedFiles);
+
+        return $contract->fresh(['customer', 'items', 'attachments', 'billingSchedules']) ?? $contract;
+    }
+
     public function deleteAttachment(ContractAttachment $attachment): void
     {
         $path = $attachment->file_path;

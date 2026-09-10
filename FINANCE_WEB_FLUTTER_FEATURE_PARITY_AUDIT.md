@@ -44,7 +44,7 @@ Web sidebar: `resources/views/workspace/finance/partials/sidebar.blade.php`.
 | المحاسبة والضرائب | المساعد المالي | A | `/copilot` (thin client over `FinanceCopilotService`) |
 | الرواتب والبنوك | الرواتب / البدلات / الخصومات / المكافآت / السلف / موظفو المالية | C | Not copied. HR/payroll product surface living under the Finance Web shell. |
 | الرواتب والبنوك | الحسابات البنكية | A | `/banks` |
-| الرواتب والبنوك | الخزينة والتسويات | A | `/treasury` (accounts + transfers). Bank-statement matching stays B. |
+| الرواتب والبنوك | الخزينة والتسويات | A | `/treasury` (accounts, transfers, bank statements, matching) |
 | الإعدادات | إعدادات الفوترة | A | `/settings` |
 | Extra in Flutter | الإشعارات الدائنة/المدينة | A | `/notes` — Web nests credit notes under invoice show; Flutter also lists them. |
 | Extra in Flutter | بحث مالي | A | `/search` — Web has `workspace.finance.search`, not in the sidebar. |
@@ -61,7 +61,7 @@ Web: `DashboardController` + `FinanceAnalyticsService` (date/customer/product/pr
 
 API: `GET /dashboard` returns KPI cards **and** additive `analytics` (same service, JSON-safe, no Laravel route hrefs).
 
-Flutter: `/dashboard` with period filters, hero KPIs, attention, top customers, overdue/recent lists.
+Flutter: `/dashboard` with from/to, customer, product, project, lifecycle, payment-method filters, apply, reset, hero KPIs, attention, top customers, overdue/recent lists.
 
 Class: **A**. Status: **COMPLETE**.
 
@@ -93,7 +93,7 @@ Flutter: matching list filters (status + outcome), compose (customer, dates, cur
 
 Quotes have **no** contract/project columns in Laravel. Not invented in Flutter.
 
-Class: **A**. **COMPLETE** (quote file attachments on create remain Web multipart; issued quotes are locked — same as Web).
+Class: **A**. **COMPLETE**. Web quote create has multipart enctype but no file input and `QuoteService` never stores files. Flutter matches that: no quote-file UI.
 
 ### 7. Sales invoices
 
@@ -123,9 +123,9 @@ Remind and checkout are invoice actions, not separate modules. Flutter implement
 
 Web: CRUD, activate/close/cancel, PDF, attachments download/destroy, schedule create/activate/pause/cancel/generate.
 
-Flutter: list status filters, create/edit, activate/close/cancel, PDF, add schedule, generate draft invoice, activate/pause/cancel schedule, generated invoices.
+Flutter: list status filters, create/edit, activate/close/cancel, PDF, add schedule, generate draft invoice, activate/pause/cancel schedule, generated invoices, **file attachments** (pick on create, upload/list/download/delete on detail; closed/cancelled contracts reject new uploads).
 
-Contract **file** attachments (download/destroy on Web) are not in the Finance v1 client API as a dedicated upload surface. Documented as PARTIAL (see final matrix). Class: **A**.
+Class: **A**. **COMPLETE**.
 
 ### 13. Expenses
 
@@ -185,7 +185,7 @@ Web: output/input/net + rates. Flutter: `/vat`. Class: **A**. **COMPLETE**.
 
 ### 24. Accounting hub
 
-Web: COA list, journal entries list, trial balance (read). Flutter: `/accounting` read-only from `GET /accounting`. Creating journals / editing COA: **B**.
+Web: COA list, journal entries list, trial balance, monthly cash flow (read). Flutter: `/accounting` shows the same read surfaces from `GET /accounting`. Web has no journal create or COA editor. Inventing posting APIs would not match Web. Class: **A** for the read hub. **COMPLETE**. Journal/COA editors: **B** because Web does not provide them.
 
 ### 25. Fiscal years
 
@@ -207,15 +207,17 @@ Web: `IntelligenceController` + `FinanceCopilotService`. Flutter: `/copilot` ask
 
 Web banks: treasury accounts. Web treasury: transfers **and** bank-statement import/match/complete.
 
-Flutter: `/banks`, `/treasury` accounts + transfer. Statement matching: **B** (desktop reconciliation workstation; high operational risk if half-ported).
+Flutter: `/banks`, `/treasury` accounts + transfer, bank-statement create/lines/suggest/accept/ignore/complete via `BankReconciliationService`. Matching does not post new ledger entries. Matched-line undo does not exist on Web or in the service.
+
+Class: **A**. **COMPLETE**.
 
 ### 30. Settings
 
 Web: company identity, address, tax rates, treasury accounts, invoice prefix/color/footer, allow manual numbers, logo file, ZATCA mode/secrets.
 
-Flutter: grouped company/address/commercial fields, prefix/color/footer, allow-manual toggle, tax-rate create, treasury-account create, ZATCA mode read-only.
+Flutter: grouped company/address/commercial fields, prefix/color/footer, allow-manual toggle, tax-rate create, treasury-account create, company logo choose/upload/preview/replace/remove, ZATCA mode read-only.
 
-Logo file upload and numbering sequences / ZATCA secrets: **B**.
+Numbering sequences / ZATCA secrets: **B**. Logo file: **A** **COMPLETE**.
 
 ### 31. Search
 

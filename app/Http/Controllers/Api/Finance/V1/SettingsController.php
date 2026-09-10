@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Finance\V1;
 
 use App\Http\Controllers\Api\Finance\Concerns\HandlesFinanceClient;
 use App\Http\Controllers\Api\Finance\FinanceApiController;
+use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\FinanceSetting;
 use App\Models\Finance\FinanceTaxRate;
 use App\Models\Finance\FinanceTreasuryAccount;
@@ -13,6 +14,8 @@ use App\Services\Finance\Tax\TaxCalculationService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class SettingsController extends FinanceApiController
 {
@@ -91,6 +94,53 @@ class SettingsController extends FinanceApiController
         return $this->ok($this->presenter->settings($setting->fresh()), message: 'تم حفظ إعدادات الشركة.');
     }
 
+    public function logo(Request $request): mixed
+    {
+        $workspace = $this->clientWorkspace($this->workspaceContext);
+        $this->clientActor($request, $workspace, 'finance.settings');
+        $setting = FinanceSetting::forWorkspaceId((int) $workspace->id);
+        abort_unless($setting?->logo_path && Storage::disk('public')->exists($setting->logo_path), 404);
+
+        return Storage::disk('public')->download($setting->logo_path, basename((string) $setting->logo_path));
+    }
+
+    public function uploadLogo(Request $request): JsonResponse
+    {
+        $workspace = $this->clientWorkspace($this->workspaceContext);
+        $this->clientActor($request, $workspace, 'finance.settings');
+        $request->validate([
+            'logo' => ['required', 'image', 'max:4096'],
+        ]);
+
+        $setting = $this->settingFor($workspace->id);
+        $previousLogoPath = $setting->logo_path;
+        $setting->logo_path = $request->file('logo')->store('workspaces/'.$workspace->id.'/finance/company', 'public');
+        $setting->save();
+
+        if ($previousLogoPath && $this->shouldDeleteLogoFile($previousLogoPath)) {
+            Storage::disk('public')->delete($previousLogoPath);
+        }
+
+        return $this->ok($this->presenter->settings($setting->fresh()), message: 'تم تحديث شعار المنشأة.');
+    }
+
+    public function removeLogo(Request $request): JsonResponse
+    {
+        $workspace = $this->clientWorkspace($this->workspaceContext);
+        $this->clientActor($request, $workspace, 'finance.settings');
+        $setting = $this->settingFor($workspace->id);
+
+        if ($setting->logo_path) {
+            if ($this->shouldDeleteLogoFile($setting->logo_path)) {
+                Storage::disk('public')->delete($setting->logo_path);
+            }
+            $setting->logo_path = null;
+            $setting->save();
+        }
+
+        return $this->ok($this->presenter->settings($setting->fresh()), message: 'تم حذف شعار المنشأة.');
+    }
+
     public function storeTaxRate(Request $request): JsonResponse
     {
         $workspace = $this->clientWorkspace($this->workspaceContext);
@@ -150,5 +200,44 @@ class SettingsController extends FinanceApiController
         );
 
         return $this->ok($this->presenter->treasuryAccount($account), message: 'تم حفظ حساب النقد/البنك.');
+    }
+
+    private function settingFor(int $workspaceId): FinanceSetting
+    {
+        return FinanceSetting::withoutGlobalScopes()->firstOrCreate(
+            ['workspace_id' => $workspaceId],
+            [
+                'workspace_id' => $workspaceId,
+                'currency' => 'SAR',
+                'country_code' => 'SA',
+                'invoice_prefix' => 'INV',
+                'next_invoice_sequence' => 1,
+                'allow_manual_invoice_numbers' => false,
+                'default_vat_rate' => TaxCalculationService::FALLBACK_STANDARD_RATE,
+            ]
+        );
+    }
+
+    private function shouldDeleteLogoFile(string $logoPath): bool
+    {
+        if (! Schema::hasColumn('finance_invoices', 'company_snapshot')) {
+            return true;
+        }
+
+        $query = FinanceInvoice::withoutGlobalScopes()
+            ->where('company_snapshot->logo_path', $logoPath);
+
+        if (FinanceInvoice::hasSeparatedStatusColumns()) {
+            $query->where(function ($builder): void {
+                $builder->whereInvoiceStatus('issued')
+                    ->orWhere(function ($cancelledQuery): void {
+                        $cancelledQuery->whereInvoiceStatus('cancelled');
+                    });
+            });
+        } else {
+            $query->whereIn('status', ['sent', 'unpaid', 'partial', 'paid', 'overdue', 'cancelled']);
+        }
+
+        return ! $query->exists();
     }
 }

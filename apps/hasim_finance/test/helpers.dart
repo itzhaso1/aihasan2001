@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -208,6 +211,19 @@ class FakeFinanceApi extends FinanceApi {
     ],
   );
 
+  ContractRecord contractRecord = const ContractRecord(
+    id: 21,
+    contractNumber: 'C-21',
+    title: 'عقد الاختبار',
+    status: 'draft',
+    customerId: 7,
+    customerName: 'عميل الاختبار',
+    value: '500.00',
+    attachments: [
+      {'id': 9, 'file_name': 'contract-scan.pdf', 'file_type': 'application/pdf'},
+    ],
+  );
+
   ReceiptRecord receiptRecord = ReceiptRecord(
     id: 3,
     receiptNumber: 'R-3',
@@ -312,13 +328,25 @@ class FakeFinanceApi extends FinanceApi {
     int? projectId,
     String? lifecycle,
     String? paymentMethod,
-  }) async =>
-      dashboardData;
+  }) async {
+    lastDashboardQuery = {
+      'from': from,
+      'to': to,
+      'customer_id': customerId,
+      'product_id': productId,
+      'project_id': projectId,
+      'lifecycle': lifecycle,
+      'payment_method': paymentMethod,
+    };
+    return dashboardData;
+  }
+
+  Map<String, dynamic>? lastDashboardQuery;
 
   List<CustomerRecord> catalogCustomers = [];
 
   @override
-  Future<PagedResult<CustomerRecord>> customers({String? search, int page = 1}) async {
+  Future<PagedResult<CustomerRecord>> customers({String? search, int page = 1, int perPage = 25}) async {
     var items = catalogCustomers.isEmpty ? [customerRecord] : List<CustomerRecord>.from(catalogCustomers);
     if (search != null && search.isNotEmpty) {
       items = items.where((row) => row.name.contains(search)).toList();
@@ -603,10 +631,17 @@ class FakeFinanceApi extends FinanceApi {
 
   @override
   Future<Map<String, dynamic>> accountingHub() async => {
-        'accounts': <Map<String, dynamic>>[],
-        'entries': <Map<String, dynamic>>[],
+        'accounts': <Map<String, dynamic>>[
+          {'id': 1, 'code': '1000', 'name': 'الصندوق', 'debit_total': '200.00', 'credit_total': '0.00'},
+        ],
+        'entries': <Map<String, dynamic>>[
+          {'id': 1, 'entry_number': 'JE-1', 'entry_date': '2026-09-01', 'status': 'posted', 'description': 'قيد افتتاحي'},
+        ],
         'trial_balance': <Map<String, dynamic>>[],
-        'trial_totals': {'debit': '0.00', 'credit': '0.00'},
+        'trial_totals': {'debit': '200.00', 'credit': '200.00'},
+        'monthly_cash_flow': [
+          {'month': '2026-09', 'inflow': '115.00'},
+        ],
       };
 
   @override
@@ -620,7 +655,108 @@ class FakeFinanceApi extends FinanceApi {
           {'id': 1, 'name': 'الصندوق', 'type': 'cash', 'current_balance': '200.00'},
         ],
         'transfers': <Map<String, dynamic>>[],
+        'statements': [
+          {
+            'id': 4,
+            'treasury_account_name': 'البنك',
+            'statement_date': '2026-09-10',
+            'status': 'open',
+            'closing_balance': '100.00',
+          },
+        ],
       };
+
+  Map<String, dynamic> bankStatementPayload = {
+    'id': 4,
+    'treasury_account_name': 'البنك',
+    'statement_date': '2026-09-10',
+    'status': 'open',
+    'opening_balance': '0.00',
+    'closing_balance': '100.00',
+    'lines': [
+      {
+        'id': 8,
+        'posted_date': '2026-09-10',
+        'description': 'إيداع',
+        'amount': '100.00',
+        'status': 'suggested',
+        'suggested_type': 'App\\Models\\Finance\\FinanceInvoicePayment',
+        'suggested_id': 3,
+        'suggestion_reason': 'Matching payment amount and date',
+        'suggestion_confidence': 90,
+      },
+    ],
+  };
+
+  @override
+  Future<Map<String, dynamic>> bankStatement(int id) async => bankStatementPayload;
+
+  @override
+  Future<Map<String, dynamic>> matchBankStatementLine(
+    int statementId,
+    int lineId, {
+    required String matchedType,
+    required int matchedId,
+  }) async {
+    bankStatementPayload = {
+      ...bankStatementPayload,
+      'lines': [
+        {
+          ...Map<String, dynamic>.from((bankStatementPayload['lines'] as List).first as Map),
+          'status': 'matched',
+          'matched_type': matchedType,
+          'matched_id': matchedId,
+        },
+      ],
+    };
+    return bankStatementPayload;
+  }
+
+  @override
+  Future<ContractRecord> contract(int id) async => contractRecord;
+
+  @override
+  Future<ContractRecord> uploadContractAttachments(int contractId, FormData form) async => contractRecord;
+
+  @override
+  Future<ContractRecord> deleteContractAttachment(int contractId, int attachmentId) async {
+    contractRecord = ContractRecord(
+      id: contractRecord.id,
+      contractNumber: contractRecord.contractNumber,
+      title: contractRecord.title,
+      status: contractRecord.status,
+      customerId: contractRecord.customerId,
+      customerName: contractRecord.customerName,
+      value: contractRecord.value,
+    );
+    return contractRecord;
+  }
+
+  Map<String, dynamic> settingsPayload = {
+    'company_name': 'شركة الاختبار',
+    'has_logo': false,
+    'zatca_integration_mode': 'disabled',
+    'currency': 'SAR',
+    'allow_manual_invoice_numbers': false,
+  };
+
+  @override
+  Future<Map<String, dynamic>> settings() async => settingsPayload;
+
+  @override
+  Future<Map<String, dynamic>> uploadCompanyLogo(FormData form) async {
+    settingsPayload = {...settingsPayload, 'has_logo': true};
+    return settingsPayload;
+  }
+
+  @override
+  Future<Map<String, dynamic>> removeCompanyLogo() async {
+    settingsPayload = {...settingsPayload, 'has_logo': false};
+    return settingsPayload;
+  }
+
+  @override
+  Future<Uint8List> downloadCompanyLogo() async => Uint8List.fromList(const [1, 2, 3]);
 
   @override
   Future<List<Map<String, dynamic>>> exportIndex() async => [
