@@ -15,12 +15,11 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceFeatureFlag;
-use App\Services\EInvoicing\InvoiceIssueService;
 use App\Services\Finance\QuoteService;
 use Database\Seeders\FoundationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
-use Mockery;
+use Illuminate\Support\Facades\Route;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -79,10 +78,6 @@ class FinancePhaseBQuotesTest extends TestCase
             ['workspace_id' => $workspace->id],
             ['workspace_id' => $workspace->id, 'company_name' => 'شركة الاختبار', 'vat_number' => '300000000000003', 'currency' => 'SAR']
         );
-
-        $issueSpy = Mockery::mock(InvoiceIssueService::class);
-        $issueSpy->shouldNotReceive('prepareFromSnapshot');
-        $this->app->instance(InvoiceIssueService::class, $issueSpy);
 
         $this->actingAs($user)
             ->withSession(['current_workspace_id' => $workspace->id])
@@ -376,9 +371,9 @@ class FinancePhaseBQuotesTest extends TestCase
         $this->assertSame('cancelled', $quote->status);
         $this->assertNotNull($quote->cancelled_at);
         $this->assertSame(0, FinanceJournalEntry::withoutGlobalScopes()->count());
-        $this->assertFalse(\Illuminate\Support\Facades\Route::has('workspace.finance.quotes.send'));
-        $this->assertFalse(\Illuminate\Support\Facades\Route::has('workspace.finance.quotes.convert'));
-        $this->assertFalse(\Illuminate\Support\Facades\Route::has('workspace.finance.quotes.accept'));
+        $this->assertFalse(Route::has('workspace.finance.quotes.send'));
+        $this->assertFalse(Route::has('workspace.finance.quotes.convert'));
+        $this->assertFalse(Route::has('workspace.finance.quotes.accept'));
     }
 
     public function test_quotes_edit_cannot_issue_without_quotes_issue_permission(): void
