@@ -41,13 +41,7 @@ trait AuthorizesFinanceApi
             return $user;
         }
 
-        $isElevatedMember = $workspace->users()
-            ->where('users.id', $user->id)
-            ->wherePivot('status', 'active')
-            ->wherePivotIn('membership_role', ['owner', 'admin', 'manager'])
-            ->exists();
-
-        if (! $isElevatedMember) {
+        if (! $this->isElevatedFinanceMember($workspace, $user)) {
             throw new HttpResponseException($this->fail(
                 'You are not allowed to access this financial resource.',
                 ApiErrorCode::Forbidden,
@@ -56,5 +50,83 @@ trait AuthorizesFinanceApi
         }
 
         return $user;
+    }
+
+    protected function isElevatedFinanceMember(Workspace $workspace, User $user): bool
+    {
+        return $workspace->users()
+            ->where('users.id', $user->id)
+            ->wherePivot('status', 'active')
+            ->wherePivotIn('membership_role', ['owner', 'admin', 'manager'])
+            ->exists();
+    }
+
+    /**
+     * UI gating map. Laravel still authorizes every mutation.
+     * Owner/admin/manager match Web FinanceBaseController (not cashier agent elevation).
+     *
+     * @return array<string, bool>
+     */
+    protected function financePermissionMap(User $user, Workspace $workspace): array
+    {
+        $elevated = $this->isElevatedFinanceMember($workspace, $user);
+        $can = fn (string $permission): bool => $user->can($permission)
+            || $user->can('workspace.manage')
+            || $elevated;
+
+        return [
+            'finance.view' => $can('finance.view'),
+            'finance.settings' => $can('finance.settings'),
+            'customers.view' => $can('finance.view') || $can('customers.manage') || $can('invoices.view'),
+            'customers.create' => $can('customers.manage'),
+            'customers.edit' => $can('customers.manage') || $can('invoices.create') || $can('finance.manage'),
+            'customers.delete' => $can('customers.manage'),
+            'quotes.view' => $can('quotes.view'),
+            'quotes.create' => $can('quotes.create'),
+            'quotes.edit' => $can('quotes.edit'),
+            'quotes.issue' => $can('quotes.issue'),
+            'quotes.send' => $can('quotes.send'),
+            'quotes.accept' => $can('quotes.accept'),
+            'quotes.reject' => $can('quotes.reject'),
+            'quotes.convert' => $can('quotes.convert'),
+            'quotes.cancel' => $can('quotes.cancel'),
+            'quotes.delete' => $can('quotes.delete'),
+            'invoices.view' => $can('invoices.view'),
+            'invoices.create' => $can('invoices.create'),
+            'invoices.edit' => $can('invoices.edit'),
+            'invoices.issue' => $can('invoices.issue'),
+            'invoices.send' => $can('invoices.send'),
+            'invoices.remind' => $can('invoices.remind'),
+            'invoices.cancel' => $can('invoices.cancel'),
+            'invoices.delete' => $can('invoices.delete'),
+            'invoices.credit' => $can('invoices.credit'),
+            'invoices.reverse_payment' => $can('invoices.reverse_payment'),
+            'payments.view' => $can('payments.view'),
+            'payments.manage' => $can('payments.manage'),
+            'receipts.view' => $can('receipts.view'),
+            'receipts.send' => $can('receipts.send'),
+            'statements.view' => $can('invoices.view'),
+            'notes.view' => $can('invoices.view'),
+            'notes.create' => $can('invoices.credit'),
+            'notes.issue' => $can('invoices.credit'),
+            'notes.cancel' => $can('invoices.cancel'),
+            'contracts.view' => $can('contracts.view'),
+            'contracts.create' => $can('contracts.manage'),
+            'contracts.edit' => $can('contracts.manage'),
+            'expenses.view' => $can('expenses.view'),
+            'expenses.create' => $can('expenses.create'),
+            'expenses.edit' => $can('expenses.edit'),
+            'expenses.delete' => $can('expenses.edit'),
+            'purchases.view' => $can('purchases.view'),
+            'purchases.create' => $can('purchases.manage'),
+            'purchases.edit' => $can('purchases.manage'),
+            'reports.view' => $can('reports.view'),
+            'exports.invoices' => $can('invoices.view'),
+            'exports.payments' => $can('payments.view'),
+            'exports.customers' => $can('invoices.view'),
+            'exports.expenses' => $can('expenses.view'),
+            'exports.quotes' => $can('quotes.view'),
+            'accounting.view' => $can('accounting.view'),
+        ];
     }
 }

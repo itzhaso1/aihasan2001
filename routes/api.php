@@ -100,21 +100,43 @@ Route::prefix('cashier/v1')
 
 /*
 |--------------------------------------------------------------------------
-| Finance Invoice API v1 — Flutter Invoice App client surface
+| Finance API v1 — Hasim Finance Flutter + e-invoice clients
 |--------------------------------------------------------------------------
 | Final paths: /api/finance/v1/...
 | Laravel remains the source of truth for identity, tax, snapshot, XML,
-| compliance, and security state.
+| compliance, payments, and security state.
 */
 Route::prefix('finance/v1')
     ->name('finance.v1.')
-    ->middleware([
-        'auth:sanctum',
-        'workspace.resolve',
-        'workspace.member',
-        'throttle:cashier-api',
-    ])
-    ->group(base_path('routes/finance-api.php'));
+    ->group(function (): void {
+        Route::post('/auth/login', [App\Http\Controllers\Api\Finance\V1\AuthController::class, 'login'])
+            ->middleware('throttle:mobile-login');
+        Route::post('/auth/google', [App\Http\Controllers\Api\Finance\V1\AuthController::class, 'google'])
+            ->middleware('throttle:mobile-login');
+        Route::post('/auth/social', [App\Http\Controllers\Api\Finance\V1\AuthController::class, 'social'])
+            ->middleware('throttle:mobile-login');
+        Route::post('/auth/google/start', [App\Http\Controllers\Api\Finance\V1\AuthController::class, 'googleStart'])
+            ->middleware('throttle:mobile-login');
+        Route::get('/auth/google/status', [App\Http\Controllers\Api\Finance\V1\AuthController::class, 'googleStatus'])
+            ->middleware('throttle:cashier-api');
+        Route::post('/auth/forgot-password', [App\Http\Controllers\Api\Finance\V1\AuthController::class, 'forgotPassword'])
+            ->middleware('throttle:mobile-login');
+        Route::post('/auth/reset-password', [App\Http\Controllers\Api\Finance\V1\AuthController::class, 'resetPassword'])
+            ->middleware('throttle:mobile-login');
+
+        Route::middleware(['auth:sanctum', 'throttle:cashier-api'])->group(function (): void {
+            Route::post('/auth/logout', [App\Http\Controllers\Api\Finance\V1\AuthController::class, 'logout']);
+            Route::get('/auth/me', [App\Http\Controllers\Api\Finance\V1\AuthController::class, 'me']);
+            Route::get('/workspaces', [App\Http\Controllers\Api\Finance\V1\WorkspaceController::class, 'index']);
+        });
+
+        Route::middleware([
+            'auth:sanctum',
+            'workspace.resolve',
+            'workspace.member',
+            'throttle:cashier-api',
+        ])->group(base_path('routes/finance-api.php'));
+    });
 
 /*
 |--------------------------------------------------------------------------
