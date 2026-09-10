@@ -12,6 +12,7 @@ use App\Models\Finance\FinanceSetting;
 use App\Models\Finance\FinanceSupplier;
 use App\Models\Product;
 use App\Models\Workspace;
+use App\Services\EInvoicing\InvoiceIssueService;
 use App\Services\Finance\Tax\TaxCalculationResult;
 use App\Services\Finance\Tax\TaxCalculationService;
 use App\Support\Money\Money;
@@ -32,6 +33,7 @@ class InvoiceService
         private readonly FinancialPeriodGuardService $financialPeriodGuardService,
         private readonly InventoryAccountingService $inventoryAccountingService,
         private readonly IssuedSnapshotBuilder $issuedSnapshotBuilder,
+        private readonly InvoiceIssueService $invoiceIssueService,
     ) {}
 
     /**
@@ -403,7 +405,7 @@ class InvoiceService
 
             if ($currentInvoiceStatus === 'issued') {
                 $issued = $locked->fresh(['items', 'customer', 'supplier', 'attachments', 'contract']);
-                $this->issuedSnapshotBuilder->captureInvoice($issued);
+                $this->connectIssuedInvoice($issued);
 
                 return $issued;
             }
@@ -478,10 +480,16 @@ class InvoiceService
             $this->postInvoiceEntry($locked->fresh(), $actorUserId, $skipInventory);
 
             $issued = $locked->fresh(['items', 'customer', 'supplier', 'attachments', 'contract']);
-            $this->issuedSnapshotBuilder->captureInvoice($issued);
+            $this->connectIssuedInvoice($issued);
 
             return $issued;
         });
+    }
+
+    private function connectIssuedInvoice(FinanceInvoice $invoice): void
+    {
+        $snapshot = $this->issuedSnapshotBuilder->captureInvoice($invoice);
+        $this->invoiceIssueService->prepareFromSnapshot($snapshot);
     }
 
     public function deleteDraft(FinanceInvoice $invoice): void

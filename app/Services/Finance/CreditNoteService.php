@@ -9,6 +9,7 @@ use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\FinanceJournalEntry;
 use App\Models\Finance\FinanceSetting;
 use App\Models\Workspace;
+use App\Services\EInvoicing\InvoiceIssueService;
 use App\Services\Finance\Tax\TaxCalculationResult;
 use App\Services\Finance\Tax\TaxCalculationService;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,7 @@ class CreditNoteService
         private readonly InvoiceService $invoiceService,
         private readonly FinancialPeriodGuardService $financialPeriodGuardService,
         private readonly IssuedSnapshotBuilder $issuedSnapshotBuilder,
+        private readonly InvoiceIssueService $invoiceIssueService,
     ) {}
 
     /**
@@ -134,7 +136,7 @@ class CreditNoteService
             $locked = FinanceCreditNote::withoutGlobalScopes()->whereKey($note->id)->lockForUpdate()->firstOrFail();
             if ($locked->status === FinanceCreditNote::STATUS_ISSUED) {
                 $issued = $locked->fresh(['items', 'invoice', 'customer']);
-                $this->issuedSnapshotBuilder->captureCreditNote($issued);
+                $this->connectIssuedNote($issued);
 
                 return $issued;
             }
@@ -162,10 +164,16 @@ class CreditNoteService
             $this->applyToInvoice($invoice, $locked);
 
             $issued = $locked->fresh(['items', 'invoice', 'customer']);
-            $this->issuedSnapshotBuilder->captureCreditNote($issued);
+            $this->connectIssuedNote($issued);
 
             return $issued;
         });
+    }
+
+    private function connectIssuedNote(FinanceCreditNote $note): void
+    {
+        $snapshot = $this->issuedSnapshotBuilder->captureCreditNote($note);
+        $this->invoiceIssueService->prepareFromSnapshot($snapshot);
     }
 
     public function cancel(FinanceCreditNote $note, int $actorUserId): FinanceCreditNote
