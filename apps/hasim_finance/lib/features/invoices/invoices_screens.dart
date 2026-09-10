@@ -58,7 +58,7 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
       loader: (api, search, page) => api.invoices(search: search, page: page, lifecycle: _lifecycle),
       itemBuilder: (context, invoice) => Card(
         child: ListTile(
-          title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),
+          title: Text(invoice.invoiceNumber ?? '#${invoice.id}', style: const TextStyle(fontWeight: FontWeight.w800)),
           subtitle: Text('${invoice.customerName ?? ''} · ${invoice.documentStatus} · ${invoice.paymentStatus} · ${l.due} ${invoice.amountDue}'),
           trailing: Text(invoice.total, style: const TextStyle(fontWeight: FontWeight.w800)),
           onTap: () => context.push('/invoices/${invoice.id}'),
@@ -547,9 +547,10 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
-    return Scaffold(
-      appBar: AppBar(title: Text(l.invoices)),
-      body: ListView(
+    return FinanceScaffold(
+        title: l.invoices,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           FormSection(

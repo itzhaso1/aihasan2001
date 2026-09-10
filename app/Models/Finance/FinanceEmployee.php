@@ -48,4 +48,14 @@ class FinanceEmployee extends WorkspaceScopedModel
     {
         return $this->hasMany(FinanceEmployeePayrollRecord::class)->latest('period_start');
     }
+
+    public function salaryAdvances(): HasMany
+    {
+        return $this->hasMany(FinanceSalaryAdvance::class);
+    }
+
+    public function payrollAdjustments(): HasMany
+    {
+        return $this->hasMany(FinancePayrollAdjustment::class);
+    }
 }

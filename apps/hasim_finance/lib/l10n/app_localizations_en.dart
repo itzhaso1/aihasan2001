@@ -1104,4 +1104,193 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get bankAccount => 'Bank';
+
+  @override
+  String get navPeople => 'People & obligations';
+
+  @override
+  String get peopleObligations => 'People & obligations';
+
+  @override
+  String get peopleSubtitle =>
+      'Your company\'s financial obligations to its own people — not HASEM HR.';
+
+  @override
+  String get payroll => 'Salaries & entitlements';
+
+  @override
+  String get salaryAdvances => 'Advances';
+
+  @override
+  String get allowances => 'Allowances';
+
+  @override
+  String get bonuses => 'Bonuses';
+
+  @override
+  String get deductions => 'Deductions';
+
+  @override
+  String get searchPlaceholder => 'Search the system...';
+
+  @override
+  String get exportReport => 'Export report';
+
+  @override
+  String get salesVsExpenses => 'Sales vs expenses';
+
+  @override
+  String get salesMix => 'Sales mix';
+
+  @override
+  String get totalOwed => 'Owed';
+
+  @override
+  String get totalPaid => 'Paid';
+
+  @override
+  String get remainingBalance => 'Remaining';
+
+  @override
+  String get advanceIssued => 'Advance';
+
+  @override
+  String get advanceSettled => 'Settled';
+
+  @override
+  String get advanceRemaining => 'Advance remaining';
+
+  @override
+  String get jobTitle => 'Job title';
+
+  @override
+  String get employeeCode => 'Employee code';
+
+  @override
+  String get basicSalary => 'Basic salary';
+
+  @override
+  String get hireDate => 'Hire date';
+
+  @override
+  String get emergencyContact => 'Emergency contact';
+
+  @override
+  String get addEmployee => 'Add person';
+
+  @override
+  String get addPayrollRecord => 'Save entitlement';
+
+  @override
+  String get issueAdvance => 'Issue advance';
+
+  @override
+  String get settleAdvance => 'Record settlement';
+
+  @override
+  String get periodLabel => 'Period';
+
+  @override
+  String get thisMonth => 'This month';
+
+  @override
+  String get lastSixMonths => 'Last 6 months';
+
+  @override
+  String get paymentHistory => 'Payment history';
+
+  @override
+  String get outstandingObligations => 'Outstanding obligations';
+
+  @override
+  String get financialSummary => 'Financial summary';
+
+  @override
+  String get companyPeopleHint =>
+      'These are your company\'s people in the Finance workspace, not HASEM staff.';
+
+  @override
+  String get activeStatus => 'Active';
+
+  @override
+  String get inactiveStatus => 'Inactive';
+
+  @override
+  String get suspendedStatus => 'Suspended';
+
+  @override
+  String get repay => 'Repay';
+
+  @override
+  String get methodPayrollDeduction => 'Payroll deduction';
+
+  @override
+  String get employeeLoan => 'Employee loan';
+
+  @override
+  String get salaryAdvanceType => 'Salary advance';
+
+  @override
+  String get payrollPaid => 'Paid salaries';
+
+  @override
+  String get openAdvances => 'Open advances';
+
+  @override
+  String get companyEmployees => 'Company people';
+
+  @override
+  String get dashboardSubtitle =>
+      'A complete view of financial performance for the selected period';
+
+  @override
+  String get address => 'Address';
+
+  @override
+  String get periodStart => 'Period start';
+
+  @override
+  String get periodEnd => 'Period end';
+
+  @override
+  String get allowancesTotal => 'Allowances';
+
+  @override
+  String get deductionsTotal => 'Deductions';
+
+  @override
+  String get grossAmount => 'Gross';
+
+  @override
+  String get netAmount => 'Net';
+
+  @override
+  String get effectiveDate => 'Effective date';
+
+  @override
+  String get issuedAt => 'Issued at';
+
+  @override
+  String get remainingAmount => 'Remaining';
+
+  @override
+  String get settledAmount => 'Settled';
+
+  @override
+  String get addAdjustment => 'Save movement';
+
+  @override
+  String get postAdjustment => 'Post to ledger';
+
+  @override
+  String get cancelAdjustment => 'Cancel movement';
+
+  @override
+  String get selectEmployee => 'Select person';
+
+  @override
+  String get showAll => 'Show all';
+
+  @override
+  String get peopleCount => 'People count';
 }

@@ -272,8 +272,9 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
     final auth = ref.watch(authControllerProvider);
     return PermissionGate(
       allowed: auth.permissions.statementsView,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l.statements)),
+      child: FinanceScaffold(
+        title: l.statements,
+        showBack: true,
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -496,9 +497,10 @@ class _NoteFormScreenState extends ConsumerState<NoteFormScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
-    return Scaffold(
-      appBar: AppBar(title: Text(l.notes)),
-      body: ListView(
+    return FinanceScaffold(
+        title: l.notes,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           FormSection(
@@ -936,9 +938,10 @@ class _ContractFormScreenState extends ConsumerState<ContractFormScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(l.contracts)),
-      body: ListView(
+    return FinanceScaffold(
+        title: l.contracts,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           FormSection(
@@ -1129,9 +1132,10 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
-    return Scaffold(
-      appBar: AppBar(title: Text(l.expenses)),
-      body: ListView(
+    return FinanceScaffold(
+        title: l.expenses,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           FormSection(
@@ -1571,9 +1575,10 @@ class _PurchaseFormScreenState extends ConsumerState<PurchaseFormScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
-    return Scaffold(
-      appBar: AppBar(title: Text(l.purchases)),
-      body: ListView(
+    return FinanceScaffold(
+        title: l.purchases,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           FormSection(
@@ -1739,8 +1744,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     };
     return PermissionGate(
       allowed: auth.permissions.reportsView,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l.reports)),
+      child: FinanceScaffold(
+        title: l.reports,
+        showBack: true,
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -1952,9 +1958,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
-    return Scaffold(
-      appBar: AppBar(title: Text(l.settings)),
-      body: FinancePage(
+    return FinanceScaffold(
+        title: l.settings,
+        showBack: true,
+        body: FinancePage(
         child: AsyncBody(
           loading: _loading,
           error: _error,

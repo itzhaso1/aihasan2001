@@ -257,9 +257,10 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.id == null ? l.create : l.edit)),
-      body: ListView(
+    return FinanceScaffold(
+        title: widget.id == null ? l.create : l.edit,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           FormSection(

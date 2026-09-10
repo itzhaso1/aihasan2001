@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/core/api/finance_api.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
+import 'package:hasim_finance/core/layout/finance_chrome.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
+import 'package:hasim_finance/core/theme/finance_tokens.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
@@ -90,28 +92,33 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
     final l = AppLocalizations.of(context);
     return PermissionGate(
       allowed: widget.allowed,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.title),
-          actions: [
-            IconButton(onPressed: () => _load(reset: true), icon: const Icon(Icons.refresh)),
-          ],
-        ),
+      child: FinanceScaffold(
+        title: widget.title,
+        actions: [
+          IconButton(onPressed: () => _load(reset: true), icon: const Icon(Icons.refresh_rounded)),
+        ],
         floatingActionButton: widget.onCreate == null
             ? null
             : FloatingActionButton(onPressed: widget.onCreate, child: const Icon(Icons.add)),
         body: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: TextField(
-                controller: _search,
-                decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: l.search),
-                onChanged: (value) {
-                  _debounce?.cancel();
-                  _debounce = Timer(const Duration(milliseconds: 350), () => _load(reset: true));
-                },
-              ),
+            FinanceFilterBar(
+              children: [
+                SizedBox(
+                  width: 280,
+                  child: TextField(
+                    controller: _search,
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      hintText: l.search,
+                    ),
+                    onChanged: (value) {
+                      _debounce?.cancel();
+                      _debounce = Timer(const Duration(milliseconds: 350), () => _load(reset: true));
+                    },
+                  ),
+                ),
+              ],
             ),
             if (widget.filterBar != null) widget.filterBar!,
             Expanded(
@@ -122,7 +129,7 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
                 emptyTitle: l.empty,
                 onRetry: () => _load(reset: true),
                 child: ListView.separated(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                   itemCount: _items.length + (_page < _lastPage ? 1 : 0),
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, i) {
@@ -139,7 +146,10 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
                         ),
                       );
                     }
-                    return widget.itemBuilder(context, _items[i]);
+                    return Material(
+                      color: Colors.transparent,
+                      child: widget.itemBuilder(context, _items[i]),
+                    );
                   },
                 ),
               ),
@@ -171,8 +181,10 @@ class DetailScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title), actions: actions),
+    return FinanceScaffold(
+      title: title,
+      showBack: true,
+      actions: actions,
       body: AsyncBody(loading: loading, error: error, onRetry: onRetry, child: child),
     );
   }
@@ -224,7 +236,8 @@ class DocumentHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Card(
+    return Container(
+      decoration: FinanceTokens.card(),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

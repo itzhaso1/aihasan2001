@@ -133,6 +133,12 @@ trait AuthorizesFinanceApi
             'finance.price_lists.manage' => $can('finance.price_lists.manage'),
             'finance.fiscal_years.view' => $can('finance.fiscal_years.view'),
             'finance.fiscal_years.manage' => $can('finance.fiscal_years.manage'),
+            'payroll.view' => $can('payroll.view'),
+            'payroll.manage' => $can('payroll.manage'),
+            'finance.adjustments.view' => $can('finance.adjustments.view'),
+            'finance.adjustments.manage' => $can('finance.adjustments.manage'),
+            'finance.salary_advances.view' => $can('finance.salary_advances.view'),
+            'finance.salary_advances.manage' => $can('finance.salary_advances.manage'),
         ];
     }
 }

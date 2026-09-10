@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:hasim_finance/core/layout/kpi_card.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
+import 'package:hasim_finance/core/theme/finance_tokens.dart';
 import 'package:hasim_finance/features/shared/paged.dart';
+
+export 'package:hasim_finance/core/layout/finance_chrome.dart';
+export 'package:hasim_finance/core/layout/kpi_card.dart';
 
 class FinancePage extends StatelessWidget {
   const FinancePage({
     super.key,
     required this.child,
-    this.maxWidth = 1280,
-    this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 28),
+    this.maxWidth = 1600,
+    this.padding = const EdgeInsets.fromLTRB(20, 8, 20, 28),
   });
 
   final Widget child;
@@ -41,19 +46,25 @@ class FormSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+    return Material(
+      color: FinanceTokens.surface,
+      shadowColor: const Color(0xFF152033).withValues(alpha: 0.06),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(FinanceTokens.radiusLg),
+        side: const BorderSide(color: FinanceTokens.border),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
             if (subtitle != null) ...[
               const SizedBox(height: 2),
-              Text(subtitle!, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.6))),
+              Text(subtitle!, style: theme.textTheme.bodySmall),
             ],
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             child,
           ],
         ),
@@ -100,34 +111,11 @@ class MetricGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cols = constraints.maxWidth >= 1100 ? 4 : constraints.maxWidth >= 700 ? 2 : 1;
-        final width = cols == 1 ? constraints.maxWidth : (constraints.maxWidth - (10 * (cols - 1))) / cols;
-        return Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final metric in metrics)
-              SizedBox(
-                width: width,
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(metric.$1, style: Theme.of(context).textTheme.bodySmall),
-                        const SizedBox(height: 4),
-                        Text(metric.$2, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
+    return KpiGrid(
+      cards: [
+        for (final metric in metrics)
+          KpiCard(label: metric.$1, value: metric.$2, compact: true),
+      ],
     );
   }
 }
