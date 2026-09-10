@@ -124,7 +124,7 @@ API / InvoiceIssueService
     → TLV Tags 1–6 (Phase 8 unsigned profile)
 ```
 
-QR is derived from the snapshot seller/VAT/totals plus the Phase 7 invoice hash. It is not persisted. Tags 7–9 are not emitted on this API. Production cryptographic QR fields remain unavailable.
+QR is derived from the snapshot seller/VAT/totals plus the Phase 7 invoice hash. It is not persisted. The API returns `qr_base64` plus named Tags 1–6 (`seller_name`, `seller_vat`, `timestamp`, `total_with_vat`, `vat_total`, `invoice_hash`). Tags 7–9 are not emitted. Production cryptographic QR fields remain unavailable.
 
 ---
 

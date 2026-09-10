@@ -142,7 +142,7 @@ class Phase10InvoiceLifecycleIntegrationTest extends TestCase
         $this->assertSame('15.00', Money::of($invoice->fresh()->tax_amount));
         $this->assertSame('15.00', data_get($snapshot->payload, 'tax.amount'));
         $this->assertSame('15.00', $document->tax->amount);
-        $this->assertSame('pos', data_get($snapshot->payload, 'metadata.engine'));
+        $this->assertSame('pos', data_get($snapshot->payload, 'tax.engine'));
         $this->assertSame(ElectronicDocumentKind::PosCashierInvoice, $record->document_kind);
         $this->assertNull($record->type_code);
         $this->assertNull($record->transaction_code);

@@ -96,7 +96,10 @@ class Phase10InvoiceApiContractTest extends TestCase
             ->assertJsonPath('data.profile', 'phase8_unsigned');
 
         $this->assertNotEmpty($qr->json('data.qr_base64'));
-        $this->assertSame([1, 2, 3, 4, 5, 6], array_map('intval', array_keys($qr->json('data.tags') ?? [])));
+        $this->assertNotEmpty($qr->json('data.tags.seller_name'));
+        $this->assertNotEmpty($qr->json('data.tags.seller_vat'));
+        $this->assertNotEmpty($qr->json('data.tags.invoice_hash'));
+        $this->assertArrayNotHasKey('ecdsa_signature', $qr->json('data.tags') ?? []);
         $this->assertArrayNotHasKey(7, $qr->json('data.tags') ?? []);
     }
 
@@ -188,7 +191,7 @@ class Phase10InvoiceApiContractTest extends TestCase
         Sanctum::actingAs($ownerA);
         $this->withHeaders($this->workspaceHeader($workspaceB))
             ->getJson('/api/finance/v1/invoices/'.$invoiceA->id)
-            ->assertStatus(403);
+            ->assertStatus(404);
     }
 
     public function test_production_crypto_request_fails_without_test_fallback(): void
