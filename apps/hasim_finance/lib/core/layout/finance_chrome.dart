@@ -121,6 +121,67 @@ class FinancePageHeader extends StatelessWidget {
   }
 }
 
+/// Visible label stacked above a compact outline field (not a floating label).
+class FinanceFilterField extends StatelessWidget {
+  const FinanceFilterField({
+    super.key,
+    required this.label,
+    required this.child,
+    this.width = 180,
+  });
+
+  final String label;
+  final Widget child;
+  final double width;
+
+  static const double labelGap = 6;
+
+  static InputDecoration decoration({
+    String? hintText,
+    Widget? prefixIcon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      prefixIcon: prefixIcon,
+      suffixIcon: suffixIcon,
+      isDense: true,
+      floatingLabelBehavior: FloatingLabelBehavior.never,
+      alignLabelWithHint: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      prefixIconConstraints: prefixIcon == null ? null : const BoxConstraints(minWidth: 36, minHeight: 36),
+      suffixIconConstraints: suffixIcon == null ? null : const BoxConstraints(minWidth: 36, minHeight: 36),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: FinanceTokens.textMuted,
+              fontWeight: FontWeight.w600,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: labelGap),
+          SizedBox(
+            height: FinanceTokens.controlHeight,
+            child: child,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class FinanceFilterBar extends StatelessWidget {
   const FinanceFilterBar({
     super.key,
@@ -138,10 +199,13 @@ class FinanceFilterBar extends StatelessWidget {
     final stacked = MediaQuery.sizeOf(context).width < 720;
     final filters = SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      padding: const EdgeInsets.only(top: 2, bottom: 2),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           for (var i = 0; i < children.length; i++) ...[
-            if (i > 0) const SizedBox(width: 10),
+            if (i > 0) const SizedBox(width: 12),
             children[i],
           ],
         ],
@@ -149,27 +213,37 @@ class FinanceFilterBar extends StatelessWidget {
     );
     return Container(
       margin: margin,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: FinanceTokens.card(radius: FinanceTokens.radiusLg),
+      clipBehavior: Clip.none,
       child: stacked
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 filters,
                 if (trailing != null) ...[
-                  const SizedBox(height: 10),
-                  trailing!,
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: trailing!,
+                  ),
                 ],
               ],
             )
-          : Row(
-              children: [
-                Expanded(child: filters),
-                if (trailing != null) ...[
-                  const SizedBox(width: 10),
-                  trailing!,
+          : IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: filters),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 12),
+                    Align(
+                      alignment: AlignmentDirectional.bottomEnd,
+                      child: trailing!,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
     );
   }
