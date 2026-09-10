@@ -83,10 +83,13 @@ class FinanceClientPresenter
             'currency' => $invoice->currency ?: 'SAR',
             'subtotal' => $this->money($invoice->subtotal),
             'discount' => $this->money($invoice->discount),
+            'taxable_amount' => $this->money($invoice->taxable_amount),
             'tax_amount' => $this->money($invoice->tax_amount),
             'total' => $this->money($invoice->total),
             'amount_paid' => $this->money($invoice->amount_paid),
             'amount_due' => $this->money($invoice->amount_due),
+            'amount_credited' => $this->money($invoice->amount_credited ?? 0),
+            'amount_debited' => $this->money($invoice->amount_debited ?? 0),
             'document_status' => $invoice->invoice_status ?: $invoice->status,
             'payment_status' => $invoice->payment_status,
             'delivery_status' => $this->latestDeliveryStatus($invoice->relationLoaded('deliveries') ? $invoice->deliveries : null),
@@ -105,6 +108,9 @@ class FinanceClientPresenter
         $payload['tax_rate'] = $this->money($invoice->tax_rate ?? 0);
         $payload['tax_price_mode'] = $invoice->tax_price_mode;
         $payload['contract_id'] = $invoice->contract_id ? (int) $invoice->contract_id : null;
+        $payload['project_id'] = $invoice->project_id ? (int) $invoice->project_id : null;
+        $payload['company_snapshot'] = is_array($invoice->company_snapshot) ? $invoice->company_snapshot : null;
+        $payload['recipient_snapshot'] = is_array($invoice->recipient_snapshot) ? $invoice->recipient_snapshot : null;
         $payload['lines'] = $invoice->items?->map(fn ($item) => $this->invoiceItem($item))->values()->all() ?? [];
         $payload['payments'] = $invoice->payments?->map(fn ($payment) => $this->payment($payment))->values()->all() ?? [];
         $payload['receipts'] = $invoice->receipts?->map(fn ($receipt) => $this->receiptSummary($receipt))->values()->all() ?? [];
@@ -156,6 +162,8 @@ class FinanceClientPresenter
             'expiry_date' => $this->date($quote->expiry_date),
             'currency' => $quote->currency ?: 'SAR',
             'subtotal' => $this->money($quote->subtotal),
+            'discount' => $this->money($quote->discount),
+            'taxable_amount' => $this->money($quote->taxable_amount),
             'tax_amount' => $this->money($quote->tax_amount),
             'total' => $this->money($quote->total),
             'document_status' => $quote->status,
@@ -206,6 +214,8 @@ class FinanceClientPresenter
             'receipt_id' => $payment->receipt?->id,
             'receipt_number' => $payment->receipt?->receipt_number,
             'receipt_status' => $payment->receipt?->status,
+            'treasury_account_id' => $payment->treasury_account_id ? (int) $payment->treasury_account_id : null,
+            'treasury_account_name' => $payment->treasuryAccount?->name,
         ];
     }
 
@@ -277,12 +287,18 @@ class FinanceClientPresenter
         $payload['lines'] = $note->items?->map(function ($item): array {
             return [
                 'id' => (int) $item->id,
+                'product_id' => $item->product_id ? (int) $item->product_id : null,
                 'product_name' => $item->product_name ?? $item->description,
                 'description' => $item->description ?? $item->product_name,
+                'unit' => $item->unit ?? $item->unit_code,
                 'quantity' => (string) $item->quantity,
                 'unit_price' => $this->money($item->unit_price),
+                'discount' => $this->money($item->discount ?? 0),
+                'tax_rate' => $this->money($item->tax_rate ?? 0),
                 'tax_amount' => $this->money($item->tax_amount ?? 0),
+                'taxable_amount' => $this->money($item->taxable_amount ?? 0),
                 'total' => $this->money($item->total),
+                'tax_profile_type' => $item->tax_profile_type,
             ];
         })->values()->all() ?? [];
 
@@ -311,6 +327,10 @@ class FinanceClientPresenter
             'payment_method' => $expense->payment_method,
             'status' => $expense->status,
             'has_attachment' => filled($expense->attachment_path),
+            'treasury_account_id' => $expense->treasury_account_id ? (int) $expense->treasury_account_id : null,
+            'treasury_account_name' => $expense->treasuryAccount?->name,
+            'is_recurring' => (bool) $expense->is_recurring,
+            'tax_profile_type' => $expense->tax_profile_type,
         ];
     }
 
@@ -330,6 +350,7 @@ class FinanceClientPresenter
             'email' => $supplier->email,
             'payment_terms' => $supplier->payment_terms,
             'status' => $supplier->status,
+            'opening_balance' => $this->money($supplier->opening_balance ?? 0),
         ];
     }
 
@@ -350,6 +371,17 @@ class FinanceClientPresenter
             'value' => $this->money($contract->value ?? 0),
             'currency' => $contract->currency ?: 'SAR',
             'notes' => $contract->notes,
+            'terms' => $contract->terms,
+            'items' => $contract->relationLoaded('items')
+                ? $contract->items->map(fn ($item) => [
+                    'id' => (int) $item->id,
+                    'title' => $item->title,
+                    'description' => $item->description,
+                    'quantity' => (string) $item->quantity,
+                    'unit_price' => $this->money($item->unit_price),
+                    'total' => $this->money($item->total),
+                ])->values()->all()
+                : [],
             'billing_schedules' => $contract->relationLoaded('billingSchedules')
                 ? $contract->billingSchedules->map(fn ($schedule) => [
                     'id' => (int) $schedule->id,
@@ -358,8 +390,14 @@ class FinanceClientPresenter
                     'status' => $schedule->status,
                     'start_date' => $this->date($schedule->start_date),
                     'end_date' => $this->date($schedule->end_date),
+                    'next_run_on' => $this->date($schedule->next_run_on),
+                    'interval_count' => $schedule->interval_count,
                     'total_occurrences' => $schedule->total_occurrences,
+                    'generated_count' => $schedule->generated_count,
+                    'amount' => $this->money($schedule->amount ?? 0),
+                    'currency' => $schedule->currency ?: ($contract->currency ?: 'SAR'),
                     'auto_issue' => (bool) $schedule->auto_issue,
+                    'notes' => $schedule->notes,
                 ])->values()->all()
                 : [],
         ];
@@ -424,6 +462,7 @@ class FinanceClientPresenter
                     'debit' => $this->money($line['debit'] ?? 0),
                     'credit' => $this->money($line['credit'] ?? 0),
                     'balance' => $this->money($line['balance'] ?? 0),
+                    'invoice_id' => isset($line['invoice_id']) ? (int) $line['invoice_id'] : null,
                 ];
             })->values()->all(),
         ];
@@ -444,10 +483,17 @@ class FinanceClientPresenter
                 'overdue_invoices' => (int) ($cards['overdue_invoices'] ?? 0),
                 'paid_this_period' => $paidThisPeriod,
                 'sales' => $this->money($cards['sales_total'] ?? 0),
+                'purchases' => $this->money($cards['purchases_total'] ?? 0),
                 'expenses' => $this->money($cards['expenses_total'] ?? 0),
                 'receivables' => $this->money($cards['receivables_total'] ?? 0),
                 'payables' => $this->money($cards['payables_total'] ?? 0),
                 'net_profit' => $this->money($cards['net_profit'] ?? 0),
+                'output_vat' => $this->money($cards['output_vat'] ?? 0),
+                'input_vat' => $this->money($cards['input_vat'] ?? 0),
+                'net_vat' => $this->money($cards['net_vat'] ?? 0),
+                'cash_balance' => $this->money($cards['cash_balance'] ?? 0),
+                'bank_balance' => $this->money($cards['bank_balance'] ?? 0),
+                'active_contracts_count' => (int) ($cards['active_contracts_count'] ?? 0),
             ],
             'recent_invoices' => collect($metrics['latest']['invoices'] ?? [])
                 ->map(fn ($invoice) => $this->invoiceSummary($invoice))
@@ -455,6 +501,10 @@ class FinanceClientPresenter
                 ->all(),
             'recent_payments' => collect($metrics['latest']['payments'] ?? [])
                 ->map(fn ($payment) => $this->payment($payment))
+                ->values()
+                ->all(),
+            'recent_expenses' => collect($metrics['latest']['expenses'] ?? [])
+                ->map(fn ($expense) => $this->expense($expense))
                 ->values()
                 ->all(),
             'overdue_invoices' => collect($metrics['latest']['overdue_invoices'] ?? [])

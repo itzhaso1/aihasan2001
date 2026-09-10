@@ -281,9 +281,19 @@ class FakeFinanceApi extends FinanceApi {
   @override
   Future<DashboardData> dashboard() async => dashboardData;
 
+  List<CustomerRecord> catalogCustomers = [];
+
   @override
   Future<PagedResult<CustomerRecord>> customers({String? search, int page = 1}) async {
-    return PagedResult(items: [customerRecord], page: 1, lastPage: 1, total: 1);
+    var items = catalogCustomers.isEmpty ? [customerRecord] : List<CustomerRecord>.from(catalogCustomers);
+    if (search != null && search.isNotEmpty) {
+      items = items.where((row) => row.name.contains(search)).toList();
+    }
+    const perPage = 25;
+    final lastPage = items.isEmpty ? 1 : ((items.length + perPage - 1) / perPage).floor();
+    final start = (page - 1) * perPage;
+    final slice = items.skip(start).take(perPage).toList();
+    return PagedResult(items: slice, page: page, lastPage: lastPage, total: items.length);
   }
 
   @override
@@ -375,6 +385,71 @@ class FakeFinanceApi extends FinanceApi {
 
   @override
   Future<PaymentRecord> payment(int id) async => paymentRecord;
+
+  StatementRecord statementRecord = const StatementRecord(
+    openingBalance: '0.00',
+    closingBalance: '65.00',
+    invoicesTotal: '115.00',
+    paymentsTotal: '50.00',
+    creditsTotal: '0.00',
+    debitsTotal: '0.00',
+    customerName: 'عميل الاختبار',
+    customerId: 7,
+    from: '2026-09-01',
+    to: '2026-09-30',
+    lines: [
+      {
+        'date': '2026-09-10',
+        'kind': 'invoice',
+        'reference': 'PARITY INV 001',
+        'description': 'فاتورة مبيعات',
+        'debit': '115.00',
+        'credit': '0.00',
+        'balance': '115.00',
+        'invoice_id': 11,
+      },
+      {
+        'date': '2026-09-12',
+        'kind': 'payment',
+        'reference': 'PAY-9',
+        'description': 'دفعة جزئية',
+        'debit': '0.00',
+        'credit': '50.00',
+        'balance': '65.00',
+        'invoice_id': 11,
+      },
+    ],
+  );
+
+  @override
+  Future<StatementRecord> statement({required int customerId, required String from, required String to}) async {
+    return statementRecord;
+  }
+
+  Map<String, dynamic> reportPayload = {
+    'report': 'profit-loss',
+    'from': '2026-09-01',
+    'to': '2026-09-30',
+    'profit_and_loss': {
+      'revenue': '1000.00',
+      'cogs': '200.00',
+      'gross_profit': '800.00',
+      'net_profit': '500.00',
+      'rows': [
+        {'code': '4000', 'name': 'إيرادات', 'type': 'revenue', 'balance': '1000.00'},
+      ],
+    },
+  };
+
+  @override
+  Future<Map<String, dynamic>> report(String key, {String? from, String? to, int? accountId}) async {
+    return reportPayload;
+  }
+
+  @override
+  Future<PagedResult<SupplierRecord>> suppliers({String? search, int page = 1}) async {
+    return const PagedResult(items: [SupplierRecord(id: 3, name: 'مورد الاختبار')], page: 1, lastPage: 1, total: 1);
+  }
 }
 
 Future<SharedPreferences> mockPrefs() async {

@@ -80,9 +80,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       (l.overdueInvoices, _data!.cards['overdue_invoices'] ?? '0'),
                       (l.paidThisPeriod, _data!.cards['paid_this_period'] ?? '0'),
                       (l.sales, _data!.cards['sales'] ?? '0'),
+                      (l.purchases, _data!.cards['purchases'] ?? '0'),
                       (l.expenses, _data!.cards['expenses'] ?? '0'),
                       (l.receivables, _data!.cards['receivables'] ?? '0'),
                       (l.payables, _data!.cards['payables'] ?? '0'),
+                      (l.netProfit, _data!.cards['net_profit'] ?? '0'),
+                      (l.outputVat, _data!.cards['output_vat'] ?? '0'),
+                      (l.inputVat, _data!.cards['input_vat'] ?? '0'),
+                      (l.netVat, _data!.cards['net_vat'] ?? '0'),
+                      (l.cashBalance, _data!.cards['cash_balance'] ?? '0'),
+                      (l.bankBalance, _data!.cards['bank_balance'] ?? '0'),
+                      (l.activeContracts, _data!.cards['active_contracts_count'] ?? '0'),
                     ];
                     return ListView(
                       padding: const EdgeInsets.all(16),
@@ -130,6 +138,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                             trailing: Text(payment.amount),
                             onTap: () => context.push('/payments/${payment.id}'),
                           ),
+                        if (_data!.overdueInvoices.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Text(l.overdueInvoices, style: Theme.of(context).textTheme.titleLarge),
+                          for (final invoice in _data!.overdueInvoices)
+                            ListTile(
+                              title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),
+                              subtitle: Text('${invoice.customerName ?? ''} · ${invoice.dueDate ?? ''}'),
+                              trailing: Text(invoice.amountDue),
+                              onTap: () => context.push('/invoices/${invoice.id}'),
+                            ),
+                        ],
+                        if (_data!.recentExpenses.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Text(l.recentExpenses, style: Theme.of(context).textTheme.titleLarge),
+                          for (final expense in _data!.recentExpenses)
+                            ListTile(
+                              title: Text(expense.description ?? expense.expenseNumber ?? '#${expense.id}'),
+                              subtitle: Text('${expense.categoryName ?? ''} · ${expense.status ?? ''}'),
+                              trailing: Text(expense.total),
+                              onTap: () => context.push('/expenses/${expense.id}'),
+                            ),
+                        ],
                       ],
                     );
                   },
@@ -232,6 +262,10 @@ class _FinanceSearchScreenState extends ConsumerState<FinanceSearchScreen> {
                                   'quote' => '/quotes/$id',
                                   'receipt' => '/receipts/$id',
                                   'payment' => '/payments/$id',
+                                  'expense' => '/expenses/$id',
+                                  'contract' => '/contracts/$id',
+                                  'purchase' => '/purchases/$id',
+                                  'supplier' => '/purchases',
                                   _ => null,
                                 };
                                 if (path != null) context.push(path);

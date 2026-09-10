@@ -6,7 +6,7 @@ Finance Flutter is a **production client** for the existing Finance Laravel APIs
 
 It is **not** a rewrite of Finance Web and **not** an ERP merge.
 
-Honest gaps (see verdict table): Flutter web cannot download PDFs/CSVs, no custom checkout deep-link scheme, reports use a JSON tree rather than a spreadsheet. Password + Google login, workspace picker, finance eligibility, and forgot/reset screens are documented in `FINANCE_FLUTTER_AUTH_IMPLEMENTATION_REPORT.md`.
+Honest gaps that remain are **product-boundary** items in `FINANCE_FLUTTER_WEB_DATA_PARITY_EXCEPTIONS.md` (payroll UI, treasury matching, GL editors, POS invoices, Phase 10 `/invoices`, period-comparison charts). The data-parity pass below closed the previous client gaps: reports are ledger tables/KPIs (not a JSON tree), Flutter web PDF/CSV uses a blob download, and list pickers paginate. Password + Google login, workspace picker, finance eligibility, and forgot/reset screens are documented in `FINANCE_FLUTTER_AUTH_IMPLEMENTATION_REPORT.md`.
 
 ## Files created
 
@@ -15,6 +15,8 @@ Honest gaps (see verdict table): Flutter web cannot download PDFs/CSVs, no custo
 - `FINANCE_FLUTTER_API_INTEGRATION.md`
 - `FINANCE_FLUTTER_IMPLEMENTATION_REPORT.md`
 - `FINANCE_FLUTTER_FINAL_AUDIT.md`
+- `FINANCE_FLUTTER_WEB_DATA_PARITY_AUDIT.md`
+- `FINANCE_FLUTTER_WEB_DATA_PARITY_EXCEPTIONS.md`
 
 ### Laravel
 - `app/Http/Controllers/Api/Finance/Concerns/HandlesFinanceClient.php`
@@ -38,6 +40,7 @@ Honest gaps (see verdict table): Flutter web cannot download PDFs/CSVs, no custo
 - `app/Http/Controllers/Api/Finance/V1/SettingsController.php`
 - `app/Http/Controllers/Api/Finance/V1/SearchController.php`
 - `tests/Feature/Feature/Finance/FinanceFlutterClientApiTest.php`
+- `tests/Feature/Feature/Finance/FinanceFlutterDataParityTest.php`
 
 ### Flutter (`apps/hasim_finance`)
 New app (org `sa.hasem`) plus:
@@ -46,6 +49,8 @@ New app (org `sa.hasem`) plus:
 - `lib/features/shared/paged.dart`, `customer_select.dart`, `document_lines_editor.dart`, `supplier_select.dart`
 - `lib/l10n/app_ar.arb`, `app_en.arb`, generated `app_localizations*.dart`
 - `test/helpers.dart`, `test/models_permissions_test.dart`, `test/finance_screens_test.dart`, `test/widget_test.dart`
+- `test/field_coverage_test.dart`, `test/data_parity_screens_test.dart`
+- `lib/features/reports/report_view.dart`, `lib/core/utils/download_io.dart`, `lib/core/utils/download_web.dart`
 
 ## Files modified
 
@@ -73,7 +78,7 @@ None. UI map is derived from existing Spatie permissions plus owner/admin/manage
 
 Laravel: `FinanceFlutterClientApiTest` (12 tests) covering login/permissions, agent 403, wrong workspace 404, dashboard/customer outstanding, quote lifecycle convert, invoice validation/issue/pay/reverse, checkout URL without marking paid / no Order, statement + P&L, Phase 10 list contract, unauthenticated 401, GET checkout availability without creating Payment, convert-before-accept 422.
 
-Flutter: 42 tests (models/permissions + password/Google/forgot/reset/workspace/session + dashboard/invoice/quote/customer/receipt/permission gate + multi-line quote compose). Laravel auth: `FinanceFlutterAuthTest` (15 tests). See `FINANCE_FLUTTER_AUTH_IMPLEMENTATION_REPORT.md` for the latest command results.
+Flutter: originally **42 passed** (models/permissions + password/Google/forgot/reset/workspace/session + dashboard/invoice/quote/customer/receipt/permission gate + multi-line quote compose). This pass adds `field_coverage_test.dart` and `data_parity_screens_test.dart`. Laravel auth: `FinanceFlutterAuthTest` (15 tests). Laravel data parity: `FinanceFlutterDataParityTest`. See the data-parity section below for the latest command results after this pass. Historical Google/auth command results remain in `FINANCE_FLUTTER_AUTH_IMPLEMENTATION_REPORT.md`.
 
 ## Test counts and exact results
 
@@ -146,7 +151,7 @@ Pre-existing, not introduced by this client:
 | Quotes | COMPLETE (multi-line compose; totals remain server-calculated) |
 | Quote lifecycle | COMPLETE |
 | Quote email | COMPLETE |
-| Quote PDF | COMPLETE (Windows/mobile; not web) |
+| Quote PDF | COMPLETE (native file open/share; Flutter web blob download) |
 | Quote conversion | COMPLETE |
 | Invoices | COMPLETE (multi-line compose; totals remain server-calculated) |
 | Invoice email | COMPLETE |
@@ -161,15 +166,40 @@ Pre-existing, not introduced by this client:
 | Billing schedules | COMPLETE (generate stays **draft**) |
 | Expenses | COMPLETE |
 | Purchases/AP | COMPLETE (minimum AP: suppliers, purchase invoices, aging via reports/API) |
-| Reports | COMPLETE (JSON tree UI, server formulas) |
-| CSV exports | COMPLETE (Windows/mobile; not web) |
-| PDFs | COMPLETE (server-generated; not web) |
+| Reports | COMPLETE (ledger tables/KPIs from server JSON; not a raw JSON tree) |
+| CSV exports | COMPLETE (native file open/share; Flutter web blob download) |
+| PDFs | COMPLETE (server-generated; native open/share; Flutter web blob download) |
 | Online payment checkout | COMPLETE (URL copy/open + refresh; no custom URI scheme) |
 | Permissions | COMPLETE |
 | Audit visibility | PARTIAL (invoice detail audit list only) |
 | Windows | COMPLETE (layout/nav/files; not a packaged installer smoke test) |
 | Mobile | COMPLETE (nav + cards; not a device lab run) |
 | Arabic/RTL | COMPLETE |
+
+## Data parity pass (Web ↔ `/api/finance/v1` ↔ Flutter)
+
+Independent audit of Laravel Finance Web fields against the Flutter client. Matrix: `FINANCE_FLUTTER_WEB_DATA_PARITY_AUDIT.md`. Intentional product-boundary exclusions: `FINANCE_FLUTTER_WEB_DATA_PARITY_EXCEPTIONS.md`.
+
+P0/P1 gaps found and fixed in this pass:
+
+- Statement lines dropped debit/credit/description/`invoice_id` in the Flutter table.
+- Customer/supplier pickers loaded page 1 only (DATA_LOSS).
+- Invoice/quote discount, taxable amount, credited/debited, line unit/discount/tax rate were not retained or shown.
+- Reports rendered as a JSON tree; inventory-valuation API was missing from `/api/finance/v1`.
+- Dashboard omitted VAT/cash/purchases/net profit/contracts/recent expenses cards that Web already computed.
+- Search omitted expenses/suppliers/contracts/purchases.
+- Flutter web had no real PDF/CSV download path.
+- Nested payment treasury/notes, expense method/treasury/recurring flag, contract terms/items/schedules/generated invoices, customer Saudi address/WhatsApp, supplier CR/opening balance, settings address block.
+
+Flutter still does not recompute tax, totals, balances, or report numbers. Checkout GET remains availability-only. Recurring expenses remain a stored flag.
+
+### Tests added this pass
+
+- Laravel: `tests/Feature/Feature/Finance/FinanceFlutterDataParityTest.php` (rich customer + multi-line invoice + partial payment + statement + contract + expense + dashboard cards + search + inventory-valuation + customers page 2).
+- Flutter: `apps/hasim_finance/test/field_coverage_test.dart` (rich Arabic fixtures; fail if models drop fields).
+- Flutter: `apps/hasim_finance/test/data_parity_screens_test.dart` (statement table, report view, dashboard extra cards, customer picker pagination/search, quote filters).
+
+Exact command results for this pass are recorded after the suites are run (see the appended “Data parity test results” section). Historical 42-test / 738-PHPUnit figures above are the previous landing and must not be treated as this pass.
 
 ## Intentionally excluded
 

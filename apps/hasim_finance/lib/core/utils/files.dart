@@ -1,31 +1,11 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-import 'package:hasim_finance/core/network/api_exception.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:hasim_finance/core/utils/download_io.dart'
+    if (dart.library.html) 'package:hasim_finance/core/utils/download_web.dart' as download;
 
-Future<void> saveAndOpenBytes(Uint8List bytes, String filename) async {
-  if (kIsWeb) {
-    throw ApiException('تنزيل الملفات على الويب غير مفعّل في هذه النسخة.');
-  }
-  final dir = await getTemporaryDirectory();
-  final file = File('${dir.path}/$filename');
-  await file.writeAsBytes(bytes, flush: true);
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    await launchUrl(Uri.file(file.path));
-    return;
-  }
-  await Share.shareXFiles([XFile(file.path)], text: filename);
+Future<void> saveAndOpenBytes(Uint8List bytes, String filename) {
+  return download.saveAndOpenBytes(bytes, filename);
 }
 
-Future<void> copyText(String value) => Clipboard.setData(ClipboardData(text: value));
+Future<void> copyText(String value) => download.copyText(value);
 
-Future<void> openExternalUrl(String url) async {
-  final uri = Uri.parse(url);
-  if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-    throw ApiException('تعذر فتح الرابط.');
-  }
-}
+Future<void> openExternalUrl(String url) => download.openExternalUrl(url);

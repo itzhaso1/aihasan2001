@@ -522,4 +522,125 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get invoiceId => 'رقم الفاتورة';
+
+  @override
+  String get taxableAmount => 'المبلغ الخاضع للضريبة';
+  @override
+  String get amountCredited => 'المُشعَر دائناً';
+  @override
+  String get amountDebited => 'المُشعَر مديناً';
+  @override
+  String get whatsapp => 'واتساب';
+  @override
+  String get buildingNumber => 'رقم المبنى';
+  @override
+  String get district => 'الحي';
+  @override
+  String get postalCode => 'الرمز البريدي';
+  @override
+  String get city => 'المدينة';
+  @override
+  String get street => 'الشارع';
+  @override
+  String get country => 'الدولة';
+  @override
+  String get paymentTerms => 'شروط الدفع';
+  @override
+  String get treasuryAccount => 'حساب الخزينة';
+  @override
+  String get recurring => 'متكرر (علم فقط)';
+  @override
+  String get netProfit => 'صافي الربح';
+  @override
+  String get outputVat => 'ضريبة المخرجات';
+  @override
+  String get inputVat => 'ضريبة المدخلات';
+  @override
+  String get netVat => 'صافي الضريبة';
+  @override
+  String get cashBalance => 'النقد';
+  @override
+  String get bankBalance => 'البنك';
+  @override
+  String get activeContracts => 'عقود نشطة';
+  @override
+  String get recentExpenses => 'أحدث المصروفات';
+  @override
+  String get statementDebit => 'مدين';
+  @override
+  String get statementCredit => 'دائن';
+  @override
+  String get runningBalance => 'الرصيد الجاري';
+  @override
+  String get invoicesTotal => 'إجمالي الفواتير';
+  @override
+  String get paymentsTotal => 'إجمالي الدفعات';
+  @override
+  String get creditsTotal => 'إجمالي الدائن';
+  @override
+  String get debitsTotal => 'إجمالي المدين';
+  @override
+  String get zatcaQr => 'رمز الزكاة حاضر';
+  @override
+  String get terms => 'الشروط';
+  @override
+  String get rejectionReason => 'سبب الرفض';
+  @override
+  String get website => 'الموقع';
+  @override
+  String get currency => 'العملة';
+  @override
+  String get invoicePrefix => 'بادئة الفاتورة';
+  @override
+  String get defaultVatRate => 'نسبة الضريبة الافتراضية';
+  @override
+  String get zatcaMode => 'وضع الربط مع الزكاة';
+  @override
+  String get nextRun => 'التشغيل التالي';
+  @override
+  String get frequency => 'التكرار';
+  @override
+  String get autoIssue => 'إصدار تلقائي';
+  @override
+  String get generatedCount => 'المُولَّد';
+  @override
+  String get paymentDate => 'تاريخ الدفع';
+  @override
+  String get supplier => 'المورد';
+  @override
+  String get openingCash => 'افتتاحي النقد';
+  @override
+  String get netChange => 'صافي التغير';
+  @override
+  String get closingCash => 'ختامي النقد';
+  @override
+  String get assets => 'الأصول';
+  @override
+  String get liabilities => 'الالتزامات';
+  @override
+  String get equity => 'حقوق الملكية';
+  @override
+  String get revenue => 'الإيرادات';
+  @override
+  String get cogs => 'تكلفة المبيعات';
+  @override
+  String get grossProfit => 'مجمل الربح';
+  @override
+  String get additionalNumber => 'الرقم الإضافي';
+  @override
+  String get companyNameAr => 'اسم الشركة بالعربية';
+  @override
+  String get addressLine => 'سطر العنوان';
+  @override
+  String get filterAll => 'الكل';
+  @override
+  String get generatedInvoices => 'الفواتير المولّدة';
+  @override
+  String get invoicedTotal => 'المفوتر';
+  @override
+  String get snapshots => 'اللقطات';
+  @override
+  String get reason => 'السبب';
+  @override
+  String get inventoryValuation => 'تقييم المخزون';
 }

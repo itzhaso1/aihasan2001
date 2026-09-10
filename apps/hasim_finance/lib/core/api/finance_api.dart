@@ -367,10 +367,11 @@ class FinanceApi {
     return res.data!;
   }
 
-  Future<Map<String, dynamic>> report(String key, {String? from, String? to}) async {
+  Future<Map<String, dynamic>> report(String key, {String? from, String? to, int? accountId}) async {
     final res = await _client.get('reports/$key', query: {
       'from': ?from,
       'to': ?to,
+      'account_id': ?accountId,
     });
     return Map<String, dynamic>.from(res.data as Map);
   }

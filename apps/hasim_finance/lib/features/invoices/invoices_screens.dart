@@ -10,30 +10,45 @@ import 'package:hasim_finance/features/shared/document_lines_editor.dart';
 import 'package:hasim_finance/features/shared/paged.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
-class InvoicesScreen extends ConsumerWidget {
+class InvoicesScreen extends ConsumerStatefulWidget {
   const InvoicesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<InvoicesScreen> createState() => _InvoicesScreenState();
+}
+
+class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
+  String? _paymentStatus;
+
+  @override
+  Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<InvoiceRecord>(
+      key: ValueKey(_paymentStatus),
       title: l.invoices,
       allowed: auth.permissions.invoicesView,
       onCreate: auth.permissions.invoicesCreate ? () => context.push('/invoices/new') : null,
-      loader: (api, search, page) => api.invoices(search: search, page: page),
+      filterBar: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Wrap(
+          spacing: 8,
+          children: [
+            for (final option in <String?>[null, 'unpaid', 'partial', 'paid', 'overdue'])
+              ChoiceChip(
+                label: Text(option ?? l.filterAll),
+                selected: _paymentStatus == option,
+                onSelected: (_) => setState(() => _paymentStatus = option),
+              ),
+          ],
+        ),
+      ),
+      loader: (api, search, page) => api.invoices(search: search, page: page, paymentStatus: _paymentStatus),
       itemBuilder: (context, invoice) => Card(
         child: ListTile(
           title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),
-          subtitle: Text('${invoice.customerName ?? ''} · ${invoice.documentStatus} · ${invoice.paymentStatus} · ${invoice.deliveryStatus ?? '-'}'),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(invoice.total, style: const TextStyle(fontWeight: FontWeight.w800)),
-              Text(invoice.amountDue, style: Theme.of(context).textTheme.bodySmall),
-            ],
-          ),
+          subtitle: Text('${invoice.customerName ?? ''} · ${invoice.documentStatus} · ${invoice.paymentStatus} · ${l.due} ${invoice.amountDue}'),
+          trailing: Text(invoice.total, style: const TextStyle(fontWeight: FontWeight.w800)),
           onTap: () => context.push('/invoices/${invoice.id}'),
         ),
       ),
@@ -211,11 +226,22 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                 const SizedBox(height: 12),
                 TotalsCard(
                   subtotal: invoice.subtotal,
+                  discount: invoice.discount,
+                  taxable: invoice.taxableAmount,
                   tax: invoice.taxAmount,
                   total: invoice.total,
                   paid: invoice.amountPaid,
                   due: invoice.amountDue,
+                  credited: invoice.amountCredited,
+                  debited: invoice.amountDebited,
                 ),
+                InfoRow(label: l.issueDate, value: invoice.issueDate),
+                InfoRow(label: l.dueDate, value: invoice.dueDate),
+                InfoRow(label: l.paymentTerms, value: invoice.paymentTerms),
+                InfoRow(label: l.notesField, value: invoice.notes),
+                if (invoice.hasZatcaQr) InfoRow(label: l.zatcaQr, value: invoice.zatcaRequirement ?? 'QR'),
+                if (invoice.companySnapshot != null)
+                  InfoRow(label: l.snapshots, value: '${invoice.companySnapshot!['name'] ?? invoice.companySnapshot!['vat_number'] ?? ''}'),
                 Text(l.neverMarkPaidLocally, style: Theme.of(context).textTheme.bodySmall),
                 const SizedBox(height: 12),
                 LineTable(lines: invoice.lines),
@@ -237,6 +263,27 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                             )
                           : null,
                       onTap: () => context.push('/payments/${payment.id}'),
+                    ),
+                ],
+                if (invoice.creditNotes.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(l.notes, style: Theme.of(context).textTheme.titleMedium),
+                  for (final note in invoice.creditNotes)
+                    ListTile(
+                      title: Text(note.noteNumber ?? '#${note.id}'),
+                      subtitle: Text('${note.type} · ${note.status}'),
+                      trailing: Text(note.total),
+                      onTap: () => context.push('/notes/${note.id}'),
+                    ),
+                ],
+                if (invoice.receipts.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(l.receipts, style: Theme.of(context).textTheme.titleMedium),
+                  for (final receipt in invoice.receipts)
+                    ListTile(
+                      title: Text(receipt.receiptNumber ?? '#${receipt.id}'),
+                      trailing: Text(receipt.amount),
+                      onTap: () => context.push('/receipts/${receipt.id}'),
                     ),
                 ],
                 if (invoice.audit.isNotEmpty) ...[

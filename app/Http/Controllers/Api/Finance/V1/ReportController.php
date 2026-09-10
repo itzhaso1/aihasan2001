@@ -47,6 +47,7 @@ class ReportController extends FinanceApiController
             'ar-aging' => ['aging' => $this->ledgerReportService->aging($workspaceId, 'sales', $to)],
             'ap-aging' => ['aging' => $this->ledgerReportService->aging($workspaceId, 'purchase', $to)],
             'cash-flow' => ['cash_flow' => $this->ledgerReportService->cashFlow($workspaceId, $from, $to)],
+            'inventory-valuation' => ['inventory_valuation' => $this->ledgerReportService->inventoryValuation($workspaceId)],
             default => abort(404),
         };
 
@@ -103,6 +104,27 @@ class ReportController extends FinanceApiController
                 function ($out) use ($cash): void {
                     foreach (['opening_cash', 'net_change', 'closing_cash'] as $key) {
                         fputcsv($out, [$key, $cash[$key] ?? '0.00']);
+                    }
+                }
+            );
+        }
+
+        if (isset($data['inventory_valuation'])) {
+            return $this->financeExportService->stream(
+                'inventory-valuation.csv',
+                ['sku', 'name', 'stock', 'cost', 'value'],
+                function ($out) use ($data): void {
+                    foreach ($data['inventory_valuation']['rows'] ?? [] as $row) {
+                        if (! is_array($row)) {
+                            continue;
+                        }
+                        fputcsv($out, [
+                            $row['sku'] ?? '',
+                            $row['name'] ?? '',
+                            $row['stock'] ?? '',
+                            $row['cost'] ?? '0.00',
+                            $row['value'] ?? '0.00',
+                        ]);
                     }
                 }
             );

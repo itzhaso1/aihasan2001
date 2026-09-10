@@ -43,7 +43,7 @@ class ContractClientController extends FinanceApiController
         ]);
 
         $page = Contract::query()
-            ->with(['customer', 'billingSchedules'])
+            ->with(['customer', 'billingSchedules', 'items'])
             ->when($validated['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($validated['search'] ?? null, function ($query, $search): void {
                 $query->where(function ($inner) use ($search): void {
@@ -65,7 +65,7 @@ class ContractClientController extends FinanceApiController
     {
         $workspace = $this->clientWorkspace($this->workspaceContext);
         $this->clientActor($request, $workspace, 'contracts.view');
-        $contract->load(['customer', 'billingSchedules', 'invoices']);
+        $contract->load(['customer', 'billingSchedules', 'invoices', 'items']);
 
         $payload = $this->presenter->contract($contract);
         $payload['billing_summary'] = [
@@ -73,6 +73,10 @@ class ContractClientController extends FinanceApiController
             'paid_total' => $this->presenter->money($contract->invoices->sum('amount_paid')),
             'outstanding' => $this->presenter->money($contract->invoices->sum('amount_due')),
         ];
+        $payload['generated_invoices'] = $contract->invoices
+            ->map(fn ($invoice) => $this->presenter->invoiceSummary($invoice))
+            ->values()
+            ->all();
 
         return $this->ok($payload);
     }

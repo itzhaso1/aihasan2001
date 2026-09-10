@@ -18,6 +18,7 @@ class PagedListScreen<T> extends ConsumerStatefulWidget {
     required this.itemBuilder,
     this.onCreate,
     this.allowed = true,
+    this.filterBar,
   });
 
   final String title;
@@ -25,6 +26,7 @@ class PagedListScreen<T> extends ConsumerStatefulWidget {
   final Widget Function(BuildContext context, T item) itemBuilder;
   final VoidCallback? onCreate;
   final bool allowed;
+  final Widget? filterBar;
 
   @override
   ConsumerState<PagedListScreen<T>> createState() => _PagedListScreenState<T>();
@@ -111,6 +113,7 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
                 },
               ),
             ),
+            if (widget.filterBar != null) widget.filterBar!,
             Expanded(
               child: AsyncBody(
                 loading: _loading && _items.isEmpty,
@@ -253,17 +256,27 @@ class TotalsCard extends StatelessWidget {
     required this.subtotal,
     required this.tax,
     required this.total,
+    this.discount,
+    this.taxable,
     this.paid,
     this.due,
+    this.credited,
+    this.debited,
     this.currency = 'ر.س',
   });
 
   final String subtotal;
   final String tax;
   final String total;
+  final String? discount;
+  final String? taxable;
   final String? paid;
   final String? due;
+  final String? credited;
+  final String? debited;
   final String currency;
+
+  bool _has(String? value) => value != null && value.isNotEmpty && value != '0.00' && value != '0';
 
   @override
   Widget build(BuildContext context) {
@@ -278,13 +291,35 @@ class TotalsCard extends StatelessWidget {
         child: Column(
           children: [
             row(l.subtotal, subtotal),
+            if (_has(discount)) row(l.discount, discount!),
+            if (_has(taxable)) row(l.taxableAmount, taxable!),
             row(l.tax, tax),
             row(l.total, total),
             if (paid != null) row(l.paid, paid!),
             if (due != null) row(l.due, due!),
+            if (_has(credited)) row(l.amountCredited, credited!),
+            if (_has(debited)) row(l.amountDebited, debited!),
           ],
         ),
       ),
+    );
+  }
+}
+
+class InfoRow extends StatelessWidget {
+  const InfoRow({super.key, required this.label, this.value});
+
+  final String label;
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return const SizedBox.shrink();
+    return ListTile(
+      dense: true,
+      title: Text(label),
+      subtitle: Text(text),
     );
   }
 }
@@ -304,7 +339,15 @@ class LineTable extends StatelessWidget {
             Card(
               child: ListTile(
                 title: Text(line.productName ?? line.description ?? ''),
-                subtitle: Text('${l.quantity}: ${line.quantity} · ${l.price}: ${line.unitPrice}'),
+                subtitle: Text(
+                  [
+                    '${l.quantity}: ${line.quantity}',
+                    if ((line.unit ?? '').isNotEmpty) '${l.unit}: ${line.unit}',
+                    '${l.price}: ${line.unitPrice}',
+                    if ((line.discount ?? '0.00') != '0.00') '${l.discount}: ${line.discount}',
+                    if ((line.taxRate ?? '0.00') != '0.00') '${l.taxRate}: ${line.taxRate}',
+                  ].join(' · '),
+                ),
                 trailing: Text(line.total ?? ''),
               ),
             ),
@@ -317,8 +360,11 @@ class LineTable extends StatelessWidget {
         child: DataTable(
           columns: [
             DataColumn(label: Text(l.description)),
+            DataColumn(label: Text(l.unit)),
             DataColumn(label: Text(l.quantity)),
             DataColumn(label: Text(l.price)),
+            DataColumn(label: Text(l.discount)),
+            DataColumn(label: Text(l.taxRate)),
             DataColumn(label: Text(l.tax)),
             DataColumn(label: Text(l.total)),
           ],
@@ -326,8 +372,11 @@ class LineTable extends StatelessWidget {
             for (final line in lines)
               DataRow(cells: [
                 DataCell(Text(line.productName ?? line.description ?? '')),
+                DataCell(Text(line.unit ?? '')),
                 DataCell(Text(line.quantity ?? '')),
                 DataCell(Text(line.unitPrice ?? '')),
+                DataCell(Text(line.discount ?? '')),
+                DataCell(Text(line.taxRate ?? '')),
                 DataCell(Text(line.taxAmount ?? '')),
                 DataCell(Text(line.total ?? '')),
               ]),
