@@ -4,13 +4,36 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hasim_finance/core/api/finance_api.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
+import 'package:hasim_finance/core/auth/google_auth.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_client.dart';
+import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/core/permissions/finance_permissions.dart';
 import 'package:hasim_finance/core/storage/prefs_store.dart';
 import 'package:hasim_finance/core/storage/secure_store.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class FakeGoogleSource implements GoogleAccessTokenSource {
+  FakeGoogleSource({this.token = 'ya29.test', this.error, this.delay});
+
+  String token;
+  Object? error;
+  Duration? delay;
+  var called = false;
+
+  @override
+  Future<String> obtainAccessToken() async {
+    called = true;
+    final wait = delay;
+    if (wait != null) {
+      await Future<void>.delayed(wait);
+    }
+    final thrown = error;
+    if (thrown != null) throw thrown;
+    return token;
+  }
+}
 
 class MemorySecureStore extends SecureStore {
   MemorySecureStore() : super();
@@ -28,9 +51,10 @@ class MemorySecureStore extends SecureStore {
 }
 
 class SeededAuthController extends AuthController {
-  SeededAuthController({this.allowAll = true});
+  SeededAuthController({this.allowAll = true, this.workspaces});
 
   final bool allowAll;
+  final List<WorkspaceInfo>? workspaces;
 
   static const ownerPerms = {
     'finance.view': true,
@@ -68,12 +92,15 @@ class SeededAuthController extends AuthController {
 
   @override
   AuthState build() {
+    final list = workspaces ??
+        const [WorkspaceInfo(id: 1, name: 'شركة الاختبار', financeEnabled: true)];
     return AuthState(
       bootstrapping: false,
       user: const AuthUser(id: 1, name: 'Owner', email: 'owner@example.com'),
-      workspace: const WorkspaceInfo(id: 1, name: 'شركة الاختبار', financeEnabled: true),
-      workspaces: const [WorkspaceInfo(id: 1, name: 'شركة الاختبار', financeEnabled: true)],
+      workspace: list.first,
+      workspaces: list,
       permissions: FinancePermissions(allowAll ? ownerPerms : const {'finance.view': false}),
+      financeEnabled: true,
     );
   }
 }
@@ -172,6 +199,84 @@ class FakeFinanceApi extends FinanceApi {
     status: 'posted',
     receiptNumber: 'R-3',
   );
+
+  bool loggedIn = false;
+  bool loggedOut = false;
+  String? lastSocialToken;
+  String? lastForgotEmail;
+  String? lastResetEmail;
+  ApiException? socialError;
+  bool financeEnabledFlag = true;
+  List<WorkspaceInfo> sessionWorkspaces = const [
+    WorkspaceInfo(id: 1, name: 'شركة الاختبار', financeEnabled: true),
+  ];
+
+  SessionPayload sessionPayload() {
+    return SessionPayload(
+      token: 'sanctum-token',
+      user: const AuthUser(id: 1, name: 'Owner', email: 'owner@example.com'),
+      workspace: sessionWorkspaces.first,
+      workspaces: sessionWorkspaces,
+      permissions: SeededAuthController.ownerPerms,
+      financeEnabled: financeEnabledFlag,
+    );
+  }
+
+  @override
+  Future<SessionPayload> login({required String emailOrPhone, required String password}) async {
+    if (password != 'password') {
+      throw ApiException('بيانات الدخول غير صحيحة.', statusCode: 401);
+    }
+    loggedIn = true;
+    return sessionPayload();
+  }
+
+  @override
+  Future<SessionPayload> socialLogin({required String accessToken, int? workspaceId}) async {
+    lastSocialToken = accessToken;
+    final error = socialError;
+    if (error != null) throw error;
+    loggedIn = true;
+    return sessionPayload();
+  }
+
+  bool meThrowsUnauthorized = false;
+
+  @override
+  Future<SessionPayload> me() async {
+    if (meThrowsUnauthorized) {
+      throw ApiException('انتهت جلسة تسجيل الدخول.', statusCode: 401);
+    }
+    return sessionPayload();
+  }
+
+  @override
+  Future<void> switchWorkspace(int workspaceId) async {}
+
+  @override
+  Future<void> logout() async {
+    loggedOut = true;
+  }
+
+  @override
+  Future<Map<String, dynamic>> bootstrap() async => {};
+
+  @override
+  Future<String> forgotPassword(String email) async {
+    lastForgotEmail = email;
+    return 'تم إرسال رابط إعادة تعيين كلمة المرور.';
+  }
+
+  @override
+  Future<String> resetPassword({
+    required String email,
+    required String token,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    lastResetEmail = email;
+    return 'تم إعادة تعيين كلمة المرور بنجاح.';
+  }
 
   @override
   Future<DashboardData> dashboard() async => dashboardData;
@@ -288,11 +393,16 @@ List<Override> financeOverrides({
   required SharedPreferences prefs,
   required FakeFinanceApi api,
   bool allowAll = true,
+  GoogleAccessTokenSource? google,
+  SecureStore? secureStore,
+  List<WorkspaceInfo>? workspaces,
 }) {
   return [
     sharedPrefsProvider.overrideWithValue(prefs),
     financeApiProvider.overrideWithValue(api),
-    authControllerProvider.overrideWith(() => SeededAuthController(allowAll: allowAll)),
+    authControllerProvider.overrideWith(() => SeededAuthController(allowAll: allowAll, workspaces: workspaces)),
+    if (google != null) googleAccessTokenSourceProvider.overrideWithValue(google),
+    if (secureStore != null) secureStoreProvider.overrideWithValue(secureStore),
   ];
 }
 

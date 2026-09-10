@@ -55,8 +55,9 @@ class CashierGoogleBrowserLogin
     /**
      * @return array{ticket: string, auth_url: string, expires_in: int}
      */
-    public function start(): array
+    public function start(string $product = 'cashier'): array
     {
+        $product = in_array($product, ['cashier', 'finance'], true) ? $product : 'cashier';
         if (! $this->configured()) {
             throw new RuntimeException('يحتاج إعداد Google في ملف .env على Laravel (GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET).');
         }
@@ -66,6 +67,7 @@ class CashierGoogleBrowserLogin
             'status' => 'pending',
             'access_token' => null,
             'error' => null,
+            'product' => $product,
         ], self::TTL_SECONDS);
 
         $redirect = trim((string) config('services.google.redirect'));
@@ -98,15 +100,19 @@ class CashierGoogleBrowserLogin
             if ($token === '') {
                 $this->mark($ticket, 'failed', error: 'لم يرجع Google رمز الدخول.');
 
-                return $this->htmlPage('فشل تسجيل الدخول عبر Google.', false);
+                return $this->htmlPage('فشل تسجيل الدخول عبر Google.', false, $this->productLabel($ticket));
             }
             $this->mark($ticket, 'ready', accessToken: $token);
 
-            return $this->htmlPage('تم تسجيل الدخول عبر Google. أغلق هذه النافذة وعد إلى كاشير حاسم.', true);
+            return $this->htmlPage(
+                'تم تسجيل الدخول عبر Google. أغلق هذه النافذة وعد إلى '.$this->productLabel($ticket).'.',
+                true,
+                $this->productLabel($ticket),
+            );
         } catch (Throwable) {
             $this->mark($ticket, 'failed', error: 'فشل تسجيل الدخول عبر Google.');
 
-            return $this->htmlPage('فشل تسجيل الدخول عبر Google.', false);
+            return $this->htmlPage('فشل تسجيل الدخول عبر Google.', false, $this->productLabel($ticket));
         }
     }
 
@@ -165,17 +171,31 @@ class CashierGoogleBrowserLogin
 
     private function mark(string $ticket, string $status, ?string $accessToken = null, ?string $error = null): void
     {
+        $existing = $this->cache()->get(self::cacheKey($ticket));
+        $product = is_array($existing) ? (string) ($existing['product'] ?? 'cashier') : 'cashier';
         $this->cache()->put(self::cacheKey($ticket), [
             'status' => $status,
             'access_token' => $accessToken,
             'error' => $error,
+            'product' => $product,
         ], self::TTL_SECONDS);
     }
 
-    private function htmlPage(string $message, bool $ok): Response
+    private function productLabel(string $ticket): string
+    {
+        $payload = $this->cache()->get(self::cacheKey($ticket));
+        $product = is_array($payload) ? (string) ($payload['product'] ?? 'cashier') : 'cashier';
+
+        return match ($product) {
+            'finance' => 'حاسم للمالية',
+            default => 'كاشير حاسم',
+        };
+    }
+
+    private function htmlPage(string $message, bool $ok, string $title = 'كاشير حاسم'): Response
     {
         $color = $ok ? '#049E86' : '#DC2626';
-        $html = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>كاشير حاسم</title></head>'
+        $html = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>'.e($title).'</title></head>'
             .'<body style="font-family:sans-serif;padding:40px;text-align:center;color:#0F172A">'
             .'<h1 style="color:'.$color.'">حاسم</h1>'
             .'<p>'.e($message).'</p>'

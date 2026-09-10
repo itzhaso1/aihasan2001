@@ -128,6 +128,126 @@ abstract class AppLocalizations {
   /// **'دخول'**
   String get loginAction;
 
+  /// No description provided for @loginSubtitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'سجّل الدخول بنفس حساب حاسم'**
+  String get loginSubtitle;
+
+  /// No description provided for @orDivider.
+  ///
+  /// In ar, this message translates to:
+  /// **'أو'**
+  String get orDivider;
+
+  /// No description provided for @continueWithGoogle.
+  ///
+  /// In ar, this message translates to:
+  /// **'الدخول باستخدام Google'**
+  String get continueWithGoogle;
+
+  /// No description provided for @googleSigningIn.
+  ///
+  /// In ar, this message translates to:
+  /// **'جار تسجيل الدخول...'**
+  String get googleSigningIn;
+
+  /// No description provided for @googleFailed.
+  ///
+  /// In ar, this message translates to:
+  /// **'تعذر تسجيل الدخول عبر Google.'**
+  String get googleFailed;
+
+  /// No description provided for @forgotPassword.
+  ///
+  /// In ar, this message translates to:
+  /// **'نسيت كلمة المرور؟'**
+  String get forgotPassword;
+
+  /// No description provided for @forgotPasswordHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'أدخل بريدك الإلكتروني لإرسال رابط إعادة التعيين.'**
+  String get forgotPasswordHint;
+
+  /// No description provided for @forgotPasswordSent.
+  ///
+  /// In ar, this message translates to:
+  /// **'تم إرسال رابط إعادة تعيين كلمة المرور.'**
+  String get forgotPasswordSent;
+
+  /// No description provided for @sendResetLink.
+  ///
+  /// In ar, this message translates to:
+  /// **'إرسال الرابط'**
+  String get sendResetLink;
+
+  /// No description provided for @haveResetToken.
+  ///
+  /// In ar, this message translates to:
+  /// **'لدي رمز إعادة التعيين'**
+  String get haveResetToken;
+
+  /// No description provided for @resetPassword.
+  ///
+  /// In ar, this message translates to:
+  /// **'إعادة تعيين كلمة المرور'**
+  String get resetPassword;
+
+  /// No description provided for @resetToken.
+  ///
+  /// In ar, this message translates to:
+  /// **'رمز إعادة التعيين'**
+  String get resetToken;
+
+  /// No description provided for @confirmPassword.
+  ///
+  /// In ar, this message translates to:
+  /// **'تأكيد كلمة المرور'**
+  String get confirmPassword;
+
+  /// No description provided for @passwordResetDone.
+  ///
+  /// In ar, this message translates to:
+  /// **'تم إعادة تعيين كلمة المرور بنجاح.'**
+  String get passwordResetDone;
+
+  /// No description provided for @selectWorkspaceHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'اختر مساحة العمل. لن يتم اختيار منشأة تلقائياً عند وجود أكثر من واحدة.'**
+  String get selectWorkspaceHint;
+
+  /// No description provided for @financeEnabled.
+  ///
+  /// In ar, this message translates to:
+  /// **'المالية مفعّلة'**
+  String get financeEnabled;
+
+  /// No description provided for @financeDisabled.
+  ///
+  /// In ar, this message translates to:
+  /// **'المالية غير مفعّلة'**
+  String get financeDisabled;
+
+  /// No description provided for @financeUnavailableTitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'هذه المنشأة لا تملك منتج المالية'**
+  String get financeUnavailableTitle;
+
+  /// No description provided for @financeUnavailableBody.
+  ///
+  /// In ar, this message translates to:
+  /// **'الحساب مسجّل الدخول، لكن صلاحية المالية غير مفعّلة لهذه المساحة. يمكنك تبديل المنشأة أو تسجيل الخروج.'**
+  String get financeUnavailableBody;
+
+  /// No description provided for @googleAccountLinked.
+  ///
+  /// In ar, this message translates to:
+  /// **'هذا البريد مرتبط بحساب موجود. سجّل الدخول بكلمة المرور أولاً لربط حساب Google.'**
+  String get googleAccountLinked;
+
   /// No description provided for @logout.
   ///
   /// In ar, this message translates to:

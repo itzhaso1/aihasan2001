@@ -24,6 +24,70 @@ class AppLocalizationsEn extends AppLocalizations {
   String get loginAction => 'Sign in';
 
   @override
+  String get loginSubtitle => 'Sign in with the same HASEM account';
+
+  @override
+  String get orDivider => 'or';
+
+  @override
+  String get continueWithGoogle => 'Continue with Google';
+
+  @override
+  String get googleSigningIn => 'Signing in...';
+
+  @override
+  String get googleFailed => 'Google sign-in failed.';
+
+  @override
+  String get forgotPassword => 'Forgot password?';
+
+  @override
+  String get forgotPasswordHint => 'Enter your email to receive a reset link.';
+
+  @override
+  String get forgotPasswordSent => 'A password reset link was sent.';
+
+  @override
+  String get sendResetLink => 'Send link';
+
+  @override
+  String get haveResetToken => 'I have a reset token';
+
+  @override
+  String get resetPassword => 'Reset password';
+
+  @override
+  String get resetToken => 'Reset token';
+
+  @override
+  String get confirmPassword => 'Confirm password';
+
+  @override
+  String get passwordResetDone => 'Password was reset successfully.';
+
+  @override
+  String get selectWorkspaceHint =>
+      'Choose a workspace. A workspace is not picked automatically when more than one is available.';
+
+  @override
+  String get financeEnabled => 'Finance enabled';
+
+  @override
+  String get financeDisabled => 'Finance disabled';
+
+  @override
+  String get financeUnavailableTitle =>
+      'Finance is not enabled for this workspace';
+
+  @override
+  String get financeUnavailableBody =>
+      'You are signed in, but Finance is not enabled for this workspace. Switch workspace or sign out.';
+
+  @override
+  String get googleAccountLinked =>
+      'This email belongs to an existing account. Sign in with your password first to link Google.';
+
+  @override
   String get logout => 'Sign out';
 
   @override

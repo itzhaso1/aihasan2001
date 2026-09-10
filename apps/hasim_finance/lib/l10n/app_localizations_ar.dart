@@ -24,6 +24,70 @@ class AppLocalizationsAr extends AppLocalizations {
   String get loginAction => 'دخول';
 
   @override
+  String get loginSubtitle => 'سجّل الدخول بنفس حساب حاسم';
+
+  @override
+  String get orDivider => 'أو';
+
+  @override
+  String get continueWithGoogle => 'الدخول باستخدام Google';
+
+  @override
+  String get googleSigningIn => 'جار تسجيل الدخول...';
+
+  @override
+  String get googleFailed => 'تعذر تسجيل الدخول عبر Google.';
+
+  @override
+  String get forgotPassword => 'نسيت كلمة المرور؟';
+
+  @override
+  String get forgotPasswordHint =>
+      'أدخل بريدك الإلكتروني لإرسال رابط إعادة التعيين.';
+
+  @override
+  String get forgotPasswordSent => 'تم إرسال رابط إعادة تعيين كلمة المرور.';
+
+  @override
+  String get sendResetLink => 'إرسال الرابط';
+
+  @override
+  String get haveResetToken => 'لدي رمز إعادة التعيين';
+
+  @override
+  String get resetPassword => 'إعادة تعيين كلمة المرور';
+
+  @override
+  String get resetToken => 'رمز إعادة التعيين';
+
+  @override
+  String get confirmPassword => 'تأكيد كلمة المرور';
+
+  @override
+  String get passwordResetDone => 'تم إعادة تعيين كلمة المرور بنجاح.';
+
+  @override
+  String get selectWorkspaceHint =>
+      'اختر مساحة العمل. لن يتم اختيار منشأة تلقائياً عند وجود أكثر من واحدة.';
+
+  @override
+  String get financeEnabled => 'المالية مفعّلة';
+
+  @override
+  String get financeDisabled => 'المالية غير مفعّلة';
+
+  @override
+  String get financeUnavailableTitle => 'هذه المنشأة لا تملك منتج المالية';
+
+  @override
+  String get financeUnavailableBody =>
+      'الحساب مسجّل الدخول، لكن صلاحية المالية غير مفعّلة لهذه المساحة. يمكنك تبديل المنشأة أو تسجيل الخروج.';
+
+  @override
+  String get googleAccountLinked =>
+      'هذا البريد مرتبط بحساب موجود. سجّل الدخول بكلمة المرور أولاً لربط حساب Google.';
+
+  @override
   String get logout => 'تسجيل الخروج';
 
   @override

@@ -18,7 +18,7 @@ Thin wrappers over existing Finance services under `/api/finance/v1` (see `FINAN
 
 ## 5. Authentication
 
-Sanctum login via `MobileAuthService` (`device_type=finance`). Token in `flutter_secure_storage` (`hasim_finance_access_token`). 401 clears the session. Forgot/reset password endpoints exist on Laravel; the Flutter login screen is password login only.
+Sanctum login via `MobileAuthService` (`device_type=finance`). Token in `flutter_secure_storage` (`hasim_finance_access_token`). Password and Google both resolve the same Laravel `User`. Google is verified by Laravel Socialite (`POST /auth/google`); Windows uses the shared browser OAuth ticket. 401 clears the session. Forgot-password and reset-password screens call the existing Finance APIs. See `FINANCE_FLUTTER_AUTH_IMPLEMENTATION_REPORT.md`.
 
 ## 6. Workspace handling
 
@@ -50,11 +50,11 @@ See verdict table in `FINANCE_FLUTTER_IMPLEMENTATION_REPORT.md`.
 
 ## 27. Tests
 
-- Flutter: `flutter analyze` (no issues), `flutter test` **21 passed**.
+- Flutter: `flutter analyze` (no issues), `flutter test` **42 passed** (auth + screens + models). See `FINANCE_FLUTTER_AUTH_IMPLEMENTATION_REPORT.md`.
 - Laravel Flutter client API: **12 passed**.
-- Laravel Phase 10 contract + checkout + Flutter client: **32 passed**.
-- Laravel Finance feature suite: **306 tests, 304 passed, 2 skipped, 1 risky**.
-- Full PHPUnit: **723 tests, 719 passed, 4 skipped, 1 warning, 1 risky**.
+- Laravel Finance auth + Cashier Google: **26 passed**.
+- Laravel Finance feature suite + OrderPaymentFlow: **322 tests, 320 passed, 2 skipped, 1 risky**.
+- Full PHPUnit: **738 tests, 734 passed, 4 skipped, 1 warning, 1 risky**.
 
 ## 28. Security
 
@@ -71,7 +71,7 @@ Paginated lists (25/page, load more). Dashboard is one request. Reports load onl
 - Checkout return uses “open URL then refresh”; there is no custom app URI scheme.
 - No unsafe offline mutation queue.
 - Reports render a structured JSON tree, not a spreadsheet.
-- Password reset is API-only (no Flutter forgot-password screen).
+- Password reset email still opens Laravel web; Finance Flutter has a token-paste reset screen.
 - Device/integration tests are widget + Laravel HTTP, not a Windows installer smoke run.
 
 ## 31. Explicitly excluded product boundaries

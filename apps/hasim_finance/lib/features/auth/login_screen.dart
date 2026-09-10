@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
+import 'package:hasim_finance/core/auth/google_auth.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
@@ -14,8 +16,11 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _id = TextEditingController();
   final _password = TextEditingController();
-  bool _busy = false;
+  bool _passwordBusy = false;
+  bool _googleBusy = false;
   String? _error;
+
+  bool get _busy => _passwordBusy || _googleBusy;
 
   @override
   void dispose() {
@@ -26,58 +31,131 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _submit() async {
     setState(() {
-      _busy = true;
+      _passwordBusy = true;
       _error = null;
     });
     try {
       await ref.read(authControllerProvider.notifier).login(_id.text.trim(), _password.text);
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) setState(() => _error = e.message);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _passwordBusy = false);
+    }
+  }
+
+  Future<void> _google() async {
+    setState(() {
+      _googleBusy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authControllerProvider.notifier).loginWithGoogle();
+    } catch (e) {
+      if (!mounted) return;
+      if (isGoogleCancellation(e)) {
+        setState(() => _error = null);
+        return;
+      }
+      final l10n = AppLocalizations.of(context);
+      if (e is ApiException && e.isConflict) {
+        setState(() => _error = l10n.googleAccountLinked);
+        return;
+      }
+      setState(() => _error = e is ApiException ? e.message : l10n.googleFailed);
+    } finally {
+      if (mounted) setState(() => _googleBusy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
+          constraints: const BoxConstraints(maxWidth: 440),
           child: Card(
             margin: const EdgeInsets.all(24),
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.account_balance_wallet, size: 48, color: Color(0xFF06C2A4)),
-                  const SizedBox(height: 12),
-                  Text(l.appName, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 24),
-                  TextField(
-                    controller: _id,
-                    decoration: InputDecoration(labelText: l.emailOrPhone),
-                    textInputAction: TextInputAction.next,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _password,
-                    decoration: InputDecoration(labelText: l.password),
-                    obscureText: true,
-                    onSubmitted: (_) => _submit(),
-                  ),
-                  if (_error != null) ...[
+              child: AutofillGroup(
+                child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Icon(Icons.account_balance_wallet, size: 48, color: Color(0xFF06C2A4)),
                     const SizedBox(height: 12),
-                    Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    Text(
+                      l.appName,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      l.loginSubtitle,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: _id,
+                      autofillHints: const [AutofillHints.username, AutofillHints.email, AutofillHints.telephoneNumber],
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(labelText: l.emailOrPhone),
+                      textInputAction: TextInputAction.next,
+                      enabled: !_busy,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _password,
+                      autofillHints: const [AutofillHints.password],
+                      decoration: InputDecoration(labelText: l.password),
+                      obscureText: true,
+                      enabled: !_busy,
+                      onSubmitted: (_) => _busy ? null : _submit(),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(_error!, style: TextStyle(color: scheme.error)),
+                    ],
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _busy ? null : _submit,
+                      child: _passwordBusy
+                          ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                          : Text(l.loginAction),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Expanded(child: Divider()),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(l.orDivider),
+                        ),
+                        const Expanded(child: Divider()),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _google,
+                      icon: _googleBusy
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.g_mobiledata, size: 28),
+                      label: Text(_googleBusy ? l.googleSigningIn : l.continueWithGoogle),
+                    ),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton(
+                        onPressed: _busy ? null : () => context.go('/forgot-password'),
+                        child: Text(l.forgotPassword),
+                      ),
+                    ),
                   ],
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: _busy ? null : _submit,
-                    child: _busy ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)) : Text(l.loginAction),
-                  ),
-                ],
+                ),
+                ),
               ),
             ),
           ),

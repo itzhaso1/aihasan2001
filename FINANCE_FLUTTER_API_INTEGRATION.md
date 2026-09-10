@@ -4,16 +4,20 @@ Finance Flutter (`apps/hasim_finance`) talks only to Laravel `/api/finance/v1`. 
 
 Authentication: Sanctum bearer token (`Authorization: Bearer`) plus `X-Workspace-Id`. Envelope: `{ success, data, meta, message }` on success; `{ success, message, code, errors? }` on failure.
 
-Token storage key: `hasim_finance_access_token` (secure storage). Workspace id: `hasim_finance_workspace_id` (preferences).
+Token storage key: `hasim_finance_access_token` (secure storage). Workspace id: `hasim_finance_workspace_id` (preferences). Google Sign-In setup: `apps/hasim_finance/GOOGLE_SIGNIN.md`. Architecture: `FINANCE_FLUTTER_AUTH_IMPLEMENTATION_REPORT.md`.
 
 ## Auth (no workspace middleware)
 
 | Method | URL | Auth | Permissions | Request | Response | Errors | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | POST | `/api/finance/v1/auth/login` | none | — | `email` **or** `phone` **or** `email_or_phone`, `password`, optional `workspace_id`, `device_name`, `device_type=finance` | `token`, `user`, `workspace`, `workspaces`, `permissions` (flat dotted keys), `finance_enabled` | 401 unauthorized, 422 validation_failed, 404 no workspace | Reuses `MobileAuthService::loginWithPassword` |
-| POST | `/api/finance/v1/auth/forgot-password` | none | — | `email` | message | 422 | |
+| POST | `/api/finance/v1/auth/google` | none | — | `access_token` (Google access token already verified only after Laravel Socialite), optional `workspace_id`, `device_name`, `device_type=finance` | same session envelope as password login | 401 invalid Google credential (generic message), 422, 404 | Reuses `MobileAuthService::loginWithSocial` → `SocialAuthService`. Do not send client secrets. |
+| POST | `/api/finance/v1/auth/social` | none | — | `provider=google`, `access_token`, optional workspace/device | same | 401, 422 (`provider` must be `google`) | Thin alias; Finance does not accept Facebook. |
+| POST | `/api/finance/v1/auth/google/start` | none | — | — | `{ ticket, auth_url, expires_in }` | 422 if Laravel Google env missing | Shared `CashierGoogleBrowserLogin` with `product=finance` |
+| GET | `/api/finance/v1/auth/google/status` | none | — | `ticket` (uuid) | `{ status, access_token?, error? }` (`pending` / `ready` / `failed`; expired → 404) | 404 expired, 422 | Browser OAuth for Windows / plugin fallback. Token is Google access token, not Sanctum. Client then POSTs `/auth/google`. |
+| POST | `/api/finance/v1/auth/forgot-password` | none | — | `email` | message | 422 | Existing Laravel password broker |
 | POST | `/api/finance/v1/auth/reset-password` | none | — | `token`, `email`, `password`, `password_confirmation` | message | 422 | |
-| POST | `/api/finance/v1/auth/logout` | Sanctum | — | — | message | 401 | |
+| POST | `/api/finance/v1/auth/logout` | Sanctum | — | — | message | 401 | Revokes current PAT and web session |
 | GET | `/api/finance/v1/auth/me` | Sanctum | — | — | session payload without a new token | 401 | |
 | GET | `/api/finance/v1/workspaces` | Sanctum | — | — | `{ workspaces: [...] }` | 401 | |
 

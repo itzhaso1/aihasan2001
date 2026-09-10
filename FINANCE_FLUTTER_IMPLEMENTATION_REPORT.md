@@ -6,7 +6,7 @@ Finance Flutter is a **production client** for the existing Finance Laravel APIs
 
 It is **not** a rewrite of Finance Web and **not** an ERP merge.
 
-Honest gaps (see verdict table): Flutter web cannot download PDFs/CSVs, no custom checkout deep-link scheme, no Flutter forgot-password UI, reports use a JSON tree rather than a spreadsheet.
+Honest gaps (see verdict table): Flutter web cannot download PDFs/CSVs, no custom checkout deep-link scheme, reports use a JSON tree rather than a spreadsheet. Password + Google login, workspace picker, finance eligibility, and forgot/reset screens are documented in `FINANCE_FLUTTER_AUTH_IMPLEMENTATION_REPORT.md`.
 
 ## Files created
 
@@ -73,7 +73,7 @@ None. UI map is derived from existing Spatie permissions plus owner/admin/manage
 
 Laravel: `FinanceFlutterClientApiTest` (12 tests) covering login/permissions, agent 403, wrong workspace 404, dashboard/customer outstanding, quote lifecycle convert, invoice validation/issue/pay/reverse, checkout URL without marking paid / no Order, statement + P&L, Phase 10 list contract, unauthenticated 401, GET checkout availability without creating Payment, convert-before-accept 422.
 
-Flutter: 21 tests (models/API parsing/permissions + login + dashboard/invoice list/detail/manual payment/quote detail/customer 360/receipt/permission gate + multi-line quote compose).
+Flutter: 42 tests (models/permissions + password/Google/forgot/reset/workspace/session + dashboard/invoice/quote/customer/receipt/permission gate + multi-line quote compose). Laravel auth: `FinanceFlutterAuthTest` (15 tests). See `FINANCE_FLUTTER_AUTH_IMPLEMENTATION_REPORT.md` for the latest command results.
 
 ## Test counts and exact results
 
@@ -88,10 +88,10 @@ No issues found!
 
 ```
 All tests passed!
-00:02 +21: All tests passed!
+00:03 +42: All tests passed!
 ```
 
-(21 tests)
+(42 tests; includes Google, forgot/reset, workspace gate, session restore)
 
 ### Laravel Flutter client API
 
@@ -115,7 +115,7 @@ Result: **32 passed**, 254 assertions.
 php vendor/bin/phpunit tests/Feature/Feature/Finance --no-coverage
 ```
 
-Result: **306 tests, 304 passed, 2 skipped, 1 risky**, 2782 assertions.
+Result: **306 tests, 304 passed, 2 skipped, 1 risky**, 2782 assertions at the original Flutter client landing. After Finance Google/auth: `tests/Feature/Feature/Finance` + `OrderPaymentFlowTest` → **322 tests, 320 passed, 2 skipped, 1 risky**, 2854 assertions.
 
 ### Full PHPUnit
 
@@ -123,7 +123,9 @@ Result: **306 tests, 304 passed, 2 skipped, 1 risky**, 2782 assertions.
 php vendor/bin/phpunit --no-coverage
 ```
 
-Result: **723 tests, 719 passed, 4 skipped, 1 warning, 1 risky**, 5391 assertions.
+Result at original Flutter client landing: **723 tests, 719 passed, 4 skipped, 1 warning, 1 risky**, 5391 assertions.
+
+After Finance Google/auth: **738 tests, 734 passed, 4 skipped, 1 warning, 1 risky**, 5454 assertions.
 
 ### Known skipped / risky / warnings
 
@@ -137,7 +139,7 @@ Pre-existing, not introduced by this client:
 
 | Feature | Status |
 | --- | --- |
-| Authentication | COMPLETE (password login; forgot/reset API exists, no Flutter screen) |
+| Authentication | COMPLETE (password + Google via Laravel Socialite/Sanctum; see `FINANCE_FLUTTER_AUTH_IMPLEMENTATION_REPORT.md`) |
 | Workspace | COMPLETE |
 | Customers | COMPLETE |
 | Dashboard | COMPLETE |

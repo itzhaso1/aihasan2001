@@ -3,18 +3,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
 import 'package:hasim_finance/core/routing/finance_shell.dart';
+import 'package:hasim_finance/features/auth/forgot_password_screen.dart';
 import 'package:hasim_finance/features/auth/login_screen.dart';
+import 'package:hasim_finance/features/auth/workspace_gate_screens.dart';
 import 'package:hasim_finance/features/customers/customers_screens.dart';
 import 'package:hasim_finance/features/dashboard/dashboard_screen.dart';
 import 'package:hasim_finance/features/invoices/invoices_screens.dart';
 import 'package:hasim_finance/features/modules/module_screens.dart';
 import 'package:hasim_finance/features/quotes/quotes_screens.dart';
 
+const _publicAuth = {'/login', '/forgot-password', '/reset-password'};
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
   ref.onDispose(refresh.dispose);
   ref.listen<AuthState>(authControllerProvider, (prev, next) {
-    if (prev?.isAuthenticated != next.isAuthenticated || prev?.isLoading != next.isLoading) {
+    if (prev?.isAuthenticated != next.isAuthenticated ||
+        prev?.isLoading != next.isLoading ||
+        prev?.financeEnabled != next.financeEnabled ||
+        prev?.needsWorkspaceSelection != next.needsWorkspaceSelection ||
+        prev?.workspace?.id != next.workspace?.id) {
       refresh.value++;
     }
   });
@@ -29,9 +37,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return loc == '/splash' ? null : '/splash';
       }
       if (!auth.isAuthenticated) {
-        return loc == '/login' ? null : '/login';
+        if (_publicAuth.contains(loc)) return null;
+        return '/login';
       }
-      if (loc == '/login' || loc == '/splash') {
+      if (auth.needsWorkspaceSelection) {
+        return loc == '/workspaces' ? null : '/workspaces';
+      }
+      if (!auth.financeEnabled) {
+        return loc == '/finance-unavailable' ? null : '/finance-unavailable';
+      }
+      if (loc == '/login' ||
+          loc == '/splash' ||
+          loc == '/forgot-password' ||
+          loc == '/reset-password' ||
+          loc == '/workspaces' ||
+          loc == '/finance-unavailable') {
         return '/dashboard';
       }
       return null;
@@ -39,6 +59,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/splash', builder: (_, _) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(path: '/forgot-password', builder: (_, _) => const ForgotPasswordScreen()),
+      GoRoute(path: '/reset-password', builder: (_, _) => const ResetPasswordScreen()),
+      GoRoute(path: '/workspaces', builder: (_, _) => const WorkspaceSelectScreen()),
+      GoRoute(path: '/finance-unavailable', builder: (_, _) => const FinanceUnavailableScreen()),
       ShellRoute(
         builder: (context, state, child) => FinanceShell(child: child),
         routes: [

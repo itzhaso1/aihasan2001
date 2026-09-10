@@ -26,6 +26,7 @@ dependencies:
   share_plus: ^10.1.4
   file_picker: ^8.3.7
   collection: ^1.19.1
+  google_sign_in: ^6.2.2
 
 dev_dependencies:
   flutter_test:

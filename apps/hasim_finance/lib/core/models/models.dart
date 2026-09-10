@@ -76,6 +76,39 @@ class SessionPayload {
         (key, value) => MapEntry(key.toString(), value == true),
       ),
       financeEnabled: json['finance_enabled'] == true,
+      message: json['message']?.toString(),
+    );
+  }
+}
+
+class GoogleStartResult {
+  const GoogleStartResult({required this.ticket, required this.authUrl, this.expiresIn});
+
+  final String ticket;
+  final String authUrl;
+  final int? expiresIn;
+
+  factory GoogleStartResult.fromJson(Map<String, dynamic> json) {
+    return GoogleStartResult(
+      ticket: json['ticket']?.toString() ?? '',
+      authUrl: json['auth_url']?.toString() ?? '',
+      expiresIn: int.tryParse('${json['expires_in'] ?? ''}'),
+    );
+  }
+}
+
+class GoogleStatusResult {
+  const GoogleStatusResult({required this.status, this.accessToken, this.error});
+
+  final String status;
+  final String? accessToken;
+  final String? error;
+
+  factory GoogleStatusResult.fromJson(Map<String, dynamic> json) {
+    return GoogleStatusResult(
+      status: json['status']?.toString() ?? '',
+      accessToken: json['access_token']?.toString(),
+      error: json['error']?.toString(),
     );
   }
 }

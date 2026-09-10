@@ -40,4 +40,16 @@ class AppConfig {
   static const String appName = 'حاسم للمالية';
   static const int brandPrimary = 0xFF06C2A4;
   static const int brandDark = 0xFF067E6B;
+
+  /// Public OAuth client id. Never a client secret.
+  static const String googleOAuthClientId = String.fromEnvironment(
+    'GOOGLE_OAUTH_CLIENT_ID',
+    defaultValue: '',
+  );
+
+  /// Android/iOS server (web) client id for the same Google Cloud project as Laravel.
+  static const String googleOAuthServerClientId = String.fromEnvironment(
+    'GOOGLE_OAUTH_SERVER_CLIENT_ID',
+    defaultValue: '',
+  );
 }

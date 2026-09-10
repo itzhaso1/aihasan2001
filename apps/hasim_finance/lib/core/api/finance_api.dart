@@ -37,6 +37,60 @@ class FinanceApi {
 
   Future<void> logout() => _client.post('auth/logout');
 
+  Future<SessionPayload> socialLogin({required String accessToken, int? workspaceId}) async {
+    final res = await _client.post(
+      'auth/google',
+      body: {
+        'access_token': accessToken,
+        'device_name': 'Hasim Finance',
+        'device_type': 'finance',
+        'workspace_id': ?workspaceId,
+      },
+      mapData: (raw) => SessionPayload.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<GoogleStartResult> googleStart() async {
+    final res = await _client.post(
+      'auth/google/start',
+      mapData: (raw) => GoogleStartResult.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<GoogleStatusResult> googleStatus(String ticket) async {
+    final res = await _client.get(
+      'auth/google/status',
+      query: {'ticket': ticket},
+      mapData: (raw) => GoogleStatusResult.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<String> forgotPassword(String email) async {
+    final res = await _client.post('auth/forgot-password', body: {'email': email});
+    return res.message ?? '';
+  }
+
+  Future<String> resetPassword({
+    required String email,
+    required String token,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    final res = await _client.post(
+      'auth/reset-password',
+      body: {
+        'email': email,
+        'token': token,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+      },
+    );
+    return res.message ?? '';
+  }
+
   Future<void> switchWorkspace(int workspaceId) async {
     await _client.post(
       'workspaces/switch',

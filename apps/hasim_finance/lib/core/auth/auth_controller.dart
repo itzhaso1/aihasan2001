@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim_finance/core/api/finance_api.dart';
+import 'package:hasim_finance/core/auth/google_access_token.dart';
+import 'package:hasim_finance/core/auth/google_auth.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_client.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
@@ -29,6 +31,10 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 
 final financeApiProvider = Provider<FinanceApi>((ref) => FinanceApi(ref.watch(apiClientProvider)));
 
+final googleAccessTokenSourceProvider = Provider<GoogleAccessTokenSource>((ref) {
+  return FinanceGoogleAccessTokenClient(ref.watch(financeApiProvider));
+});
+
 class AuthState {
   const AuthState({
     this.bootstrapping = true,
@@ -36,6 +42,8 @@ class AuthState {
     this.workspace,
     this.workspaces = const [],
     this.permissions = const FinancePermissions({}),
+    this.financeEnabled = false,
+    this.needsWorkspaceSelection = false,
     this.error,
   });
 
@@ -44,10 +52,13 @@ class AuthState {
   final WorkspaceInfo? workspace;
   final List<WorkspaceInfo> workspaces;
   final FinancePermissions permissions;
+  final bool financeEnabled;
+  final bool needsWorkspaceSelection;
   final String? error;
 
   bool get isAuthenticated => user != null;
   bool get isLoading => bootstrapping;
+  bool get canEnterFinance => isAuthenticated && financeEnabled && !needsWorkspaceSelection;
 
   AuthState copyWith({
     bool? bootstrapping,
@@ -55,6 +66,8 @@ class AuthState {
     WorkspaceInfo? workspace,
     List<WorkspaceInfo>? workspaces,
     FinancePermissions? permissions,
+    bool? financeEnabled,
+    bool? needsWorkspaceSelection,
     String? error,
     bool clearError = false,
     bool clearUser = false,
@@ -62,9 +75,11 @@ class AuthState {
     return AuthState(
       bootstrapping: bootstrapping ?? this.bootstrapping,
       user: clearUser ? null : (user ?? this.user),
-      workspace: workspace ?? this.workspace,
-      workspaces: workspaces ?? this.workspaces,
-      permissions: permissions ?? this.permissions,
+      workspace: clearUser ? null : (workspace ?? this.workspace),
+      workspaces: clearUser ? const [] : (workspaces ?? this.workspaces),
+      permissions: clearUser ? const FinancePermissions({}) : (permissions ?? this.permissions),
+      financeEnabled: clearUser ? false : (financeEnabled ?? this.financeEnabled),
+      needsWorkspaceSelection: clearUser ? false : (needsWorkspaceSelection ?? this.needsWorkspaceSelection),
       error: clearError ? null : (error ?? this.error),
     );
   }
@@ -113,21 +128,54 @@ class AuthController extends Notifier<AuthState> {
     try {
       _client.resetUnauthorizedGate();
       final session = await _api.login(emailOrPhone: emailOrPhone, password: password);
-      if (session.token != null) {
-        await _secure.saveToken(session.token!);
-      }
-      await _applySession(session);
+      await _completeLogin(session, pickWorkspaceIfMany: true);
     } on ApiException catch (e) {
       state = state.copyWith(bootstrapping: false, error: e.message);
       rethrow;
     }
   }
 
+  Future<void> loginWithGoogle() async {
+    state = state.copyWith(error: null, clearError: true);
+    final accessToken = await ref.read(googleAccessTokenSourceProvider).obtainAccessToken();
+    await socialLogin(accessToken: accessToken);
+  }
+
+  Future<void> socialLogin({required String accessToken}) async {
+    try {
+      _client.resetUnauthorizedGate();
+      final session = await _api.socialLogin(accessToken: accessToken);
+      await _completeLogin(session, pickWorkspaceIfMany: true);
+    } on ApiException catch (e) {
+      state = state.copyWith(bootstrapping: false, error: e.message);
+      rethrow;
+    }
+  }
+
+  Future<String> requestPasswordReset(String email) {
+    return _api.forgotPassword(email);
+  }
+
+  Future<String> confirmPasswordReset({
+    required String email,
+    required String token,
+    required String password,
+    required String passwordConfirmation,
+  }) {
+    return _api.resetPassword(
+      email: email,
+      token: token,
+      password: password,
+      passwordConfirmation: passwordConfirmation,
+    );
+  }
+
   Future<void> switchWorkspace(int id) async {
     await _api.switchWorkspace(id);
     await _prefs.setWorkspaceId(id);
     final session = await _api.me();
-    await _applySession(session);
+    await _applySession(session, pickWorkspaceIfMany: false);
+    await _maybeBootstrap();
   }
 
   Future<void> logout() async {
@@ -135,6 +183,27 @@ class AuthController extends Notifier<AuthState> {
       await _api.logout();
     } catch (_) {}
     await _clearLocalSession();
+  }
+
+  void requestWorkspaceSelection() {
+    if (state.workspaces.length > 1) {
+      state = state.copyWith(needsWorkspaceSelection: true);
+    }
+  }
+
+  Future<void> _completeLogin(SessionPayload session, {required bool pickWorkspaceIfMany}) async {
+    if (session.token != null) {
+      await _secure.saveToken(session.token!);
+    }
+    await _applySession(session, pickWorkspaceIfMany: pickWorkspaceIfMany);
+    await _maybeBootstrap();
+  }
+
+  Future<void> _maybeBootstrap() async {
+    if (!state.canEnterFinance) return;
+    try {
+      await _api.bootstrap();
+    } catch (_) {}
   }
 
   Future<void> _onUnauthorized() async {
@@ -154,7 +223,7 @@ class AuthController extends Notifier<AuthState> {
     state = const AuthState(bootstrapping: false);
   }
 
-  Future<void> _applySession(SessionPayload session) async {
+  Future<void> _applySession(SessionPayload session, {bool pickWorkspaceIfMany = false}) async {
     if (session.workspace != null) {
       await _prefs.setWorkspaceId(session.workspace!.id);
     }
@@ -164,6 +233,8 @@ class AuthController extends Notifier<AuthState> {
       workspace: session.workspace,
       workspaces: session.workspaces,
       permissions: FinancePermissions(session.permissions),
+      financeEnabled: session.financeEnabled,
+      needsWorkspaceSelection: pickWorkspaceIfMany && session.workspaces.length > 1,
     );
   }
 }

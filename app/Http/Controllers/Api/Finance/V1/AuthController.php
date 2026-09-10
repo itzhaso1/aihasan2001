@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Finance\Concerns\HandlesFinanceClient;
 use App\Http\Controllers\Api\Finance\FinanceApiController;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\Cashier\CashierGoogleBrowserLogin;
 use App\Services\Feature\FeatureAccessService;
 use App\Services\Finance\Api\FinanceClientPresenter;
 use App\Services\Mobile\MobileAuthService;
@@ -17,11 +18,14 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Laravel\Sanctum\NewAccessToken;
+use Laravel\Sanctum\PersonalAccessToken;
+use RuntimeException;
+use Throwable;
 
 class AuthController extends FinanceApiController
 {
@@ -32,6 +36,7 @@ class AuthController extends FinanceApiController
         private readonly FeatureAccessService $featureAccessService,
         private readonly FinanceClientPresenter $presenter,
         private readonly WorkspaceContext $workspaceContext,
+        private readonly CashierGoogleBrowserLogin $googleBrowserLogin,
     ) {}
 
     public function login(Request $request): JsonResponse
@@ -72,6 +77,73 @@ class AuthController extends FinanceApiController
         return $this->sessionEnvelope($result, 'تم تسجيل الدخول بنجاح.');
     }
 
+    public function google(Request $request): JsonResponse
+    {
+        $request->merge(['provider' => 'google']);
+
+        return $this->social($request);
+    }
+
+    public function social(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'provider' => ['required', 'string', 'in:google'],
+            'access_token' => ['required', 'string'],
+            'workspace_id' => ['nullable', 'integer'],
+            'device_name' => ['nullable', 'string', 'max:255'],
+            'device_type' => ['nullable', 'string', 'max:32'],
+        ]);
+
+        try {
+            $result = $this->mobileAuthService->loginWithSocial(
+                provider: $validated['provider'],
+                accessToken: $validated['access_token'],
+                workspaceId: isset($validated['workspace_id']) ? (int) $validated['workspace_id'] : null,
+                device: [
+                    'device_name' => $validated['device_name'] ?? 'حاسم للمالية',
+                    'device_type' => $validated['device_type'] ?? 'finance',
+                    'user_agent' => $request->userAgent(),
+                    'ip_address' => $request->ip(),
+                ],
+            );
+        } catch (ModelNotFoundException $exception) {
+            return $this->fail($exception->getMessage(), ApiErrorCode::NotFound, 404);
+        } catch (AuthenticationException|RuntimeException|Throwable) {
+            return $this->fail('تعذر التحقق من حساب Google.', ApiErrorCode::Unauthorized, 401);
+        }
+
+        return $this->sessionEnvelope($result, 'تم تسجيل الدخول بنجاح.');
+    }
+
+    public function googleStart(): JsonResponse
+    {
+        try {
+            return $this->ok($this->googleBrowserLogin->start('finance'));
+        } catch (RuntimeException $exception) {
+            return $this->fail($exception->getMessage(), ApiErrorCode::ValidationFailed, 422);
+        } catch (Throwable) {
+            return $this->fail(
+                'تعذر بدء تسجيل Google. تحقق من GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET و GOOGLE_REDIRECT_URI في .env.',
+                ApiErrorCode::ValidationFailed,
+                422,
+            );
+        }
+    }
+
+    public function googleStatus(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ticket' => ['required', 'string', 'uuid'],
+        ]);
+
+        $payload = $this->googleBrowserLogin->status($validated['ticket']);
+        if ($payload['status'] === 'expired') {
+            return $this->fail((string) $payload['error'], ApiErrorCode::NotFound, 404);
+        }
+
+        return $this->ok($payload);
+    }
+
     public function forgotPassword(Request $request): JsonResponse
     {
         $request->validate(['email' => ['required', 'email']]);
@@ -96,7 +168,7 @@ class AuthController extends FinanceApiController
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function (User $user) use ($request): void {
                 $user->forceFill([
-                    'password' => Hash::make($request->password),
+                    'password' => $request->password,
                     'remember_token' => Str::random(60),
                 ])->save();
                 event(new PasswordReset($user));
@@ -114,7 +186,20 @@ class AuthController extends FinanceApiController
     {
         $user = $request->user();
         if ($user) {
-            $this->mobileAuthService->logoutCurrent($user, $user->currentAccessToken());
+            $current = $user->currentAccessToken();
+            $this->mobileAuthService->logoutCurrent($user, $current);
+            $bearer = $request->bearerToken();
+            if (is_string($bearer) && $bearer !== '') {
+                PersonalAccessToken::findToken($bearer)?->delete();
+            } elseif ($current instanceof PersonalAccessToken) {
+                $current->delete();
+            }
+        }
+
+        Auth::guard('web')->logout();
+        if ($request->hasSession()) {
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
         }
 
         return $this->ok(message: 'تم تسجيل الخروج بنجاح.');
