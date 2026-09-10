@@ -296,9 +296,10 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
-    return Scaffold(
-      appBar: AppBar(title: Text(l.quotes)),
-      body: FinancePage(
+    return FinanceScaffold(
+        title: l.quotes,
+        showBack: true,
+        body: FinancePage(
         child: ListView(
         padding: EdgeInsets.zero,
         children: [

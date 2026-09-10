@@ -1102,4 +1102,193 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get bankAccount => 'بنكي';
+
+  @override
+  String get navPeople => 'الموظفون والمستحقات';
+
+  @override
+  String get peopleObligations => 'الموظفون والمستحقات';
+
+  @override
+  String get peopleSubtitle =>
+      'التزامات الشركة المالية تجاه موظفيها — وليست موارد بشرية لمنصة حاسم.';
+
+  @override
+  String get payroll => 'الرواتب والمستحقات';
+
+  @override
+  String get salaryAdvances => 'السلف';
+
+  @override
+  String get allowances => 'البدلات';
+
+  @override
+  String get bonuses => 'المكافآت';
+
+  @override
+  String get deductions => 'الخصومات';
+
+  @override
+  String get searchPlaceholder => 'بحث في النظام...';
+
+  @override
+  String get exportReport => 'تصدير التقرير';
+
+  @override
+  String get salesVsExpenses => 'المبيعات مقابل المصروفات';
+
+  @override
+  String get salesMix => 'توزيع المبيعات';
+
+  @override
+  String get totalOwed => 'المستحق';
+
+  @override
+  String get totalPaid => 'المدفوع';
+
+  @override
+  String get remainingBalance => 'المتبقي';
+
+  @override
+  String get advanceIssued => 'السلفة';
+
+  @override
+  String get advanceSettled => 'المسدد';
+
+  @override
+  String get advanceRemaining => 'المتبقي من السلفة';
+
+  @override
+  String get jobTitle => 'المسمى الوظيفي';
+
+  @override
+  String get employeeCode => 'كود الموظف';
+
+  @override
+  String get basicSalary => 'الراتب الأساسي';
+
+  @override
+  String get hireDate => 'تاريخ التعيين';
+
+  @override
+  String get emergencyContact => 'جهة اتصال للطوارئ';
+
+  @override
+  String get addEmployee => 'إضافة موظف';
+
+  @override
+  String get addPayrollRecord => 'حفظ سجل الاستحقاق';
+
+  @override
+  String get issueAdvance => 'تسجيل سلفة';
+
+  @override
+  String get settleAdvance => 'تسجيل سداد';
+
+  @override
+  String get periodLabel => 'الفترة';
+
+  @override
+  String get thisMonth => 'هذا الشهر';
+
+  @override
+  String get lastSixMonths => 'آخر 6 أشهر';
+
+  @override
+  String get paymentHistory => 'سجل الدفعات';
+
+  @override
+  String get outstandingObligations => 'الالتزامات القائمة';
+
+  @override
+  String get financialSummary => 'ملخص مالي';
+
+  @override
+  String get companyPeopleHint =>
+      'هؤلاء موظفو شركتك داخل مساحة العمل المالية، وليسوا موظفي منصة حاسم.';
+
+  @override
+  String get activeStatus => 'نشط';
+
+  @override
+  String get inactiveStatus => 'غير نشط';
+
+  @override
+  String get suspendedStatus => 'موقوف';
+
+  @override
+  String get repay => 'سداد';
+
+  @override
+  String get methodPayrollDeduction => 'خصم من الراتب';
+
+  @override
+  String get employeeLoan => 'قرض موظف';
+
+  @override
+  String get salaryAdvanceType => 'سلفة راتب';
+
+  @override
+  String get payrollPaid => 'رواتب مدفوعة';
+
+  @override
+  String get openAdvances => 'سلف مفتوحة';
+
+  @override
+  String get companyEmployees => 'موظفو الشركة';
+
+  @override
+  String get dashboardSubtitle =>
+      'نظرة شاملة على أدائك المالي في الفترة المحددة';
+
+  @override
+  String get address => 'العنوان';
+
+  @override
+  String get periodStart => 'من تاريخ';
+
+  @override
+  String get periodEnd => 'إلى تاريخ';
+
+  @override
+  String get allowancesTotal => 'البدلات';
+
+  @override
+  String get deductionsTotal => 'الخصومات';
+
+  @override
+  String get grossAmount => 'الإجمالي';
+
+  @override
+  String get netAmount => 'الصافي';
+
+  @override
+  String get effectiveDate => 'تاريخ السريان';
+
+  @override
+  String get issuedAt => 'تاريخ الإصدار';
+
+  @override
+  String get remainingAmount => 'المتبقي';
+
+  @override
+  String get settledAmount => 'المسدد';
+
+  @override
+  String get addAdjustment => 'حفظ الحركة';
+
+  @override
+  String get postAdjustment => 'ترحيل محاسبي';
+
+  @override
+  String get cancelAdjustment => 'إلغاء الحركة';
+
+  @override
+  String get selectEmployee => 'اختر الموظف';
+
+  @override
+  String get showAll => 'عرض الكل';
+
+  @override
+  String get peopleCount => 'عدد الموظفين';
 }

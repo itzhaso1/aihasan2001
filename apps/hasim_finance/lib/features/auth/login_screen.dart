@@ -85,8 +85,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(Icons.account_balance_wallet, size: 48, color: Color(0xFF06C2A4)),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 24),
+                    Container(
+                      width: 48,
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF06C2A4),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(Icons.account_balance_wallet_rounded, size: 26, color: Colors.white),
+                    ),
+                    const SizedBox(height: 14),
                     Text(
                       l.appName,
                       textAlign: TextAlign.center,

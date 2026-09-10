@@ -13,6 +13,7 @@ import 'package:hasim_finance/features/modules/module_screens.dart';
 import 'package:hasim_finance/features/quotes/quotes_screens.dart';
 import 'package:hasim_finance/features/hubs/hub_screens.dart';
 import 'package:hasim_finance/features/catalog/catalog_screens.dart';
+import 'package:hasim_finance/features/people/people_screens.dart';
 
 const _publicAuth = {'/login', '/forgot-password', '/reset-password'};
 
@@ -219,6 +220,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/suppliers/:id/edit',
             builder: (_, state) => SupplierFormScreen(id: int.parse(state.pathParameters['id']!)),
           ),
+          GoRoute(path: '/people', builder: (_, _) => const PeopleScreen()),
+          GoRoute(path: '/people/new', builder: (_, _) => const PersonFormScreen()),
+          GoRoute(
+            path: '/people/:id',
+            builder: (_, state) => PersonDetailScreen(id: int.parse(state.pathParameters['id']!)),
+          ),
+          GoRoute(
+            path: '/people/:id/edit',
+            builder: (_, state) => PersonFormScreen(id: int.parse(state.pathParameters['id']!)),
+          ),
+          GoRoute(path: '/payroll', builder: (_, _) => const PayrollOverviewScreen()),
+          GoRoute(path: '/advances', builder: (_, _) => const SalaryAdvancesScreen()),
+          GoRoute(path: '/allowances', builder: (_, _) => const PayrollAdjustmentsScreen(type: 'allowance')),
+          GoRoute(path: '/bonuses', builder: (_, _) => const PayrollAdjustmentsScreen(type: 'bonus')),
+          GoRoute(path: '/deductions', builder: (_, _) => const PayrollAdjustmentsScreen(type: 'deduction')),
         ],
       ),
     ],

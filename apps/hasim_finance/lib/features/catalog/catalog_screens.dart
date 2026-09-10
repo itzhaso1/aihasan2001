@@ -229,9 +229,10 @@ class _ProjectFormScreenState extends ConsumerState<ProjectFormScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(l.projects)),
-      body: ListView(
+    return FinanceScaffold(
+        title: l.projects,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           FormSection(
@@ -317,9 +318,10 @@ class _PriceListFormScreenState extends ConsumerState<PriceListFormScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(l.priceLists)),
-      body: ListView(
+    return FinanceScaffold(
+        title: l.priceLists,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           FormSection(
@@ -612,9 +614,10 @@ class _PurchaseOrderFormScreenState extends ConsumerState<PurchaseOrderFormScree
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
-    return Scaffold(
-      appBar: AppBar(title: Text(l.purchaseOrders)),
-      body: ListView(
+    return FinanceScaffold(
+        title: l.purchaseOrders,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           SupplierSelectField(selectedId: _supplierId, onSelected: (id) => setState(() => _supplierId = id)),
@@ -787,9 +790,10 @@ class _LeadFormScreenState extends ConsumerState<LeadFormScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(l.leads)),
-      body: ListView(
+    return FinanceScaffold(
+        title: l.leads,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           FormSection(
@@ -970,9 +974,10 @@ class _SupplierFormScreenState extends ConsumerState<SupplierFormScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(l.suppliers)),
-      body: ListView(
+    return FinanceScaffold(
+        title: l.suppliers,
+        showBack: true,
+        body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           FormSection(

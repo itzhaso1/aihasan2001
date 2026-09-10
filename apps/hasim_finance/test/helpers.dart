@@ -101,6 +101,12 @@ class SeededAuthController extends AuthController {
     'finance.price_lists.manage': true,
     'finance.fiscal_years.view': true,
     'finance.fiscal_years.manage': true,
+    'payroll.view': true,
+    'payroll.manage': true,
+    'finance.adjustments.view': true,
+    'finance.adjustments.manage': true,
+    'finance.salary_advances.view': true,
+    'finance.salary_advances.manage': true,
     'purchases.create': true,
     'purchases.manage': true,
     'purchases.edit': true,
@@ -136,9 +142,15 @@ class FakeFinanceApi extends FinanceApi {
       'overdue_invoices': '0',
       'paid_this_period': '0.00',
       'sales': '115.00',
+      'purchases': '0.00',
       'expenses': '0.00',
       'receivables': '115.00',
       'payables': '0.00',
+      'net_profit': '115.00',
+      'company_employees': '1',
+      'payroll_paid_total': '0.00',
+      'open_advances_total': '0.00',
+      'deductions_total': '0.00',
     },
     recentInvoices: [
       InvoiceRecord(
@@ -829,6 +841,82 @@ class FakeFinanceApi extends FinanceApi {
 
   @override
   Future<Map<String, dynamic>> askCopilot(String question) async => {'answer': 'لا توجد مبالغ مخترعة. المبيعات 115.00'};
+
+  FinanceEmployeeRecord employeeRecord = const FinanceEmployeeRecord(
+    id: 4,
+    fullName: 'موظف الشركة',
+    employeeCode: 'FEMP-00004',
+    jobTitle: 'محاسب',
+    basicSalary: '1500.00',
+    status: 'active',
+    summary: {
+      'total_owed': '1500.00',
+      'total_paid': '1000.00',
+      'remaining': '500.00',
+      'advance_issued': '800.00',
+      'advance_settled': '300.00',
+      'advance_remaining': '500.00',
+      'bonuses_total': '200.00',
+      'deductions_total': '0.00',
+    },
+    payrollRecords: [
+      PayrollRecord(id: 1, employeeId: 4, employeeName: 'موظف الشركة', netAmount: '1500.00', remaining: '500.00', paymentStatus: 'partial', periodStart: '2026-09-01', periodEnd: '2026-09-30'),
+    ],
+    advances: [
+      SalaryAdvanceRecord(id: 2, employeeId: 4, employeeName: 'موظف الشركة', amount: '800.00', remainingAmount: '500.00', settledAmount: '300.00', status: 'open'),
+    ],
+  );
+
+  @override
+  Future<PagedResult<FinanceEmployeeRecord>> employees({String? search, String? status, int page = 1, int perPage = 25}) async {
+    return PagedResult(items: [employeeRecord], page: 1, lastPage: 1, total: 1);
+  }
+
+  @override
+  Future<FinanceEmployeeRecord> employee(int id) async => employeeRecord;
+
+  @override
+  Future<FinanceEmployeeRecord> saveEmployee(Map<String, dynamic> body, {int? id}) async => employeeRecord;
+
+  @override
+  Future<PayrollRecord> savePayrollRecord(int employeeId, Map<String, dynamic> body) async {
+    return employeeRecord.payrollRecords.first;
+  }
+
+  @override
+  Future<PayrollOverview> payrollOverview() async => PayrollOverview(
+        cards: const {
+          'company_employees': '1',
+          'payroll_paid_total': '1000.00',
+          'open_advances_total': '500.00',
+          'allowances_bonuses_total': '200.00',
+          'deductions_total': '0.00',
+        },
+        latestRecords: employeeRecord.payrollRecords,
+      );
+
+  @override
+  Future<PagedResult<SalaryAdvanceRecord>> salaryAdvances({String? search, String? status, String? type, int page = 1}) async {
+    return PagedResult(items: employeeRecord.advances, page: 1, lastPage: 1, total: employeeRecord.advances.length);
+  }
+
+  @override
+  Future<SalaryAdvanceRecord> issueSalaryAdvance(Map<String, dynamic> body) async => employeeRecord.advances.first;
+
+  @override
+  Future<SalaryAdvanceRecord> repaySalaryAdvance(int id, Map<String, dynamic> body) async => employeeRecord.advances.first;
+
+  @override
+  Future<PagedResult<PayrollAdjustmentRecord>> payrollAdjustments({String? search, String? type, String? status, int page = 1}) async {
+    return const PagedResult(items: [
+      PayrollAdjustmentRecord(id: 9, employeeId: 4, employeeName: 'موظف الشركة', type: 'bonus', title: 'مكافأة أداء', amount: '200.00', status: 'posted'),
+    ], page: 1, lastPage: 1, total: 1);
+  }
+
+  @override
+  Future<PayrollAdjustmentRecord> savePayrollAdjustment(Map<String, dynamic> body) async {
+    return PayrollAdjustmentRecord(id: 10, type: body['type']?.toString(), title: body['title']?.toString(), amount: '${body['amount'] ?? '0.00'}', status: 'draft');
+  }
 }
 
 Future<SharedPreferences> mockPrefs() async {

@@ -105,13 +105,17 @@ class StatusChip extends StatelessWidget {
       StatusTone.info => const Color(0xFF1D4ED8),
       StatusTone.neutral => Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
     };
+    final bg = switch (tone) {
+      StatusTone.success => const Color(0xFFE6F7F1),
+      StatusTone.warning => const Color(0xFFFEF3C7),
+      StatusTone.danger => const Color(0xFFFEE2E2),
+      StatusTone.info => const Color(0xFFDBEAFE),
+      StatusTone.neutral => const Color(0xFFEEF3F6),
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12)),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11)),
     );
   }
 }
@@ -126,6 +130,7 @@ StatusTone toneFor(String? value) {
     case 'accepted':
     case 'sent':
     case 'open':
+    case 'active':
       return StatusTone.success;
     case 'draft':
     case 'pending':
@@ -156,7 +161,10 @@ class MoneyText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text('$value $currency', style: style ?? Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800));
+    return Text(
+      '$value $currency',
+      style: style ?? Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.2),
+    );
   }
 }
 

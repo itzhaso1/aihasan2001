@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
+import 'package:hasim_finance/core/layout/finance_charts.dart';
+import 'package:hasim_finance/core/layout/finance_layout.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
-import 'package:hasim_finance/core/layout/finance_layout.dart';
 import 'package:hasim_finance/core/providers/catalog_provider.dart';
+import 'package:hasim_finance/core/theme/finance_tokens.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
 import 'package:hasim_finance/features/shared/customer_select.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
@@ -94,6 +96,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _load();
   }
 
+  String _card(String key, [String fallback = '0.00']) => _data?.cards[key] ?? fallback;
+
   @override
   Widget build(BuildContext context) {
     ref.listen(authControllerProvider.select((s) => s.workspace?.id), (prev, next) {
@@ -103,14 +107,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final auth = ref.watch(authControllerProvider);
     return PermissionGate(
       allowed: auth.permissions.financeView,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(l.dashboard),
-          actions: [
-            IconButton(onPressed: () => context.push('/search'), icon: const Icon(Icons.search)),
-            IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-          ],
+      child: FinanceScaffold(
+        title: l.dashboard,
+        subtitle: l.dashboardSubtitle,
+        primaryAction: FilledButton.icon(
+          onPressed: () => context.go('/exports'),
+          icon: const Icon(Icons.ios_share_rounded, size: 16),
+          label: Text(l.exportReport),
         ),
+        actions: [
+          IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
+        ],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -119,172 +126,347 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ? const SizedBox.shrink()
               : FinancePage(
                   child: ListView(
-                  padding: EdgeInsets.zero,
-                  children: [
-                    FormSection(
-                      title: l.decisionPeriod,
-                      subtitle: l.comparePrevious,
-                      child: FormGrid(children: [
-                        TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
-                        TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
-                        CustomerSelectField(
-                          selectedId: _customerId,
-                          onSelected: (id) => setState(() => _customerId = id),
-                          compact: true,
-                          allowClear: true,
-                          label: l.customers,
-                        ),
-                        OptionPicker(
-                          label: l.products,
-                          options: [
-                            for (final product in ref.watch(financeCatalogProvider).valueOrNull?.products ?? const <CatalogOption>[])
-                              NamedOption(id: product.id, name: product.name),
-                          ],
-                          value: _productId,
-                          onChanged: (id) => setState(() => _productId = id),
-                        ),
-                        OptionPicker(
-                          label: l.projects,
-                          options: [
-                            for (final project in ref.watch(financeCatalogProvider).valueOrNull?.projects ?? const <CatalogOption>[])
-                              NamedOption(id: project.id, name: project.name),
-                          ],
-                          value: _projectId,
-                          onChanged: (id) => setState(() => _projectId = id),
-                        ),
-                        DropdownButtonFormField<String?>(
-                          // ignore: deprecated_member_use
-                          value: _lifecycle,
-                          isExpanded: true,
-                          decoration: InputDecoration(labelText: l.documentStatus),
-                          items: [
-                            DropdownMenuItem<String?>(value: null, child: Text(l.filterAll)),
-                            DropdownMenuItem(value: 'draft', child: Text(l.lifecycleDraft)),
-                            DropdownMenuItem(value: 'sent', child: Text(l.lifecycleSent)),
-                            DropdownMenuItem(value: 'partial', child: Text(l.partial)),
-                            DropdownMenuItem(value: 'paid', child: Text(l.paid)),
-                            DropdownMenuItem(value: 'overdue', child: Text(l.overdue)),
-                            DropdownMenuItem(value: 'cancelled', child: Text(l.cancelled)),
-                          ],
-                          onChanged: (value) => setState(() => _lifecycle = value),
-                        ),
-                        DropdownButtonFormField<String?>(
-                          // ignore: deprecated_member_use
-                          value: _paymentMethod,
-                          isExpanded: true,
-                          decoration: InputDecoration(labelText: l.paymentMethod),
-                          items: [
-                            DropdownMenuItem<String?>(value: null, child: Text(l.filterAll)),
-                            DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),
-                            DropdownMenuItem(value: 'bank_transfer', child: Text(l.methodBank)),
-                            DropdownMenuItem(value: 'card', child: Text(l.methodCard)),
-                            DropdownMenuItem(value: 'other', child: Text(l.methodOther)),
-                          ],
-                          onChanged: (value) => setState(() => _paymentMethod = value),
-                        ),
-                        Wrap(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      FinanceFilterBar(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        trailing: Wrap(
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            FilledButton(onPressed: _load, child: Text(l.applyFilters)),
+                            FilledButton.icon(
+                              onPressed: _load,
+                              icon: const Icon(Icons.filter_alt_rounded, size: 16),
+                              label: Text(l.applyFilters),
+                            ),
                             OutlinedButton(onPressed: _resetFilters, child: Text(l.resetFilters)),
                           ],
                         ),
-                      ]),
-                    ),
-                    if ((_data!.analytics['hero'] as List?)?.isNotEmpty == true) ...[
-                      MetricGrid(
-                        metrics: [
-                          for (final row in (_data!.analytics['hero'] as List).whereType<Map>())
-                            ('${row['label'] ?? ''}', '${row['value'] ?? '0'}'),
+                        children: [
+                          SizedBox(
+                            width: 140,
+                            child: TextField(controller: _from, decoration: InputDecoration(labelText: l.from, prefixIcon: const Icon(Icons.event, size: 16))),
+                          ),
+                          SizedBox(
+                            width: 140,
+                            child: TextField(controller: _to, decoration: InputDecoration(labelText: l.to, prefixIcon: const Icon(Icons.event, size: 16))),
+                          ),
+                          SizedBox(
+                            width: 220,
+                            child: CustomerSelectField(
+                              selectedId: _customerId,
+                              onSelected: (id) => setState(() => _customerId = id),
+                              compact: true,
+                              allowClear: true,
+                              label: l.selectCustomer,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 180,
+                            child: OptionPicker(
+                              label: l.products,
+                              options: [
+                                for (final product in ref.watch(financeCatalogProvider).valueOrNull?.products ?? const <CatalogOption>[])
+                                  NamedOption(id: product.id, name: product.name),
+                              ],
+                              value: _productId,
+                              onChanged: (id) => setState(() => _productId = id),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 180,
+                            child: OptionPicker(
+                              label: l.projects,
+                              options: [
+                                for (final project in ref.watch(financeCatalogProvider).valueOrNull?.projects ?? const <CatalogOption>[])
+                                  NamedOption(id: project.id, name: project.name),
+                              ],
+                              value: _projectId,
+                              onChanged: (id) => setState(() => _projectId = id),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 180,
+                            child: DropdownButtonFormField<String?>(
+                              // ignore: deprecated_member_use
+                              value: _lifecycle,
+                              isExpanded: true,
+                              decoration: InputDecoration(labelText: l.status),
+                              items: [
+                                DropdownMenuItem<String?>(value: null, child: Text(l.filterAll)),
+                                DropdownMenuItem(value: 'draft', child: Text(l.lifecycleDraft)),
+                                DropdownMenuItem(value: 'sent', child: Text(l.lifecycleSent)),
+                              ],
+                              onChanged: (value) => setState(() => _lifecycle = value),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 180,
+                            child: DropdownButtonFormField<String?>(
+                              // ignore: deprecated_member_use
+                              value: _paymentMethod,
+                              isExpanded: true,
+                              decoration: InputDecoration(labelText: l.paymentMethod),
+                              items: [
+                                DropdownMenuItem<String?>(value: null, child: Text(l.filterAll)),
+                                DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),
+                                DropdownMenuItem(value: 'bank_transfer', child: Text(l.methodBank)),
+                                DropdownMenuItem(value: 'card', child: Text(l.methodCard)),
+                                DropdownMenuItem(value: 'other', child: Text(l.methodOther)),
+                              ],
+                              onChanged: (value) => setState(() => _paymentMethod = value),
+                            ),
+                          ),
                         ],
                       ),
+                      _heroRow(l),
                       const SizedBox(height: 12),
-                    ],
-                    MetricGrid(metrics: [
-                      (l.outstanding, _data!.cards['outstanding_customer_balance'] ?? '0'),
-                      (l.invoicesDue, _data!.cards['invoices_due'] ?? '0'),
-                      (l.overdueInvoices, _data!.cards['overdue_invoices'] ?? '0'),
-                      (l.paidThisPeriod, _data!.cards['paid_this_period'] ?? '0'),
-                      (l.sales, _data!.cards['sales'] ?? '0'),
-                      (l.purchases, _data!.cards['purchases'] ?? '0'),
-                      (l.expenses, _data!.cards['expenses'] ?? '0'),
-                      (l.receivables, _data!.cards['receivables'] ?? '0'),
-                      (l.payables, _data!.cards['payables'] ?? '0'),
-                      (l.netProfit, _data!.cards['net_profit'] ?? '0'),
-                      (l.outputVat, _data!.cards['output_vat'] ?? '0'),
-                      (l.inputVat, _data!.cards['input_vat'] ?? '0'),
-                      (l.netVat, _data!.cards['net_vat'] ?? '0'),
-                      (l.cashBalance, _data!.cards['cash_balance'] ?? '0'),
-                      (l.bankBalance, _data!.cards['bank_balance'] ?? '0'),
-                      (l.activeContracts, _data!.cards['active_contracts_count'] ?? '0'),
-                    ]),
-                    if ((_data!.analytics['attention'] as List?)?.isNotEmpty == true) ...[
-                      const SizedBox(height: 20),
-                      Text(l.attentionItems, style: Theme.of(context).textTheme.titleLarge),
-                      for (final row in (_data!.analytics['attention'] as List).whereType<Map>())
-                        ListTile(
-                          title: Text('${row['title'] ?? ''}'),
-                          subtitle: Text('${row['reason'] ?? ''}'),
+                      _secondaryRow(l),
+                      const SizedBox(height: 12),
+                      _tertiaryRow(l),
+                      if (auth.permissions.payrollView) ...[
+                        const SizedBox(height: 12),
+                        _payrollRow(l),
+                      ],
+                      const SizedBox(height: 12),
+                      _bottomRow(context, l),
+                      if ((_data!.analytics['attention'] as List?)?.isNotEmpty == true) ...[
+                        const SizedBox(height: 12),
+                        FinanceSurface(
+                          title: l.attentionItems,
+                          child: Column(
+                            children: [
+                              for (final row in (_data!.analytics['attention'] as List).whereType<Map>())
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text('${row['title'] ?? ''}'),
+                                  subtitle: Text('${row['reason'] ?? ''}'),
+                                ),
+                            ],
+                          ),
                         ),
-                    ],
-                    if ((_data!.analytics['top_customers'] as List?)?.isNotEmpty == true) ...[
-                      const SizedBox(height: 16),
-                      Text(l.topCustomers, style: Theme.of(context).textTheme.titleLarge),
-                      for (final row in (_data!.analytics['top_customers'] as List).whereType<Map>())
-                        ListTile(
-                          title: Text('${row['name'] ?? ''}'),
-                          trailing: Text('${row['total'] ?? ''}'),
+                      ],
+                      if (_data!.recentExpenses.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        FinanceSurface(
+                          title: l.recentExpenses,
+                          child: Column(
+                            children: [
+                              for (final expense in _data!.recentExpenses)
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(expense.description ?? l.expenses),
+                                  trailing: Text(expense.total, style: const TextStyle(fontWeight: FontWeight.w800)),
+                                ),
+                            ],
+                          ),
                         ),
+                      ],
                     ],
-                    const SizedBox(height: 20),
-                    Text(l.recentInvoices, style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 8),
-                    for (final invoice in _data!.recentInvoices)
-                      ListTile(
-                        title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),
-                        subtitle: Text('${invoice.customerName ?? ''} · ${invoice.documentStatus} · ${invoice.paymentStatus}'),
-                        trailing: Text(invoice.total),
-                        onTap: () => context.push('/invoices/${invoice.id}'),
-                      ),
-                    const SizedBox(height: 16),
-                    Text(l.recentPayments, style: Theme.of(context).textTheme.titleLarge),
-                    for (final payment in _data!.recentPayments)
-                      ListTile(
-                        title: Text(payment.invoiceNumber ?? '#${payment.id}'),
-                        subtitle: Text('${payment.method ?? ''} · ${payment.status}'),
-                        trailing: Text(payment.amount),
-                        onTap: () => context.push('/payments/${payment.id}'),
-                      ),
-                    if (_data!.overdueInvoices.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Text(l.overdueInvoices, style: Theme.of(context).textTheme.titleLarge),
-                      for (final invoice in _data!.overdueInvoices)
-                        ListTile(
-                          title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),
-                          subtitle: Text('${invoice.customerName ?? ''} · ${invoice.dueDate ?? ''}'),
-                          trailing: Text(invoice.amountDue),
-                          onTap: () => context.push('/invoices/${invoice.id}'),
-                        ),
-                    ],
-                    if (_data!.recentExpenses.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Text(l.recentExpenses, style: Theme.of(context).textTheme.titleLarge),
-                      for (final expense in _data!.recentExpenses)
-                        ListTile(
-                          title: Text(expense.description ?? expense.expenseNumber ?? '#${expense.id}'),
-                          subtitle: Text('${expense.categoryName ?? ''} · ${expense.status ?? ''}'),
-                          trailing: Text(expense.total),
-                          onTap: () => context.push('/expenses/${expense.id}'),
-                        ),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
         ),
       ),
     );
   }
+
+  Widget _heroRow(AppLocalizations l) {
+    final hero = (_data!.analytics['hero'] as List?)?.whereType<Map>().toList() ?? const [];
+    if (hero.isNotEmpty) {
+      final tones = [FinanceIconTone.teal, FinanceIconTone.rose, FinanceIconTone.orange, FinanceIconTone.indigo];
+      final icons = [Icons.bar_chart_rounded, Icons.person_outline_rounded, Icons.credit_card_rounded, Icons.account_balance_wallet_outlined];
+      return KpiGrid(
+        minWidth: 260,
+        cards: [
+          for (var i = 0; i < hero.length; i++)
+            KpiCard(
+              label: '${hero[i]['label'] ?? ''}',
+              value: '${hero[i]['value'] ?? '0'}',
+              hint: '${hero[i]['hint'] ?? ''}',
+              delta: hero[i]['delta']?.toString(),
+              direction: int.tryParse('${hero[i]['direction'] ?? 0}') ?? 0,
+              icon: icons[i % icons.length],
+              tone: tones[i % tones.length],
+            ),
+        ],
+      );
+    }
+    return KpiGrid(
+      minWidth: 260,
+      cards: [
+        KpiCard(label: l.sales, value: _card('sales'), icon: Icons.bar_chart_rounded, tone: FinanceIconTone.teal, hint: l.paidThisPeriod),
+        KpiCard(label: l.receivables, value: _card('outstanding_customer_balance'), icon: Icons.person_outline_rounded, tone: FinanceIconTone.rose),
+        KpiCard(label: l.payables, value: _card('payables'), icon: Icons.credit_card_rounded, tone: FinanceIconTone.orange),
+      ],
+    );
+  }
+
+  Widget _secondaryRow(AppLocalizations l) {
+    return KpiGrid(
+      minWidth: 200,
+      cards: [
+        KpiCard(label: l.receivables, value: _card('receivables'), icon: Icons.savings_outlined, tone: FinanceIconTone.amber, compact: true),
+        KpiCard(label: l.sales, value: _card('sales'), icon: Icons.shopping_cart_outlined, tone: FinanceIconTone.orange, compact: true),
+        KpiCard(label: l.purchases, value: _card('purchases'), icon: Icons.shopping_bag_outlined, tone: FinanceIconTone.indigo, compact: true),
+        KpiCard(label: l.expenses, value: _card('expenses'), icon: Icons.receipt_long_outlined, tone: FinanceIconTone.green, compact: true),
+      ],
+    );
+  }
+
+  Widget _tertiaryRow(AppLocalizations l) {
+    return KpiGrid(
+      minWidth: 170,
+      cards: [
+        KpiCard(label: l.netProfit, value: _card('net_profit'), icon: Icons.trending_up_rounded, tone: FinanceIconTone.teal, compact: true),
+        KpiCard(label: l.tax, value: _card('output_vat'), icon: Icons.percent_rounded, tone: FinanceIconTone.indigo, compact: true),
+        KpiCard(label: l.invoicesDue, value: _card('invoices_due'), icon: Icons.description_outlined, tone: FinanceIconTone.blue, compact: true, showCurrency: false),
+        KpiCard(label: l.overdueInvoices, value: _card('overdue_invoices'), icon: Icons.error_outline_rounded, tone: FinanceIconTone.red, compact: true, showCurrency: false),
+        KpiCard(label: l.cashBalance, value: _card('cash_balance'), icon: Icons.account_balance_wallet_outlined, tone: FinanceIconTone.green, compact: true),
+      ],
+    );
+  }
+
+  Widget _payrollRow(AppLocalizations l) {
+    return KpiGrid(
+      minWidth: 180,
+      cards: [
+        KpiCard(label: l.companyEmployees, value: _card('company_employees', '0'), icon: Icons.badge_outlined, tone: FinanceIconTone.blue, compact: true, showCurrency: false),
+        KpiCard(label: l.payrollPaid, value: _card('payroll_paid_total'), icon: Icons.payments_outlined, tone: FinanceIconTone.teal, compact: true),
+        KpiCard(label: l.openAdvances, value: _card('open_advances_total'), icon: Icons.front_hand_outlined, tone: FinanceIconTone.orange, compact: true),
+        KpiCard(label: l.deductions, value: _card('deductions_total'), icon: Icons.remove_circle_outline, tone: FinanceIconTone.red, compact: true),
+      ],
+    );
+  }
+
+  Widget _bottomRow(BuildContext context, AppLocalizations l) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 1100;
+        final chart = FinanceSurface(
+          title: l.salesVsExpenses,
+          trailing: Text(l.lastSixMonths, style: const TextStyle(fontSize: 12, color: FinanceTokens.textMuted, fontWeight: FontWeight.w700)),
+          child: FinanceBarChart(series: _series(), salesLabel: l.sales, expensesLabel: l.expenses),
+        );
+        final table = FinanceSurface(
+          title: l.recentInvoices,
+          trailing: Text(l.thisMonth, style: const TextStyle(fontSize: 12, color: FinanceTokens.textMuted, fontWeight: FontWeight.w700)),
+          padding: EdgeInsets.zero,
+          child: _invoicesTable(l),
+        );
+        final donut = FinanceSurface(
+          title: l.salesMix,
+          child: FinanceDonutChart(
+            slices: _slices(l),
+            centerValue: _card('sales'),
+            centerLabel: l.soldTotal,
+          ),
+        );
+        if (stacked) {
+          return Column(children: [chart, const SizedBox(height: 12), table, const SizedBox(height: 12), donut]);
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 5, child: chart),
+            const SizedBox(width: 12),
+            Expanded(flex: 5, child: table),
+            const SizedBox(width: 12),
+            Expanded(flex: 4, child: donut),
+          ],
+        );
+      },
+    );
+  }
+
+  List<({String label, double sales, double expenses})> _series() {
+    final raw = (_data!.analytics['series'] as List?)?.whereType<Map>().toList() ?? const [];
+    return [
+      for (final row in raw.take(6))
+        (
+          label: _monthLabel('${row['month'] ?? ''}'),
+          sales: _num('${row['sales'] ?? 0}'),
+          expenses: _num('${row['expenses'] ?? 0}'),
+        ),
+    ];
+  }
+
+  List<({String label, double value, Color color})> _slices(AppLocalizations l) {
+    final products = (_data!.analytics['products'] as List?)?.whereType<Map>().toList() ?? const [];
+    final categories = (_data!.analytics['expenses_by_category'] as List?)?.whereType<Map>().toList() ?? const [];
+    final source = products.isNotEmpty ? products : categories;
+    const colors = [FinanceTokens.brand, Color(0xFF34D399), Color(0xFF60A5FA), Color(0xFFFBBF24), Color(0xFFF472B6)];
+    if (source.isEmpty) {
+      return [
+        (label: l.sales, value: _num(_card('sales')), color: colors[0]),
+        (label: l.expenses, value: _num(_card('expenses')), color: colors[1]),
+        (label: l.purchases, value: _num(_card('purchases')), color: colors[2]),
+      ].where((row) => row.value > 0).toList();
+    }
+    return [
+      for (var i = 0; i < source.length && i < 5; i++)
+        (label: '${source[i]['name'] ?? ''}', value: _num('${source[i]['total'] ?? source[i]['quantity'] ?? 0}'), color: colors[i % colors.length]),
+    ];
+  }
+
+  Widget _invoicesTable(AppLocalizations l) {
+    final seen = <int>{};
+    final invoices = [
+      ..._data!.overdueInvoices,
+      ..._data!.recentInvoices,
+    ].where((row) => seen.add(row.id)).toList();
+    if (invoices.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(l.empty, textAlign: TextAlign.center, style: const TextStyle(color: FinanceTokens.textMuted)),
+      );
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        columns: [
+          DataColumn(label: Text(l.invoiceNumber)),
+          DataColumn(label: Text(l.date)),
+          DataColumn(label: Text(l.customer)),
+          DataColumn(label: Text(l.amount)),
+          DataColumn(label: Text(l.status)),
+        ],
+        rows: [
+          for (final invoice in invoices.take(6))
+            DataRow(
+              cells: [
+                DataCell(Text(invoice.invoiceNumber ?? '#${invoice.id}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                DataCell(Text(invoice.issueDate ?? '')),
+                DataCell(Text(invoice.customerName ?? '')),
+                DataCell(Text(invoice.total, style: const TextStyle(fontWeight: FontWeight.w800))),
+                DataCell(StatusChip(label: _payLabel(invoice.paymentStatus, l), tone: toneFor(invoice.paymentStatus))),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _payLabel(String? status, AppLocalizations l) {
+    return switch (status) {
+      'paid' => l.paid,
+      'unpaid' => l.unpaid,
+      'partial' => l.partial,
+      'overdue' => l.overdue,
+      'cancelled' => l.cancelled,
+      _ => status ?? '',
+    };
+  }
+
+  String _monthLabel(String month) {
+    if (month.length >= 7) {
+      const names = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+      final m = int.tryParse(month.substring(5, 7)) ?? 0;
+      if (m >= 1 && m <= 12) return names[m - 1];
+    }
+    return month;
+  }
+
+  double _num(String raw) => double.tryParse(raw.replaceAll(',', '').replaceAll(' ', '')) ?? 0;
 }
 
 class FinanceSearchScreen extends ConsumerStatefulWidget {
@@ -339,58 +521,76 @@ class _FinanceSearchScreenState extends ConsumerState<FinanceSearchScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(l.globalSearch)),
+    return FinanceScaffold(
+      title: l.globalSearch,
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              controller: _q,
-              autofocus: true,
-              decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: l.search),
-              onChanged: (value) {
-                _debounce?.cancel();
-                _debounce = Timer(const Duration(milliseconds: 350), () => _search(value));
-              },
-            ),
+          FinanceFilterBar(
+            children: [
+              SizedBox(
+                width: 420,
+                child: TextField(
+                  controller: _q,
+                  autofocus: true,
+                  decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: l.searchPlaceholder),
+                  onChanged: (value) {
+                    _debounce?.cancel();
+                    _debounce = Timer(const Duration(milliseconds: 350), () => _search(value));
+                  },
+                ),
+              ),
+            ],
           ),
           if (_loading) const LinearProgressIndicator(),
           if (_error != null) Padding(padding: const EdgeInsets.all(16), child: Text(_error!)),
           Expanded(
             child: _data == null
-                ? EmptyState(title: l.globalSearch, subtitle: l.search)
+                ? EmptyState(title: l.globalSearch, subtitle: l.searchPlaceholder)
                 : ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                     children: [
                       for (final entry in _data!.entries)
                         if (entry.value is List && (entry.value as List).isNotEmpty) ...[
-                          ListTile(title: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w800))),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8, top: 8),
+                            child: Text(entry.key, style: const TextStyle(fontWeight: FontWeight.w800)),
+                          ),
                           for (final row in (entry.value as List).whereType<Map>())
-                            ListTile(
-                              title: Text('${row['title'] ?? ''}'),
-                              subtitle: Text('${row['subtitle'] ?? ''}'),
-                              onTap: () {
-                                final id = row['id'];
-                                final type = row['type']?.toString();
-                                if (id == null || type == null) return;
-                                final path = switch (type) {
-                                  'customer' => '/customers/$id',
-                                  'invoice' => '/invoices/$id',
-                                  'quote' => '/quotes/$id',
-                                  'receipt' => '/receipts/$id',
-                                  'payment' => '/payments/$id',
-                                  'expense' => '/expenses/$id',
-                                  'contract' => '/contracts/$id',
-                                  'purchase' => '/purchases/$id',
-                                  'supplier' => '/suppliers/$id',
-                                  'product' => '/products/$id',
-                                  'project' => '/projects/$id',
-                                  'purchase_order' => '/purchase-orders/$id',
-                                  'lead' => '/leads/$id',
-                                  _ => null,
-                                };
-                                if (path != null) context.push(path);
-                              },
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Material(
+                              color: FinanceTokens.surface,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(FinanceTokens.radiusLg),
+                                side: const BorderSide(color: FinanceTokens.border),
+                              ),
+                              child: ListTile(
+                                title: Text('${row['title'] ?? ''}'),
+                                subtitle: Text('${row['subtitle'] ?? ''}'),
+                                onTap: () {
+                                  final id = row['id'];
+                                  final type = row['type']?.toString();
+                                  if (id == null || type == null) return;
+                                  final path = switch (type) {
+                                    'customer' => '/customers/$id',
+                                    'invoice' => '/invoices/$id',
+                                    'quote' => '/quotes/$id',
+                                    'receipt' => '/receipts/$id',
+                                    'payment' => '/payments/$id',
+                                    'expense' => '/expenses/$id',
+                                    'contract' => '/contracts/$id',
+                                    'purchase' => '/purchases/$id',
+                                    'supplier' => '/suppliers/$id',
+                                    'product' => '/products/$id',
+                                    'project' => '/projects/$id',
+                                    'purchase_order' => '/purchase-orders/$id',
+                                    'lead' => '/leads/$id',
+                                    _ => null,
+                                  };
+                                  if (path != null) context.push(path);
+                                },
+                              ),
+                              ),
                             ),
                         ],
                     ],

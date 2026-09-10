@@ -770,6 +770,96 @@ class FinanceApi {
     return res.data!;
   }
 
+  Future<PagedResult<FinanceEmployeeRecord>> employees({String? search, String? status, int page = 1, int perPage = 25}) {
+    return _paged('employees', FinanceEmployeeRecord.fromJson, search: search, page: page, extra: {
+      'per_page': perPage,
+      if (status != null && status.isNotEmpty) 'status': status,
+    });
+  }
+
+  Future<FinanceEmployeeRecord> employee(int id) async {
+    final res = await _client.get('employees/$id', mapData: (raw) => FinanceEmployeeRecord.fromJson(Map<String, dynamic>.from(raw as Map)));
+    return res.data!;
+  }
+
+  Future<FinanceEmployeeRecord> saveEmployee(Map<String, dynamic> body, {int? id}) async {
+    final res = id == null
+        ? await _client.post('employees', body: body, mapData: (raw) => FinanceEmployeeRecord.fromJson(Map<String, dynamic>.from(raw as Map)))
+        : await _client.put('employees/$id', body: body, mapData: (raw) => FinanceEmployeeRecord.fromJson(Map<String, dynamic>.from(raw as Map)));
+    return res.data!;
+  }
+
+  Future<void> deleteEmployee(int id) => _client.delete('employees/$id');
+
+  Future<PayrollRecord> savePayrollRecord(int employeeId, Map<String, dynamic> body) async {
+    final res = await _client.post(
+      'employees/$employeeId/payroll-records',
+      body: body,
+      mapData: (raw) => PayrollRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<PayrollOverview> payrollOverview() async {
+    final res = await _client.get('payroll', mapData: (raw) => PayrollOverview.fromJson(Map<String, dynamic>.from(raw as Map)));
+    return res.data!;
+  }
+
+  Future<PagedResult<SalaryAdvanceRecord>> salaryAdvances({String? search, String? status, String? type, int page = 1}) {
+    return _paged('salary-advances', SalaryAdvanceRecord.fromJson, search: search, page: page, extra: {
+      if (status != null && status.isNotEmpty) 'status': status,
+      if (type != null && type.isNotEmpty) 'type': type,
+    });
+  }
+
+  Future<SalaryAdvanceRecord> salaryAdvance(int id) async {
+    final res = await _client.get('salary-advances/$id', mapData: (raw) => SalaryAdvanceRecord.fromJson(Map<String, dynamic>.from(raw as Map)));
+    return res.data!;
+  }
+
+  Future<SalaryAdvanceRecord> issueSalaryAdvance(Map<String, dynamic> body) async {
+    final res = await _client.post(
+      'salary-advances',
+      body: body,
+      mapData: (raw) => SalaryAdvanceRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<SalaryAdvanceRecord> repaySalaryAdvance(int id, Map<String, dynamic> body) async {
+    final res = await _client.post(
+      'salary-advances/$id/repay',
+      body: body,
+      mapData: (raw) => SalaryAdvanceRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<PagedResult<PayrollAdjustmentRecord>> payrollAdjustments({String? search, String? type, String? status, int page = 1}) {
+    return _paged('payroll-adjustments', PayrollAdjustmentRecord.fromJson, search: search, page: page, extra: {
+      if (type != null && type.isNotEmpty) 'type': type,
+      if (status != null && status.isNotEmpty) 'status': status,
+    });
+  }
+
+  Future<PayrollAdjustmentRecord> savePayrollAdjustment(Map<String, dynamic> body) async {
+    final res = await _client.post(
+      'payroll-adjustments',
+      body: body,
+      mapData: (raw) => PayrollAdjustmentRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<PayrollAdjustmentRecord> payrollAdjustmentAction(int id, String action, {Map<String, dynamic>? body}) async {
+    final res = await _client.post(
+      'payroll-adjustments/$id/$action',
+      body: body,
+      mapData: (raw) => PayrollAdjustmentRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
   Future<PagedResult<T>> _paged<T>(
     String path,
     T Function(Map<String, dynamic> json) map, {

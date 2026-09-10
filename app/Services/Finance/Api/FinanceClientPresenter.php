@@ -11,6 +11,11 @@ use App\Models\Finance\FinanceAccountingPeriod;
 use App\Models\Finance\FinanceBankStatement;
 use App\Models\Finance\FinanceBankStatementLine;
 use App\Models\Finance\FinanceCreditNote;
+use App\Models\Finance\FinanceEmployee;
+use App\Models\Finance\FinanceEmployeePayrollRecord;
+use App\Models\Finance\FinancePayrollAdjustment;
+use App\Models\Finance\FinanceSalaryAdvance;
+use App\Models\Finance\FinanceSalaryAdvanceRepayment;
 use App\Models\Finance\FinanceDocumentDelivery;
 use App\Models\Finance\FinanceExpense;
 use App\Models\Finance\FinanceFiscalYear;
@@ -536,6 +541,11 @@ class FinanceClientPresenter
                 'cash_balance' => $this->money($cards['cash_balance'] ?? 0),
                 'bank_balance' => $this->money($cards['bank_balance'] ?? 0),
                 'active_contracts_count' => (int) ($cards['active_contracts_count'] ?? 0),
+                'company_employees' => (int) ($cards['company_employees'] ?? 0),
+                'payroll_paid_total' => $this->money($cards['payroll_paid_total'] ?? 0),
+                'allowances_bonuses_total' => $this->money($cards['allowances_bonuses_total'] ?? 0),
+                'deductions_total' => $this->money($cards['deductions_total'] ?? 0),
+                'open_advances_total' => $this->money($cards['open_advances_total'] ?? 0),
             ],
             'recent_invoices' => collect($metrics['latest']['invoices'] ?? [])
                 ->map(fn ($invoice) => $this->invoiceSummary($invoice))
@@ -1074,6 +1084,201 @@ class FinanceClientPresenter
                 'debit' => $this->money($line->debit ?? 0),
                 'credit' => $this->money($line->credit ?? 0),
             ])->values()->all() ?? [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function financeEmployee(FinanceEmployee $employee, bool $detailed = false): array
+    {
+        $payload = [
+            'id' => (int) $employee->id,
+            'employee_code' => $employee->employee_code,
+            'full_name' => $employee->full_name,
+            'job_title' => $employee->job_title,
+            'basic_salary' => $this->money($employee->basic_salary ?? 0),
+            'hire_date' => $this->date($employee->hire_date),
+            'status' => $employee->status,
+            'phone' => $employee->phone,
+            'email' => $employee->email,
+            'address' => $employee->address,
+            'emergency_contact' => $employee->emergency_contact,
+            'notes' => $employee->notes,
+            'payroll_records_count' => (int) ($employee->payroll_records_count ?? $employee->payrollRecords()->count()),
+            'financial_summary' => $this->employeeFinancialSummary($employee),
+        ];
+
+        if ($detailed) {
+            $payload['payroll_records'] = $employee->payrollRecords
+                ->map(fn (FinanceEmployeePayrollRecord $record) => $this->payrollRecord($record))
+                ->values()
+                ->all();
+            $payload['advances'] = $employee->salaryAdvances
+                ->map(fn (FinanceSalaryAdvance $advance) => $this->salaryAdvance($advance))
+                ->values()
+                ->all();
+            $payload['adjustments'] = $employee->payrollAdjustments
+                ->map(fn (FinancePayrollAdjustment $adjustment) => $this->payrollAdjustment($adjustment))
+                ->values()
+                ->all();
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function employeeFinancialSummary(FinanceEmployee $employee): array
+    {
+        $records = FinanceEmployeePayrollRecord::query()
+            ->where('finance_employee_id', $employee->id)
+            ->where('workspace_id', $employee->workspace_id)
+            ->get();
+
+        $totalOwed = (float) $records->whereNotIn('payment_status', ['cancelled'])->sum('net_amount');
+        $totalPaid = (float) $records->where('payment_status', 'paid')->sum('net_amount');
+        $outstandingPayroll = (float) $records->whereIn('payment_status', ['draft', 'pending', 'partial'])->sum('net_amount');
+
+        $advances = FinanceSalaryAdvance::query()
+            ->where('finance_employee_id', $employee->id)
+            ->where('workspace_id', $employee->workspace_id)
+            ->get();
+        $advanceIssued = (float) $advances->sum('amount');
+        $advanceRemaining = (float) $advances->where('status', 'open')->sum('remaining_amount');
+        $advanceSettled = round(max(0, $advanceIssued - (float) $advances->sum('remaining_amount')), 2);
+
+        $adjustments = FinancePayrollAdjustment::query()
+            ->where('finance_employee_id', $employee->id)
+            ->where('workspace_id', $employee->workspace_id)
+            ->where('status', 'posted')
+            ->get();
+
+        return [
+            'total_owed' => $this->money($totalOwed),
+            'total_paid' => $this->money($totalPaid),
+            'remaining' => $this->money($outstandingPayroll),
+            'advance_issued' => $this->money($advanceIssued),
+            'advance_settled' => $this->money($advanceSettled),
+            'advance_remaining' => $this->money($advanceRemaining),
+            'allowances_total' => $this->money((float) $adjustments->where('type', 'allowance')->sum('amount')),
+            'bonuses_total' => $this->money((float) $adjustments->where('type', 'bonus')->sum('amount')),
+            'deductions_total' => $this->money((float) $adjustments->where('type', 'deduction')->sum('amount')),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function payrollRecord(FinanceEmployeePayrollRecord $record): array
+    {
+        $outstanding = in_array($record->payment_status, ['draft', 'pending', 'partial'], true)
+            ? (float) $record->net_amount
+            : 0.0;
+
+        return [
+            'id' => (int) $record->id,
+            'finance_employee_id' => (int) $record->finance_employee_id,
+            'employee_name' => $record->employee?->full_name,
+            'employee_code' => $record->employee?->employee_code,
+            'period_start' => $this->date($record->period_start),
+            'period_end' => $this->date($record->period_end),
+            'basic_salary' => $this->money($record->basic_salary ?? 0),
+            'allowances_total' => $this->money($record->allowances_total ?? 0),
+            'deductions_total' => $this->money($record->deductions_total ?? 0),
+            'gross_amount' => $this->money($record->gross_amount ?? 0),
+            'net_amount' => $this->money($record->net_amount ?? 0),
+            'remaining' => $this->money($outstanding),
+            'payment_status' => $record->payment_status,
+            'paid_at' => $this->date($record->paid_at),
+            'notes' => $record->notes,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function salaryAdvance(FinanceSalaryAdvance $advance): array
+    {
+        $settled = round(max(0, (float) $advance->amount - (float) $advance->remaining_amount), 2);
+
+        return [
+            'id' => (int) $advance->id,
+            'finance_employee_id' => $advance->finance_employee_id ? (int) $advance->finance_employee_id : null,
+            'employee_name' => $advance->financeEmployee?->full_name,
+            'employee_code' => $advance->financeEmployee?->employee_code,
+            'amount' => $this->money($advance->amount ?? 0),
+            'remaining_amount' => $this->money($advance->remaining_amount ?? 0),
+            'settled_amount' => $this->money($settled),
+            'issued_at' => $this->date($advance->issued_at),
+            'status' => $advance->status,
+            'type' => $advance->type,
+            'payment_method' => $advance->payment_method,
+            'notes' => $advance->notes,
+            'repayments' => $advance->relationLoaded('repayments')
+                ? $advance->repayments->map(fn (FinanceSalaryAdvanceRepayment $repayment) => $this->salaryAdvanceRepayment($repayment))->values()->all()
+                : [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function salaryAdvanceRepayment(FinanceSalaryAdvanceRepayment $repayment): array
+    {
+        return [
+            'id' => (int) $repayment->id,
+            'payment_date' => $this->date($repayment->payment_date),
+            'amount' => $this->money($repayment->amount ?? 0),
+            'method' => $repayment->method,
+            'status' => $repayment->status,
+            'notes' => $repayment->notes,
+            'treasury_account_id' => $repayment->treasury_account_id ? (int) $repayment->treasury_account_id : null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function payrollAdjustment(FinancePayrollAdjustment $adjustment): array
+    {
+        return [
+            'id' => (int) $adjustment->id,
+            'finance_employee_id' => $adjustment->finance_employee_id ? (int) $adjustment->finance_employee_id : null,
+            'employee_name' => $adjustment->financeEmployee?->full_name,
+            'employee_code' => $adjustment->financeEmployee?->employee_code,
+            'type' => $adjustment->type,
+            'title' => $adjustment->title,
+            'amount' => $this->money($adjustment->amount ?? 0),
+            'effective_date' => $this->date($adjustment->effective_date),
+            'status' => $adjustment->status,
+            'notes' => $adjustment->notes,
+            'payroll_run_id' => $adjustment->payroll_run_id ? (int) $adjustment->payroll_run_id : null,
+            'posted_journal_entry_id' => $adjustment->posted_journal_entry_id ? (int) $adjustment->posted_journal_entry_id : null,
+            'approved_at' => $this->date($adjustment->approved_at),
+            'posted_at' => $this->date($adjustment->posted_at),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $cards
+     * @return array<string, mixed>
+     */
+    public function payrollOverview(array $cards, iterable $latestRecords): array
+    {
+        return [
+            'cards' => [
+                'company_employees' => (int) ($cards['company_employees'] ?? 0),
+                'payroll_paid_total' => $this->money($cards['payroll_paid_total'] ?? 0),
+                'allowances_bonuses_total' => $this->money($cards['allowances_bonuses_total'] ?? 0),
+                'deductions_total' => $this->money($cards['deductions_total'] ?? 0),
+                'open_advances_total' => $this->money($cards['open_advances_total'] ?? 0),
+            ],
+            'latest_records' => collect($latestRecords)
+                ->map(fn (FinanceEmployeePayrollRecord $record) => $this->payrollRecord($record))
+                ->values()
+                ->all(),
         ];
     }
 

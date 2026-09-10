@@ -67,8 +67,10 @@ class _SalesHubScreenState extends ConsumerState<SalesHubScreen> {
     final payments = (_data?['recent_payments'] as List? ?? []).whereType<Map>();
     return PermissionGate(
       allowed: ref.watch(authControllerProvider).permissions.financeView,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l.salesHub), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
+      child: FinanceScaffold(
+        title: l.salesHub,
+        showBack: true,
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -162,8 +164,10 @@ class _VatHubScreenState extends ConsumerState<VatHubScreen> {
     return PermissionGate(
       allowed: ref.watch(authControllerProvider).permissions.accountingView ||
           ref.watch(authControllerProvider).permissions.financeView,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l.vatPage), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
+      child: FinanceScaffold(
+        title: l.vatPage,
+        showBack: true,
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -224,8 +228,10 @@ class _MapHubState extends ConsumerState<BillingHubScreen> {
     final data = _data ?? {};
     return PermissionGate(
       allowed: ref.watch(authControllerProvider).permissions.invoicesView,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l.billingHub), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
+      child: FinanceScaffold(
+        title: l.billingHub,
+        showBack: true,
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -300,8 +306,10 @@ class _AccountingHubScreenState extends ConsumerState<AccountingHubScreen> {
     return PermissionGate(
       allowed: ref.watch(authControllerProvider).permissions.accountingView ||
           ref.watch(authControllerProvider).permissions.financeView,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l.accountingHub), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
+      child: FinanceScaffold(
+        title: l.accountingHub,
+        showBack: true,
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -393,8 +401,10 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     final l = AppLocalizations.of(context);
     return PermissionGate(
       allowed: ref.watch(authControllerProvider).permissions.financeView,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l.alerts), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
+      child: FinanceScaffold(
+        title: l.alerts,
+        showBack: true,
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -457,8 +467,9 @@ class _CopilotScreenState extends ConsumerState<CopilotScreen> {
     final l = AppLocalizations.of(context);
     return PermissionGate(
       allowed: ref.watch(authControllerProvider).permissions.financeView,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l.copilot)),
+      child: FinanceScaffold(
+        title: l.copilot,
+        showBack: true,
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -562,8 +573,10 @@ class _TreasuryScreenState extends ConsumerState<TreasuryScreen> {
         .toList();
     return PermissionGate(
       allowed: ref.watch(authControllerProvider).permissions.financeView,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l.treasury), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
+      child: FinanceScaffold(
+        title: l.treasury,
+        showBack: true,
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -688,8 +701,9 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
     final perms = ref.watch(authControllerProvider).permissions;
     return PermissionGate(
       allowed: perms.financeView,
-      child: Scaffold(
-        appBar: AppBar(title: Text(l.exports)),
+      child: FinanceScaffold(
+        title: l.exports,
+        showBack: true,
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -1034,11 +1048,10 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
     final open = _data?['status'] != 'reconciled';
     return PermissionGate(
       allowed: ref.watch(authControllerProvider).permissions.financeView,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(l.bankStatements),
-          actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
-        ),
+      child: FinanceScaffold(
+        title: l.bankStatements,
+        showBack: true,
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,

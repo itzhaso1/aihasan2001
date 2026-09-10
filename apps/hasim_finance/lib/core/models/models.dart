@@ -1636,6 +1636,260 @@ class FinanceCatalog {
   }
 }
 
+class FinanceEmployeeRecord {
+  const FinanceEmployeeRecord({
+    required this.id,
+    required this.fullName,
+    this.employeeCode,
+    this.jobTitle,
+    this.basicSalary = '0.00',
+    this.hireDate,
+    this.status,
+    this.phone,
+    this.email,
+    this.address,
+    this.emergencyContact,
+    this.notes,
+    this.payrollRecordsCount = 0,
+    this.summary = const {},
+    this.payrollRecords = const [],
+    this.advances = const [],
+    this.adjustments = const [],
+  });
+
+  final int id;
+  final String fullName;
+  final String? employeeCode;
+  final String? jobTitle;
+  final String basicSalary;
+  final String? hireDate;
+  final String? status;
+  final String? phone;
+  final String? email;
+  final String? address;
+  final String? emergencyContact;
+  final String? notes;
+  final int payrollRecordsCount;
+  final Map<String, String> summary;
+  final List<PayrollRecord> payrollRecords;
+  final List<SalaryAdvanceRecord> advances;
+  final List<PayrollAdjustmentRecord> adjustments;
+
+  factory FinanceEmployeeRecord.fromJson(Map<String, dynamic> json) {
+    final summaryRaw = json['financial_summary'] as Map? ?? {};
+    return FinanceEmployeeRecord(
+      id: int.parse('${json['id']}'),
+      fullName: json['full_name']?.toString() ?? '',
+      employeeCode: json['employee_code']?.toString(),
+      jobTitle: json['job_title']?.toString(),
+      basicSalary: MoneyFields.asMoney(json['basic_salary']),
+      hireDate: json['hire_date']?.toString(),
+      status: json['status']?.toString(),
+      phone: json['phone']?.toString(),
+      email: json['email']?.toString(),
+      address: json['address']?.toString(),
+      emergencyContact: json['emergency_contact']?.toString(),
+      notes: json['notes']?.toString(),
+      payrollRecordsCount: int.tryParse('${json['payroll_records_count'] ?? 0}') ?? 0,
+      summary: summaryRaw.map((key, value) => MapEntry(key.toString(), value.toString())),
+      payrollRecords: _mapList(json['payroll_records'], PayrollRecord.fromJson),
+      advances: _mapList(json['advances'], SalaryAdvanceRecord.fromJson),
+      adjustments: _mapList(json['adjustments'], PayrollAdjustmentRecord.fromJson),
+    );
+  }
+}
+
+class PayrollRecord {
+  const PayrollRecord({
+    required this.id,
+    this.employeeId,
+    this.employeeName,
+    this.employeeCode,
+    this.periodStart,
+    this.periodEnd,
+    this.basicSalary = '0.00',
+    this.allowancesTotal = '0.00',
+    this.deductionsTotal = '0.00',
+    this.grossAmount = '0.00',
+    this.netAmount = '0.00',
+    this.remaining = '0.00',
+    this.paymentStatus,
+    this.paidAt,
+    this.notes,
+  });
+
+  final int id;
+  final int? employeeId;
+  final String? employeeName;
+  final String? employeeCode;
+  final String? periodStart;
+  final String? periodEnd;
+  final String basicSalary;
+  final String allowancesTotal;
+  final String deductionsTotal;
+  final String grossAmount;
+  final String netAmount;
+  final String remaining;
+  final String? paymentStatus;
+  final String? paidAt;
+  final String? notes;
+
+  factory PayrollRecord.fromJson(Map<String, dynamic> json) {
+    return PayrollRecord(
+      id: int.parse('${json['id']}'),
+      employeeId: json['finance_employee_id'] == null ? null : int.tryParse('${json['finance_employee_id']}'),
+      employeeName: json['employee_name']?.toString(),
+      employeeCode: json['employee_code']?.toString(),
+      periodStart: json['period_start']?.toString(),
+      periodEnd: json['period_end']?.toString(),
+      basicSalary: MoneyFields.asMoney(json['basic_salary']),
+      allowancesTotal: MoneyFields.asMoney(json['allowances_total']),
+      deductionsTotal: MoneyFields.asMoney(json['deductions_total']),
+      grossAmount: MoneyFields.asMoney(json['gross_amount']),
+      netAmount: MoneyFields.asMoney(json['net_amount']),
+      remaining: MoneyFields.asMoney(json['remaining']),
+      paymentStatus: json['payment_status']?.toString(),
+      paidAt: json['paid_at']?.toString(),
+      notes: json['notes']?.toString(),
+    );
+  }
+}
+
+class SalaryAdvanceRecord {
+  const SalaryAdvanceRecord({
+    required this.id,
+    this.employeeId,
+    this.employeeName,
+    this.employeeCode,
+    this.amount = '0.00',
+    this.remainingAmount = '0.00',
+    this.settledAmount = '0.00',
+    this.issuedAt,
+    this.status,
+    this.type,
+    this.paymentMethod,
+    this.notes,
+    this.repayments = const [],
+  });
+
+  final int id;
+  final int? employeeId;
+  final String? employeeName;
+  final String? employeeCode;
+  final String amount;
+  final String remainingAmount;
+  final String settledAmount;
+  final String? issuedAt;
+  final String? status;
+  final String? type;
+  final String? paymentMethod;
+  final String? notes;
+  final List<AdvanceRepaymentRecord> repayments;
+
+  factory SalaryAdvanceRecord.fromJson(Map<String, dynamic> json) {
+    return SalaryAdvanceRecord(
+      id: int.parse('${json['id']}'),
+      employeeId: json['finance_employee_id'] == null ? null : int.tryParse('${json['finance_employee_id']}'),
+      employeeName: json['employee_name']?.toString(),
+      employeeCode: json['employee_code']?.toString(),
+      amount: MoneyFields.asMoney(json['amount']),
+      remainingAmount: MoneyFields.asMoney(json['remaining_amount']),
+      settledAmount: MoneyFields.asMoney(json['settled_amount']),
+      issuedAt: json['issued_at']?.toString(),
+      status: json['status']?.toString(),
+      type: json['type']?.toString(),
+      paymentMethod: json['payment_method']?.toString(),
+      notes: json['notes']?.toString(),
+      repayments: _mapList(json['repayments'], AdvanceRepaymentRecord.fromJson),
+    );
+  }
+}
+
+class AdvanceRepaymentRecord {
+  const AdvanceRepaymentRecord({
+    required this.id,
+    this.paymentDate,
+    this.amount = '0.00',
+    this.method,
+    this.status,
+    this.notes,
+  });
+
+  final int id;
+  final String? paymentDate;
+  final String amount;
+  final String? method;
+  final String? status;
+  final String? notes;
+
+  factory AdvanceRepaymentRecord.fromJson(Map<String, dynamic> json) {
+    return AdvanceRepaymentRecord(
+      id: int.parse('${json['id']}'),
+      paymentDate: json['payment_date']?.toString(),
+      amount: MoneyFields.asMoney(json['amount']),
+      method: json['method']?.toString(),
+      status: json['status']?.toString(),
+      notes: json['notes']?.toString(),
+    );
+  }
+}
+
+class PayrollAdjustmentRecord {
+  const PayrollAdjustmentRecord({
+    required this.id,
+    this.employeeId,
+    this.employeeName,
+    this.employeeCode,
+    this.type,
+    this.title,
+    this.amount = '0.00',
+    this.effectiveDate,
+    this.status,
+    this.notes,
+  });
+
+  final int id;
+  final int? employeeId;
+  final String? employeeName;
+  final String? employeeCode;
+  final String? type;
+  final String? title;
+  final String amount;
+  final String? effectiveDate;
+  final String? status;
+  final String? notes;
+
+  factory PayrollAdjustmentRecord.fromJson(Map<String, dynamic> json) {
+    return PayrollAdjustmentRecord(
+      id: int.parse('${json['id']}'),
+      employeeId: json['finance_employee_id'] == null ? null : int.tryParse('${json['finance_employee_id']}'),
+      employeeName: json['employee_name']?.toString(),
+      employeeCode: json['employee_code']?.toString(),
+      type: json['type']?.toString(),
+      title: json['title']?.toString(),
+      amount: MoneyFields.asMoney(json['amount']),
+      effectiveDate: json['effective_date']?.toString(),
+      status: json['status']?.toString(),
+      notes: json['notes']?.toString(),
+    );
+  }
+}
+
+class PayrollOverview {
+  const PayrollOverview({this.cards = const {}, this.latestRecords = const []});
+
+  final Map<String, String> cards;
+  final List<PayrollRecord> latestRecords;
+
+  factory PayrollOverview.fromJson(Map<String, dynamic> json) {
+    final cardsRaw = json['cards'] as Map? ?? {};
+    return PayrollOverview(
+      cards: cardsRaw.map((key, value) => MapEntry(key.toString(), value.toString())),
+      latestRecords: _mapList(json['latest_records'], PayrollRecord.fromJson),
+    );
+  }
+}
+
 List<T> _mapList<T>(dynamic raw, T Function(Map<String, dynamic> json) map) {
   if (raw is! List) return const [];
   return raw.whereType<Map>().map((row) => map(Map<String, dynamic>.from(row))).toList();

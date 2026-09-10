@@ -37,6 +37,12 @@ class FinancePermissions {
   bool get priceListsManage => can('finance.price_lists.manage');
   bool get fiscalYearsView => can('finance.fiscal_years.view');
   bool get fiscalYearsManage => can('finance.fiscal_years.manage');
+  bool get payrollView => can('payroll.view');
+  bool get payrollManage => can('payroll.manage');
+  bool get adjustmentsView => can('finance.adjustments.view');
+  bool get adjustmentsManage => can('finance.adjustments.manage');
+  bool get salaryAdvancesView => can('finance.salary_advances.view');
+  bool get salaryAdvancesManage => can('finance.salary_advances.manage');
 
   FinancePermissions copyWith(Map<String, bool> next) => FinancePermissions(next);
 }

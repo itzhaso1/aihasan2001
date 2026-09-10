@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Finance\V1\CopilotClientController;
 use App\Http\Controllers\Api\Finance\V1\CreditNoteClientController;
 use App\Http\Controllers\Api\Finance\V1\CustomerController;
 use App\Http\Controllers\Api\Finance\V1\DashboardController;
+use App\Http\Controllers\Api\Finance\V1\EmployeeClientController;
 use App\Http\Controllers\Api\Finance\V1\ExpenseController;
 use App\Http\Controllers\Api\Finance\V1\ExportController;
 use App\Http\Controllers\Api\Finance\V1\FiscalYearClientController;
@@ -15,6 +16,7 @@ use App\Http\Controllers\Api\Finance\V1\InvoiceController;
 use App\Http\Controllers\Api\Finance\V1\LeadClientController;
 use App\Http\Controllers\Api\Finance\V1\NoteController;
 use App\Http\Controllers\Api\Finance\V1\PaymentController;
+use App\Http\Controllers\Api\Finance\V1\PayrollAdjustmentClientController;
 use App\Http\Controllers\Api\Finance\V1\PosInvoiceController;
 use App\Http\Controllers\Api\Finance\V1\PriceListClientController;
 use App\Http\Controllers\Api\Finance\V1\ProjectClientController;
@@ -23,6 +25,7 @@ use App\Http\Controllers\Api\Finance\V1\PurchaseOrderClientController;
 use App\Http\Controllers\Api\Finance\V1\QuoteController;
 use App\Http\Controllers\Api\Finance\V1\ReceiptController;
 use App\Http\Controllers\Api\Finance\V1\ReportController;
+use App\Http\Controllers\Api\Finance\V1\SalaryAdvanceClientController;
 use App\Http\Controllers\Api\Finance\V1\SalesInvoiceController;
 use App\Http\Controllers\Api\Finance\V1\SearchController;
 use App\Http\Controllers\Api\Finance\V1\SettingsController;
@@ -200,6 +203,25 @@ Route::post('/settings/logo', [SettingsController::class, 'uploadLogo'])->middle
 Route::delete('/settings/logo', [SettingsController::class, 'removeLogo'])->middleware('throttle:mobile-write');
 Route::post('/settings/tax-rates', [SettingsController::class, 'storeTaxRate'])->middleware('throttle:mobile-write');
 Route::post('/settings/treasury-accounts', [SettingsController::class, 'storeTreasuryAccount'])->middleware('throttle:mobile-write');
+
+Route::get('/employees', [EmployeeClientController::class, 'index']);
+Route::post('/employees', [EmployeeClientController::class, 'store'])->middleware('throttle:mobile-write');
+Route::get('/employees/{employee}', [EmployeeClientController::class, 'show']);
+Route::put('/employees/{employee}', [EmployeeClientController::class, 'update'])->middleware('throttle:mobile-write');
+Route::delete('/employees/{employee}', [EmployeeClientController::class, 'destroy'])->middleware('throttle:mobile-write');
+Route::post('/employees/{employee}/payroll-records', [EmployeeClientController::class, 'storePayrollRecord'])->middleware('throttle:mobile-write');
+Route::get('/payroll', [EmployeeClientController::class, 'overview']);
+
+Route::get('/salary-advances', [SalaryAdvanceClientController::class, 'index']);
+Route::post('/salary-advances', [SalaryAdvanceClientController::class, 'store'])->middleware('throttle:mobile-write');
+Route::get('/salary-advances/{advance}', [SalaryAdvanceClientController::class, 'show']);
+Route::post('/salary-advances/{advance}/repay', [SalaryAdvanceClientController::class, 'repay'])->middleware('throttle:mobile-write');
+
+Route::get('/payroll-adjustments', [PayrollAdjustmentClientController::class, 'index']);
+Route::post('/payroll-adjustments', [PayrollAdjustmentClientController::class, 'store'])->middleware('throttle:mobile-write');
+Route::post('/payroll-adjustments/{adjustment}/approve', [PayrollAdjustmentClientController::class, 'approve'])->middleware('throttle:mobile-write');
+Route::post('/payroll-adjustments/{adjustment}/post', [PayrollAdjustmentClientController::class, 'post'])->middleware('throttle:mobile-write');
+Route::post('/payroll-adjustments/{adjustment}/cancel', [PayrollAdjustmentClientController::class, 'cancel'])->middleware('throttle:mobile-write');
 
 /*
 |--------------------------------------------------------------------------

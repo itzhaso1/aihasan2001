@@ -2275,6 +2275,378 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'بنكي'**
   String get bankAccount;
+
+  /// No description provided for @navPeople.
+  ///
+  /// In ar, this message translates to:
+  /// **'الموظفون والمستحقات'**
+  String get navPeople;
+
+  /// No description provided for @peopleObligations.
+  ///
+  /// In ar, this message translates to:
+  /// **'الموظفون والمستحقات'**
+  String get peopleObligations;
+
+  /// No description provided for @peopleSubtitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'التزامات الشركة المالية تجاه موظفيها — وليست موارد بشرية لمنصة حاسم.'**
+  String get peopleSubtitle;
+
+  /// No description provided for @payroll.
+  ///
+  /// In ar, this message translates to:
+  /// **'الرواتب والمستحقات'**
+  String get payroll;
+
+  /// No description provided for @salaryAdvances.
+  ///
+  /// In ar, this message translates to:
+  /// **'السلف'**
+  String get salaryAdvances;
+
+  /// No description provided for @allowances.
+  ///
+  /// In ar, this message translates to:
+  /// **'البدلات'**
+  String get allowances;
+
+  /// No description provided for @bonuses.
+  ///
+  /// In ar, this message translates to:
+  /// **'المكافآت'**
+  String get bonuses;
+
+  /// No description provided for @deductions.
+  ///
+  /// In ar, this message translates to:
+  /// **'الخصومات'**
+  String get deductions;
+
+  /// No description provided for @searchPlaceholder.
+  ///
+  /// In ar, this message translates to:
+  /// **'بحث في النظام...'**
+  String get searchPlaceholder;
+
+  /// No description provided for @exportReport.
+  ///
+  /// In ar, this message translates to:
+  /// **'تصدير التقرير'**
+  String get exportReport;
+
+  /// No description provided for @salesVsExpenses.
+  ///
+  /// In ar, this message translates to:
+  /// **'المبيعات مقابل المصروفات'**
+  String get salesVsExpenses;
+
+  /// No description provided for @salesMix.
+  ///
+  /// In ar, this message translates to:
+  /// **'توزيع المبيعات'**
+  String get salesMix;
+
+  /// No description provided for @totalOwed.
+  ///
+  /// In ar, this message translates to:
+  /// **'المستحق'**
+  String get totalOwed;
+
+  /// No description provided for @totalPaid.
+  ///
+  /// In ar, this message translates to:
+  /// **'المدفوع'**
+  String get totalPaid;
+
+  /// No description provided for @remainingBalance.
+  ///
+  /// In ar, this message translates to:
+  /// **'المتبقي'**
+  String get remainingBalance;
+
+  /// No description provided for @advanceIssued.
+  ///
+  /// In ar, this message translates to:
+  /// **'السلفة'**
+  String get advanceIssued;
+
+  /// No description provided for @advanceSettled.
+  ///
+  /// In ar, this message translates to:
+  /// **'المسدد'**
+  String get advanceSettled;
+
+  /// No description provided for @advanceRemaining.
+  ///
+  /// In ar, this message translates to:
+  /// **'المتبقي من السلفة'**
+  String get advanceRemaining;
+
+  /// No description provided for @jobTitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'المسمى الوظيفي'**
+  String get jobTitle;
+
+  /// No description provided for @employeeCode.
+  ///
+  /// In ar, this message translates to:
+  /// **'كود الموظف'**
+  String get employeeCode;
+
+  /// No description provided for @basicSalary.
+  ///
+  /// In ar, this message translates to:
+  /// **'الراتب الأساسي'**
+  String get basicSalary;
+
+  /// No description provided for @hireDate.
+  ///
+  /// In ar, this message translates to:
+  /// **'تاريخ التعيين'**
+  String get hireDate;
+
+  /// No description provided for @emergencyContact.
+  ///
+  /// In ar, this message translates to:
+  /// **'جهة اتصال للطوارئ'**
+  String get emergencyContact;
+
+  /// No description provided for @addEmployee.
+  ///
+  /// In ar, this message translates to:
+  /// **'إضافة موظف'**
+  String get addEmployee;
+
+  /// No description provided for @addPayrollRecord.
+  ///
+  /// In ar, this message translates to:
+  /// **'حفظ سجل الاستحقاق'**
+  String get addPayrollRecord;
+
+  /// No description provided for @issueAdvance.
+  ///
+  /// In ar, this message translates to:
+  /// **'تسجيل سلفة'**
+  String get issueAdvance;
+
+  /// No description provided for @settleAdvance.
+  ///
+  /// In ar, this message translates to:
+  /// **'تسجيل سداد'**
+  String get settleAdvance;
+
+  /// No description provided for @periodLabel.
+  ///
+  /// In ar, this message translates to:
+  /// **'الفترة'**
+  String get periodLabel;
+
+  /// No description provided for @thisMonth.
+  ///
+  /// In ar, this message translates to:
+  /// **'هذا الشهر'**
+  String get thisMonth;
+
+  /// No description provided for @lastSixMonths.
+  ///
+  /// In ar, this message translates to:
+  /// **'آخر 6 أشهر'**
+  String get lastSixMonths;
+
+  /// No description provided for @paymentHistory.
+  ///
+  /// In ar, this message translates to:
+  /// **'سجل الدفعات'**
+  String get paymentHistory;
+
+  /// No description provided for @outstandingObligations.
+  ///
+  /// In ar, this message translates to:
+  /// **'الالتزامات القائمة'**
+  String get outstandingObligations;
+
+  /// No description provided for @financialSummary.
+  ///
+  /// In ar, this message translates to:
+  /// **'ملخص مالي'**
+  String get financialSummary;
+
+  /// No description provided for @companyPeopleHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'هؤلاء موظفو شركتك داخل مساحة العمل المالية، وليسوا موظفي منصة حاسم.'**
+  String get companyPeopleHint;
+
+  /// No description provided for @activeStatus.
+  ///
+  /// In ar, this message translates to:
+  /// **'نشط'**
+  String get activeStatus;
+
+  /// No description provided for @inactiveStatus.
+  ///
+  /// In ar, this message translates to:
+  /// **'غير نشط'**
+  String get inactiveStatus;
+
+  /// No description provided for @suspendedStatus.
+  ///
+  /// In ar, this message translates to:
+  /// **'موقوف'**
+  String get suspendedStatus;
+
+  /// No description provided for @repay.
+  ///
+  /// In ar, this message translates to:
+  /// **'سداد'**
+  String get repay;
+
+  /// No description provided for @methodPayrollDeduction.
+  ///
+  /// In ar, this message translates to:
+  /// **'خصم من الراتب'**
+  String get methodPayrollDeduction;
+
+  /// No description provided for @employeeLoan.
+  ///
+  /// In ar, this message translates to:
+  /// **'قرض موظف'**
+  String get employeeLoan;
+
+  /// No description provided for @salaryAdvanceType.
+  ///
+  /// In ar, this message translates to:
+  /// **'سلفة راتب'**
+  String get salaryAdvanceType;
+
+  /// No description provided for @payrollPaid.
+  ///
+  /// In ar, this message translates to:
+  /// **'رواتب مدفوعة'**
+  String get payrollPaid;
+
+  /// No description provided for @openAdvances.
+  ///
+  /// In ar, this message translates to:
+  /// **'سلف مفتوحة'**
+  String get openAdvances;
+
+  /// No description provided for @companyEmployees.
+  ///
+  /// In ar, this message translates to:
+  /// **'موظفو الشركة'**
+  String get companyEmployees;
+
+  /// No description provided for @dashboardSubtitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'نظرة شاملة على أدائك المالي في الفترة المحددة'**
+  String get dashboardSubtitle;
+
+  /// No description provided for @address.
+  ///
+  /// In ar, this message translates to:
+  /// **'العنوان'**
+  String get address;
+
+  /// No description provided for @periodStart.
+  ///
+  /// In ar, this message translates to:
+  /// **'من تاريخ'**
+  String get periodStart;
+
+  /// No description provided for @periodEnd.
+  ///
+  /// In ar, this message translates to:
+  /// **'إلى تاريخ'**
+  String get periodEnd;
+
+  /// No description provided for @allowancesTotal.
+  ///
+  /// In ar, this message translates to:
+  /// **'البدلات'**
+  String get allowancesTotal;
+
+  /// No description provided for @deductionsTotal.
+  ///
+  /// In ar, this message translates to:
+  /// **'الخصومات'**
+  String get deductionsTotal;
+
+  /// No description provided for @grossAmount.
+  ///
+  /// In ar, this message translates to:
+  /// **'الإجمالي'**
+  String get grossAmount;
+
+  /// No description provided for @netAmount.
+  ///
+  /// In ar, this message translates to:
+  /// **'الصافي'**
+  String get netAmount;
+
+  /// No description provided for @effectiveDate.
+  ///
+  /// In ar, this message translates to:
+  /// **'تاريخ السريان'**
+  String get effectiveDate;
+
+  /// No description provided for @issuedAt.
+  ///
+  /// In ar, this message translates to:
+  /// **'تاريخ الإصدار'**
+  String get issuedAt;
+
+  /// No description provided for @remainingAmount.
+  ///
+  /// In ar, this message translates to:
+  /// **'المتبقي'**
+  String get remainingAmount;
+
+  /// No description provided for @settledAmount.
+  ///
+  /// In ar, this message translates to:
+  /// **'المسدد'**
+  String get settledAmount;
+
+  /// No description provided for @addAdjustment.
+  ///
+  /// In ar, this message translates to:
+  /// **'حفظ الحركة'**
+  String get addAdjustment;
+
+  /// No description provided for @postAdjustment.
+  ///
+  /// In ar, this message translates to:
+  /// **'ترحيل محاسبي'**
+  String get postAdjustment;
+
+  /// No description provided for @cancelAdjustment.
+  ///
+  /// In ar, this message translates to:
+  /// **'إلغاء الحركة'**
+  String get cancelAdjustment;
+
+  /// No description provided for @selectEmployee.
+  ///
+  /// In ar, this message translates to:
+  /// **'اختر الموظف'**
+  String get selectEmployee;
+
+  /// No description provided for @showAll.
+  ///
+  /// In ar, this message translates to:
+  /// **'عرض الكل'**
+  String get showAll;
+
+  /// No description provided for @peopleCount.
+  ///
+  /// In ar, this message translates to:
+  /// **'عدد الموظفين'**
+  String get peopleCount;
 }
 
 class _AppLocalizationsDelegate
