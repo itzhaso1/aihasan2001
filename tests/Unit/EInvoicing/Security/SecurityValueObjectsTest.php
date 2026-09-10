@@ -15,13 +15,17 @@ class SecurityValueObjectsTest extends TestCase
 {
     public function test_first_document_pih_is_the_official_br_ksa_26_constant(): void
     {
-        $official = Pih::FIRST_DOCUMENT;
-        $derived = base64_encode(hash('sha256', '0', false));
+        // Published BR-KSA-26 (19 May 2023) value, not read from Pih::FIRST_DOCUMENT.
+        $published = 'NWZlY2ViNjZmZmM4NmYzOGQ5NTI3ODZjNmQ2OTZjNzljMmRiYzIzOWRkNGU5MWI0NjcyOWQ3M2EyN2ZiNTdlOQ==';
+        $hexOfZero = hash('sha256', '0', false);
+        $derived = base64_encode($hexOfZero);
 
-        $this->assertSame($derived, $official);
-        $this->assertSame($official, Pih::firstDocument()->value());
+        $this->assertSame('5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9', $hexOfZero);
+        $this->assertSame($published, $derived);
+        $this->assertSame($published, Pih::firstDocument()->value());
+        $this->assertSame($published, Pih::FIRST_DOCUMENT);
         $this->assertTrue(Pih::firstDocument()->isFirstDocument());
-        $this->assertSame($official, Pih::fromString($official)->value());
+        $this->assertSame($published, Pih::fromString($published)->value());
     }
 
     public function test_subsequent_pih_is_base64_of_binary_sha256_not_hex(): void

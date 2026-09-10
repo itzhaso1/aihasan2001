@@ -4,6 +4,7 @@ namespace Tests\Feature\Feature\Finance;
 
 use App\EInvoicing\EInvoiceDocument;
 use App\EInvoicing\Security\EInvoiceSecurityArtifact;
+use App\EInvoicing\Security\Exceptions\IcvAllocationException;
 use App\EInvoicing\Security\Exceptions\InvoiceHashException;
 use App\EInvoicing\Security\Exceptions\SecurityChainException;
 use App\EInvoicing\Security\Pih;
@@ -76,6 +77,65 @@ class Phase7EInvoiceSecurityChainTest extends TestCase
         $this->assertTrue($again->invoiceHash->equals($prepared['artifact']->invoiceHash));
         $this->assertSame(1, EInvoiceSecurityRecord::withoutGlobalScopes()->count());
         $this->assertSame(2, (int) EgsUnit::withoutGlobalScopes()->firstOrFail()->next_icv);
+
+        $next = $this->secure($workspace, 'INV-AFTER-RETRY');
+        $this->assertSame(2, $next['artifact']->icv->value());
+        $this->assertSame($prepared['artifact']->invoiceHash->value(), $next['artifact']->pih->value());
+        $this->assertSame(2, EInvoiceSecurityRecord::withoutGlobalScopes()->count());
+    }
+
+    public function test_new_document_increments_icv_and_chains_previous_hash(): void
+    {
+        [$workspace] = $this->createWorkspaceOwner();
+        $first = $this->secure($workspace, 'INV-NEW-1');
+        $second = $this->secure($workspace, 'INV-NEW-2');
+
+        $this->assertSame(1, $first['artifact']->icv->value());
+        $this->assertSame(2, $second['artifact']->icv->value());
+        $this->assertSame($first['artifact']->invoiceHash->value(), $second['artifact']->pih->value());
+        $this->assertNotSame($first['artifact']->invoiceHash->value(), $second['artifact']->invoiceHash->value());
+        $this->assertNotSame($first['record']->id, $second['record']->id);
+    }
+
+    public function test_document_cannot_use_another_workspace_egs_unit(): void
+    {
+        [$workspaceA] = $this->createWorkspaceOwner('Workspace A isolation');
+        [$workspaceB] = $this->createWorkspaceOwner('Workspace B isolation');
+        $this->secure($workspaceB, 'B-EGS-SEED');
+        $foreignEgsId = (int) EgsUnit::withoutGlobalScopes()
+            ->where('workspace_id', $workspaceB->id)
+            ->value('id');
+
+        $prepared = $this->persistDocument($workspaceA, 'A-CROSS');
+        $xml = app(EInvoiceXmlGenerator::class)->generate($prepared['document']);
+
+        $this->expectException(IcvAllocationException::class);
+        $this->expectExceptionMessage('EGS unit does not belong to the document workspace');
+        app(EInvoiceSecurityService::class)->generate($prepared['document'], $xml, $foreignEgsId);
+    }
+
+    public function test_security_record_is_one_to_one_and_immutable(): void
+    {
+        [$workspace] = $this->createWorkspaceOwner();
+        $prepared = $this->secure($workspace, 'INV-IMM-REC');
+        $record = EInvoiceSecurityRecord::withoutGlobalScopes()
+            ->where('e_invoice_document_id', $prepared['record']->id)
+            ->firstOrFail();
+
+        $this->assertSame(1, EInvoiceSecurityRecord::withoutGlobalScopes()
+            ->where('e_invoice_document_id', $prepared['record']->id)
+            ->count());
+        $this->assertSame('SHA-256', $record->hash_algorithm);
+        $this->assertSame('http://www.w3.org/2006/12/xml-c14n11', $record->canonicalization_method);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Electronic invoice security records are immutable');
+        $record->icv = 99;
+        $record->pih = 'changed';
+        $record->invoice_hash = 'changed';
+        $record->hash_algorithm = 'SHA-1';
+        $record->canonicalization_method = 'none';
+        $record->save();
     }
 
     public function test_mutated_xml_after_finalization_is_rejected(): void
@@ -262,9 +322,9 @@ class Phase7EInvoiceSecurityChainTest extends TestCase
             && in_array($connection, ['mysql', 'pgsql'], true);
 
         if (! $canFork) {
-            $this->assertSequentialIcvLockingFallback();
-
-            return;
+            $this->markTestSkipped(
+                'Genuine multi-writer ICV concurrency requires mysql or pgsql, not sqlite :memory:. Sequential uniqueness is covered by test_icv_uniqueness_and_sequential_allocation. Use TEST_DB_CONNECTION=mysql|pgsql with Phase7EgsConcurrencyIntegrationTest.'
+            );
         }
 
         [$workspace] = $this->createWorkspaceOwner();
@@ -541,15 +601,5 @@ class Phase7EInvoiceSecurityChainTest extends TestCase
         $xpath->registerNamespace('cbc', 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2');
 
         return trim((string) $xpath->evaluate('string('.$query.')'));
-    }
-
-    private function assertSequentialIcvLockingFallback(): void
-    {
-        [$workspace] = $this->createWorkspaceOwner('Concurrency fallback');
-        $values = [];
-        for ($i = 0; $i < 8; $i++) {
-            $values[] = $this->secure($workspace, 'INV-LOCK-'.$i)['artifact']->icv->value();
-        }
-        $this->assertSame(range(1, 8), $values);
     }
 }

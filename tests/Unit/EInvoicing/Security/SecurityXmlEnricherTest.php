@@ -35,6 +35,14 @@ class SecurityXmlEnricherTest extends TestCase
         $this->assertNotFalse(strpos($enriched, '>ICV</cbc:ID>'));
         $this->assertTrue(strpos($enriched, '>ICV</cbc:ID>') < strpos($enriched, 'AccountingSupplierParty'));
         $this->assertStringNotContainsString('>QR</cbc:ID>', $enriched);
+        $this->assertGeneratedXmlHasNoXmlCoreAttributes($xml->xml);
+        $this->assertGeneratedXmlHasNoXmlCoreAttributes($enriched);
+    }
+
+    public function test_ubl_mapper_output_does_not_emit_xml_core_attributes(): void
+    {
+        $xml = (new EInvoiceXmlGenerator(new UblMapper))->generate($this->document());
+        $this->assertGeneratedXmlHasNoXmlCoreAttributes($xml->xml);
     }
 
     private function document(): EInvoiceDocument
@@ -93,5 +101,31 @@ class SecurityXmlEnricherTest extends TestCase
             payment: [],
             sourceMetadata: [],
         );
+    }
+
+    private function assertGeneratedXmlHasNoXmlCoreAttributes(string $xml): void
+    {
+        $document = new \DOMDocument;
+        $document->loadXML($xml);
+        $root = $document->documentElement;
+        $this->assertNotNull($root);
+        $stack = [$root];
+        while ($stack !== []) {
+            $element = array_pop($stack);
+            if (! $element instanceof \DOMElement) {
+                continue;
+            }
+            if ($element->hasAttributes()) {
+                foreach ($element->attributes as $attribute) {
+                    $this->assertNotSame('http://www.w3.org/XML/1998/namespace', $attribute->namespaceURI);
+                    $this->assertDoesNotMatchRegularExpression('/^xml:(id|base|lang|space)$/', $attribute->nodeName);
+                }
+            }
+            foreach ($element->childNodes as $child) {
+                if ($child instanceof \DOMElement) {
+                    $stack[] = $child;
+                }
+            }
+        }
     }
 }
