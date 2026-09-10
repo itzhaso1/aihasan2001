@@ -712,13 +712,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navSales => 'Sales';
 
   @override
-  String get navPurchases => 'Purchases & suppliers';
+  String get navPayments => 'Payments';
 
   @override
-  String get navOps => 'Expenses & inventory';
+  String get navParties => 'Customers & suppliers';
 
   @override
-  String get navAccounting => 'Accounting & tax';
+  String get navPurchases => 'Purchases';
+
+  @override
+  String get navOps => 'Inventory';
+
+  @override
+  String get navReports => 'Reports';
+
+  @override
+  String get navAccounting => 'Accounting';
 
   @override
   String get navBanks => 'Banks & treasury';

@@ -710,13 +710,22 @@ class AppLocalizationsAr extends AppLocalizations {
   String get navSales => 'المبيعات';
 
   @override
-  String get navPurchases => 'المشتريات والموردون';
+  String get navPayments => 'المدفوعات';
 
   @override
-  String get navOps => 'المصروفات والمخزون';
+  String get navParties => 'العملاء والموردون';
 
   @override
-  String get navAccounting => 'المحاسبة والضرائب';
+  String get navPurchases => 'المشتريات';
+
+  @override
+  String get navOps => 'المخزون';
+
+  @override
+  String get navReports => 'التقارير';
+
+  @override
+  String get navAccounting => 'المحاسبة';
 
   @override
   String get navBanks => 'البنوك والخزينة';
