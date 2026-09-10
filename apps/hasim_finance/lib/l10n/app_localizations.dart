@@ -1490,22 +1490,40 @@ abstract class AppLocalizations {
   /// **'المبيعات'**
   String get navSales;
 
+  /// No description provided for @navPayments.
+  ///
+  /// In ar, this message translates to:
+  /// **'المدفوعات'**
+  String get navPayments;
+
+  /// No description provided for @navParties.
+  ///
+  /// In ar, this message translates to:
+  /// **'العملاء والموردون'**
+  String get navParties;
+
   /// No description provided for @navPurchases.
   ///
   /// In ar, this message translates to:
-  /// **'المشتريات والموردون'**
+  /// **'المشتريات'**
   String get navPurchases;
 
   /// No description provided for @navOps.
   ///
   /// In ar, this message translates to:
-  /// **'المصروفات والمخزون'**
+  /// **'المخزون'**
   String get navOps;
+
+  /// No description provided for @navReports.
+  ///
+  /// In ar, this message translates to:
+  /// **'التقارير'**
+  String get navReports;
 
   /// No description provided for @navAccounting.
   ///
   /// In ar, this message translates to:
-  /// **'المحاسبة والضرائب'**
+  /// **'المحاسبة'**
   String get navAccounting;
 
   /// No description provided for @navBanks.

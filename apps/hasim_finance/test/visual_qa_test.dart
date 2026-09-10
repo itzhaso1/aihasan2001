@@ -172,6 +172,13 @@ void main() {
     await saveShot(tester, 'finance_dashboard_desktop_1440');
   });
 
+  testWidgets('invoices page auto-expands sales sidebar group', (tester) async {
+    await pumpApp(tester, size: const Size(1440, 1100), location: '/invoices');
+    expect(find.text('الفواتير'), findsWidgets);
+    expect(tester.takeException(), isNull);
+    await saveShot(tester, 'finance_sidebar_sales_expanded_1440');
+  });
+
   testWidgets('mobile dashboard visual capture', (tester) async {
     await pumpApp(tester, size: const Size(390, 844), location: '/dashboard');
     expect(find.byType(NavigationBar), findsOneWidget);
