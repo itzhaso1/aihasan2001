@@ -1,16 +1,29 @@
 <?php
 
+use App\EInvoicing\QR\QrEncodingException;
+use App\EInvoicing\Security\Exceptions\ProductionCryptographicProfileException;
+use App\EInvoicing\Xml\EInvoiceXmlMappingException;
+use App\Exceptions\Api\ApiApplicationException;
+use App\Http\Api\FinanceApiErrorRenderer;
 use App\Http\Middleware\EnsureFeatureAccess;
 use App\Http\Middleware\EnsurePlatformAdmin;
-use App\Http\Middleware\EnsureWorkspaceSelected;
 use App\Http\Middleware\EnsureWorkspaceMembership;
+use App\Http\Middleware\EnsureWorkspaceSelected;
+use App\Http\Middleware\Mobile\EnsureIdempotency;
 use App\Http\Middleware\ResolvePublicWebsite;
 use App\Http\Middleware\ResolveWorkspaceContext;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
+use Laravel\Socialite\Two\InvalidStateException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -44,7 +57,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'workspace.feature' => EnsureFeatureAccess::class,
             'public.website.resolve' => ResolvePublicWebsite::class,
             'platform.admin' => EnsurePlatformAdmin::class,
-            'mobile.idempotency' => \App\Http\Middleware\Mobile\EnsureIdempotency::class,
+            'mobile.idempotency' => EnsureIdempotency::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
@@ -52,7 +65,11 @@ return Application::configure(basePath: dirname(__DIR__))
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
 
-        $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, Request $request) {
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
+            if (FinanceApiErrorRenderer::matches($request)) {
+                return FinanceApiErrorRenderer::unauthenticated();
+            }
+
             if ($request->is('api/mobile/*') || $request->is('api/mobile/v1/*') || $request->is('api/cashier/*')) {
                 return response()->json([
                     'success' => false,
@@ -61,7 +78,11 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        $exceptions->render(function (\Illuminate\Auth\Access\AuthorizationException $e, Request $request) {
+        $exceptions->render(function (AuthorizationException $e, Request $request) {
+            if (FinanceApiErrorRenderer::matches($request)) {
+                return FinanceApiErrorRenderer::forbidden();
+            }
+
             if ($request->is('api/mobile/*') || $request->is('api/cashier/*')) {
                 return response()->json([
                     'success' => false,
@@ -70,7 +91,11 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        $exceptions->render(function (\Illuminate\Database\Eloquent\ModelNotFoundException $e, Request $request) {
+        $exceptions->render(function (ModelNotFoundException $e, Request $request) {
+            if (FinanceApiErrorRenderer::matches($request)) {
+                return FinanceApiErrorRenderer::notFound();
+            }
+
             if ($request->is('api/mobile/*') || $request->is('api/cashier/*')) {
                 return response()->json([
                     'success' => false,
@@ -79,7 +104,17 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        $exceptions->render(function (\Illuminate\Validation\ValidationException $e, Request $request) {
+        $exceptions->render(function (NotFoundHttpException $e, Request $request) {
+            if (FinanceApiErrorRenderer::matches($request)) {
+                return FinanceApiErrorRenderer::notFound();
+            }
+        });
+
+        $exceptions->render(function (ValidationException $e, Request $request) {
+            if (FinanceApiErrorRenderer::matches($request)) {
+                return FinanceApiErrorRenderer::validation($e);
+            }
+
             if ($request->is('api/mobile/*') || $request->is('api/cashier/*')) {
                 return response()->json([
                     'success' => false,
@@ -89,7 +124,52 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        $exceptions->render(function (\Laravel\Socialite\Two\InvalidStateException $e, Request $request) {
+        $exceptions->render(function (ApiApplicationException $e, Request $request) {
+            if (FinanceApiErrorRenderer::matches($request) || $request->expectsJson()) {
+                return FinanceApiErrorRenderer::application($e);
+            }
+        });
+
+        $exceptions->render(function (ProductionCryptographicProfileException $e, Request $request) {
+            if (FinanceApiErrorRenderer::matches($request)) {
+                return FinanceApiErrorRenderer::fromThrowable($e);
+            }
+        });
+
+        $exceptions->render(function (QrEncodingException $e, Request $request) {
+            if (FinanceApiErrorRenderer::matches($request)) {
+                return FinanceApiErrorRenderer::fromThrowable($e);
+            }
+        });
+
+        $exceptions->render(function (EInvoiceXmlMappingException $e, Request $request) {
+            if (FinanceApiErrorRenderer::matches($request)) {
+                return FinanceApiErrorRenderer::fromThrowable($e);
+            }
+        });
+
+        $exceptions->render(function (Throwable $e, Request $request) {
+            if (! FinanceApiErrorRenderer::matches($request)) {
+                return;
+            }
+
+            if ($e instanceof HttpResponseException) {
+                return;
+            }
+
+            $mapped = FinanceApiErrorRenderer::fromThrowable($e);
+            if ($mapped) {
+                return $mapped;
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An application error occurred.',
+                'code' => 'server_error',
+            ], 500);
+        });
+
+        $exceptions->render(function (InvalidStateException $e, Request $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
                     'success' => false,

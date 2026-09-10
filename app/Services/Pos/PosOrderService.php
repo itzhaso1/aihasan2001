@@ -23,6 +23,7 @@ use App\Models\TableSession;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Audit\AuditLogService;
+use App\Services\EInvoicing\InvoiceIssueService;
 use App\Services\Finance\IssuedSnapshotBuilder;
 use App\Services\Inventory\InventoryService;
 use App\Services\Order\OrderService;
@@ -43,6 +44,7 @@ class PosOrderService
         private readonly InventoryService $inventoryService,
         private readonly IssuedSnapshotBuilder $issuedSnapshotBuilder,
         private readonly PosTaxCalculator $posTaxCalculator,
+        private readonly InvoiceIssueService $invoiceIssueService,
     ) {}
 
     /**
@@ -1020,7 +1022,10 @@ class PosOrderService
             ->whereKey($invoice->id)
             ->firstOrFail();
 
-        return $this->issuedSnapshotBuilder->capturePosCashierInvoice($fresh);
+        $snapshot = $this->issuedSnapshotBuilder->capturePosCashierInvoice($fresh);
+        $this->invoiceIssueService->prepareFromSnapshot($snapshot);
+
+        return $snapshot;
     }
 
     /**
