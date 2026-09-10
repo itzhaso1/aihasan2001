@@ -1117,6 +1117,67 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'رقم الفاتورة'**
   String get invoiceId;
+
+  String get taxableAmount;
+  String get amountCredited;
+  String get amountDebited;
+  String get whatsapp;
+  String get buildingNumber;
+  String get district;
+  String get postalCode;
+  String get city;
+  String get street;
+  String get country;
+  String get paymentTerms;
+  String get treasuryAccount;
+  String get recurring;
+  String get netProfit;
+  String get outputVat;
+  String get inputVat;
+  String get netVat;
+  String get cashBalance;
+  String get bankBalance;
+  String get activeContracts;
+  String get recentExpenses;
+  String get statementDebit;
+  String get statementCredit;
+  String get runningBalance;
+  String get invoicesTotal;
+  String get paymentsTotal;
+  String get creditsTotal;
+  String get debitsTotal;
+  String get zatcaQr;
+  String get terms;
+  String get rejectionReason;
+  String get website;
+  String get currency;
+  String get invoicePrefix;
+  String get defaultVatRate;
+  String get zatcaMode;
+  String get nextRun;
+  String get frequency;
+  String get autoIssue;
+  String get generatedCount;
+  String get paymentDate;
+  String get supplier;
+  String get openingCash;
+  String get netChange;
+  String get closingCash;
+  String get assets;
+  String get liabilities;
+  String get equity;
+  String get revenue;
+  String get cogs;
+  String get grossProfit;
+  String get additionalNumber;
+  String get companyNameAr;
+  String get addressLine;
+  String get filterAll;
+  String get generatedInvoices;
+  String get invoicedTotal;
+  String get snapshots;
+  String get reason;
+  String get inventoryValuation;
 }
 
 class _AppLocalizationsDelegate

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
@@ -19,33 +21,102 @@ class SupplierSelectField extends ConsumerStatefulWidget {
 }
 
 class _SupplierSelectFieldState extends ConsumerState<SupplierSelectField> {
+  final _search = TextEditingController();
+  Timer? _debounce;
   List<SupplierRecord> _suppliers = [];
+  int _page = 0;
+  int _lastPage = 1;
+  int _requestId = 0;
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    ref.read(financeApiProvider).suppliers(page: 1).then((page) {
-      if (!mounted) return;
-      setState(() => _suppliers = page.items);
-    }).catchError((_) {});
+    _load(reset: true);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  List<SupplierRecord> _unique(List<SupplierRecord> items) {
+    final seen = <int>{};
+    return [
+      for (final row in items)
+        if (seen.add(row.id)) row,
+    ];
+  }
+
+  Future<void> _load({bool reset = false}) async {
+    final requestId = ++_requestId;
+    final pageNum = reset ? 1 : _page + 1;
+    setState(() => _loading = true);
+    try {
+      final page = await ref.read(financeApiProvider).suppliers(
+            search: _search.text.trim(),
+            page: pageNum,
+          );
+      if (!mounted || requestId != _requestId) return;
+      setState(() {
+        _suppliers = _unique(reset ? page.items : [..._suppliers, ...page.items]);
+        _page = page.page;
+        _lastPage = page.lastPage;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted && requestId == _requestId) setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final ids = {for (final supplier in _suppliers) supplier.id};
-    final value = widget.selectedId != null && ids.contains(widget.selectedId) ? widget.selectedId : null;
-    return DropdownButtonFormField<int>(
-      // ignore: deprecated_member_use
-      value: value,
-      decoration: InputDecoration(labelText: l.selectSupplier),
-      items: [
-        for (final supplier in _suppliers)
-          DropdownMenuItem(value: supplier.id, child: Text(supplier.name)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _search,
+          decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: l.selectSupplier),
+          onChanged: (_) {
+            _debounce?.cancel();
+            _debounce = Timer(const Duration(milliseconds: 300), () => _load(reset: true));
+          },
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 220,
+          child: _suppliers.isEmpty && _loading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final supplier in _suppliers)
+                        ListTile(
+                          dense: true,
+                          selected: widget.selectedId == supplier.id,
+                          title: Text(supplier.name),
+                          subtitle: Text([
+                            if ((supplier.vatNumber ?? '').isNotEmpty) supplier.vatNumber,
+                            if ((supplier.commercialRegistration ?? '').isNotEmpty) supplier.commercialRegistration,
+                          ].join(' · ')),
+                          onTap: () => widget.onSelected(supplier.id),
+                        ),
+                    ],
+                  ),
+                ),
+        ),
+        if (_page >= 1 && _page < _lastPage)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton(
+              onPressed: _loading ? null : () => _load(),
+              child: Text(l.loadMore),
+            ),
+          ),
       ],
-      onChanged: (id) {
-        if (id != null) widget.onSelected(id);
-      },
     );
   }
 }

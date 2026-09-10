@@ -34,8 +34,8 @@ Owner / admin / manager membership **or** Spatie `workspace.manage` **or** the n
 | GET | `/workspaces/current` | member | current workspace + permission map |
 | POST | `/workspaces/switch` | member | body `{ workspace_id }`; updates Sanctum token workspace |
 | GET | `/bootstrap` | `finance.view` | permissions, safe company settings, catalogs (customers/products/tax/suppliers/categories/treasury). No secrets. |
-| GET | `/dashboard` | `finance.view` | cards from `DashboardService` + posted payments this month as `paid_this_period` |
-| GET | `/search?q=` | `finance.view` | customers, sales invoices, quotes, receipts, payments. No web URLs. |
+| GET | `/dashboard` | `finance.view` | cards from `DashboardService` + posted payments this month as `paid_this_period`. Extra cards: purchases, VAT, cash/bank, net profit, active contracts. `recent_expenses` and `overdue_invoices` included. Payroll KPIs are omitted on purpose. |
+| GET | `/search?q=` | `finance.view` | customers, sales invoices, quotes, receipts, payments, expenses, suppliers, contracts, purchases. No web URLs. |
 
 ### Customers
 
@@ -107,7 +107,7 @@ Do **not** use `/invoices` for this client. That prefix is the Phase 10 e-invoic
 | GET/POST/PUT | `/purchases` | `purchases.view` / `purchases.manage` |
 | GET | `/purchases/aging` | `purchases.view` |
 | GET/POST/PUT | `/suppliers` | view / manage |
-| GET | `/reports/{report}` | `reports.view` | keys: profit-loss, trial-balance, cash-flow, balance-sheet, general-ledger, ar-aging, ap-aging. `format=csv` for CSV |
+| GET | `/reports/{report}` | `reports.view` | keys: profit-loss, trial-balance, cash-flow, balance-sheet, general-ledger, ar-aging, ap-aging, **inventory-valuation**. Query `from`/`to`/`account_id`. `format=csv` for CSV |
 | GET | `/exports/{dataset}` | matching view | invoices, payments, customers, expenses, quotes |
 | GET/PUT | `/settings` | `finance.settings` | company profile only. No ZATCA keys, sequences, payment secrets |
 
@@ -124,3 +124,12 @@ Checkout POST may send `Idempotency-Key`. Shared Payments still owns provider un
 - Login identifier field: `email_or_phone` (Laravel also accepts `email` / `phone`).
 - Permission map keys are dotted strings (`invoices.view`), not nested JSON objects.
 - After every mutation the client re-GETs the resource. Totals on screen always come from the last server payload.
+
+## Additive presenter fields (data-parity pass)
+
+Invoice summary now includes `discount`, `taxable_amount`, `amount_credited`, `amount_debited`. Invoice detail adds snapshots, `project_id`, `zatca.has_qr`. Quote summary includes `discount`/`taxable_amount`. Payments include treasury + notes + `reversed_at`. Expenses include supplier/method/treasury/`is_recurring`. Contracts include `terms`, `items`, schedule `amount`/`next_run_on`, and show-level `generated_invoices`/`billing_summary`. Statements include period totals + line `invoice_id`. Search adds expenses/suppliers/contracts/purchases.
+
+Flutter web PDF/CSV uses a blob download (`download_web.dart`). Native still writes a temp file and opens/shares it.
+
+See `FINANCE_FLUTTER_WEB_DATA_PARITY_AUDIT.md`.
+

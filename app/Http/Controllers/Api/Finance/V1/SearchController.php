@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Api\Finance\V1;
 use App\Http\Controllers\Api\Finance\Concerns\HandlesFinanceClient;
 use App\Http\Controllers\Api\Finance\FinanceApiController;
 use App\Models\Customer;
+use App\Models\Contract\Contract;
+use App\Models\Finance\FinanceExpense;
 use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\FinanceInvoicePayment;
 use App\Models\Finance\FinanceQuote;
 use App\Models\Finance\FinanceReceipt;
+use App\Models\Finance\FinanceSupplier;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -57,11 +60,11 @@ class SearchController extends FinanceApiController
                         ->orWhere('customer_name', 'like', $like);
                 })
                 ->limit($limit)
-                ->get(['id', 'invoice_number', 'total', 'invoice_status'])
+                ->get(['id', 'invoice_number', 'total', 'invoice_status', 'payment_status'])
                 ->map(fn (FinanceInvoice $row): array => [
                     'id' => $row->id,
                     'title' => $row->invoice_number,
-                    'subtitle' => (string) $row->invoice_status,
+                    'subtitle' => trim(($row->invoice_status ?: '').' · '.$row->total),
                     'type' => 'invoice',
                 ])->all(),
             'quotes' => FinanceQuote::query()
@@ -91,8 +94,63 @@ class SearchController extends FinanceApiController
                 ->map(fn (FinanceInvoicePayment $row): array => [
                     'id' => $row->id,
                     'title' => $row->reference ?: ('#'.$row->id),
-                    'subtitle' => $row->status,
+                    'subtitle' => trim(($row->status ?: '').' · '.$row->amount),
                     'type' => 'payment',
+                ])->all(),
+            'expenses' => FinanceExpense::query()
+                ->where(function ($query) use ($like): void {
+                    $query->where('expense_number', 'like', $like)
+                        ->orWhere('description', 'like', $like);
+                })
+                ->limit($limit)
+                ->get(['id', 'expense_number', 'description', 'total'])
+                ->map(fn (FinanceExpense $row): array => [
+                    'id' => $row->id,
+                    'title' => $row->expense_number ?: ($row->description ?: '#'.$row->id),
+                    'subtitle' => (string) $row->total,
+                    'type' => 'expense',
+                ])->all(),
+            'suppliers' => FinanceSupplier::query()
+                ->where(function ($query) use ($like): void {
+                    $query->where('name', 'like', $like)
+                        ->orWhere('arabic_name', 'like', $like)
+                        ->orWhere('email', 'like', $like)
+                        ->orWhere('vat_number', 'like', $like);
+                })
+                ->limit($limit)
+                ->get(['id', 'name', 'vat_number'])
+                ->map(fn (FinanceSupplier $row): array => [
+                    'id' => $row->id,
+                    'title' => $row->name,
+                    'subtitle' => $row->vat_number,
+                    'type' => 'supplier',
+                ])->all(),
+            'contracts' => Contract::query()
+                ->where(function ($query) use ($like): void {
+                    $query->where('contract_number', 'like', $like)
+                        ->orWhere('title', 'like', $like);
+                })
+                ->limit($limit)
+                ->get(['id', 'contract_number', 'title', 'status'])
+                ->map(fn (Contract $row): array => [
+                    'id' => $row->id,
+                    'title' => $row->contract_number ?: $row->title,
+                    'subtitle' => $row->status,
+                    'type' => 'contract',
+                ])->all(),
+            'purchases' => FinanceInvoice::query()
+                ->where('type', 'purchase')
+                ->where(function ($query) use ($like): void {
+                    $query->where('invoice_number', 'like', $like)
+                        ->orWhere('supplier_name', 'like', $like);
+                })
+                ->limit($limit)
+                ->get(['id', 'invoice_number', 'total', 'invoice_status'])
+                ->map(fn (FinanceInvoice $row): array => [
+                    'id' => $row->id,
+                    'title' => $row->invoice_number,
+                    'subtitle' => (string) $row->total,
+                    'type' => 'purchase',
                 ])->all(),
         ]);
     }

@@ -98,6 +98,7 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                         Text('${l.crNumber}: ${customer.commercialRegistration ?? '-'}'),
                         Text('${l.email}: ${customer.email ?? '-'}'),
                         Text('${l.phone}: ${customer.phone ?? '-'}'),
+                        if ((customer.whatsapp ?? '').isNotEmpty) Text('${l.whatsapp}: ${customer.whatsapp}'),
                         const SizedBox(height: 8),
                         MoneyText(customer.outstandingBalance),
                       ],
@@ -114,7 +115,16 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                   Expanded(
                     child: TabBarView(children: [
                       ListView(padding: const EdgeInsets.all(16), children: [
-                        Text(customer.address ?? customer.street ?? ''),
+                        InfoRow(label: l.street, value: customer.street),
+                        InfoRow(label: l.buildingNumber, value: customer.buildingNumber),
+                        InfoRow(label: l.district, value: customer.district),
+                        InfoRow(label: l.city, value: customer.city),
+                        InfoRow(label: l.postalCode, value: customer.postalCode),
+                        InfoRow(label: l.country, value: customer.countryCode),
+                        InfoRow(label: l.additionalNumber, value: customer.additionalNumber),
+                        InfoRow(label: l.paymentTerms, value: customer.paymentTerms),
+                        InfoRow(label: l.notesField, value: customer.notes),
+                        Text(customer.address ?? ''),
                         TextButton(onPressed: () => context.push('/statements?customer_id=${customer.id}'), child: Text(l.statements)),
                       ]),
                       _miniList(customer.invoices.map((i) => ListTile(title: Text(i.invoiceNumber ?? ''), trailing: Text(i.total), onTap: () => context.push('/invoices/${i.id}'))).toList()),
@@ -151,6 +161,16 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
   final _vat = TextEditingController();
   final _cr = TextEditingController();
   final _address = TextEditingController();
+  final _whatsapp = TextEditingController();
+  final _street = TextEditingController();
+  final _building = TextEditingController();
+  final _district = TextEditingController();
+  final _city = TextEditingController();
+  final _postal = TextEditingController();
+  final _country = TextEditingController(text: 'SA');
+  final _additional = TextEditingController();
+  final _paymentTerms = TextEditingController();
+  final _notes = TextEditingController();
   String _type = 'individual';
   bool _busy = false;
 
@@ -165,6 +185,16 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
         _vat.text = c.vatNumber ?? '';
         _cr.text = c.commercialRegistration ?? '';
         _address.text = c.address ?? '';
+        _whatsapp.text = c.whatsapp ?? '';
+        _street.text = c.street ?? '';
+        _building.text = c.buildingNumber ?? '';
+        _district.text = c.district ?? '';
+        _city.text = c.city ?? '';
+        _postal.text = c.postalCode ?? '';
+        _country.text = c.countryCode ?? 'SA';
+        _additional.text = c.additionalNumber ?? '';
+        _paymentTerms.text = c.paymentTerms ?? '';
+        _notes.text = c.notes ?? '';
         _type = c.partyType ?? 'individual';
         if (mounted) setState(() {});
       });
@@ -179,6 +209,16 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
     _vat.dispose();
     _cr.dispose();
     _address.dispose();
+    _whatsapp.dispose();
+    _street.dispose();
+    _building.dispose();
+    _district.dispose();
+    _city.dispose();
+    _postal.dispose();
+    _country.dispose();
+    _additional.dispose();
+    _paymentTerms.dispose();
+    _notes.dispose();
     super.dispose();
   }
 
@@ -192,6 +232,16 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
         'vat_number': _vat.text.trim(),
         'commercial_registration': _cr.text.trim(),
         'address': _address.text.trim(),
+        'whatsapp': _whatsapp.text.trim(),
+        'street': _street.text.trim(),
+        'building_number': _building.text.trim(),
+        'district': _district.text.trim(),
+        'city': _city.text.trim(),
+        'postal_code': _postal.text.trim(),
+        'country_code': _country.text.trim(),
+        'additional_number': _additional.text.trim(),
+        'payment_terms': _paymentTerms.text.trim(),
+        'notes': _notes.text.trim(),
         'party_type': _type,
       }, id: widget.id);
       if (!mounted) return;
@@ -225,7 +275,17 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
           TextField(controller: _email, decoration: InputDecoration(labelText: l.email)),
           TextField(controller: _vat, decoration: InputDecoration(labelText: l.vatNumber)),
           TextField(controller: _cr, decoration: InputDecoration(labelText: l.crNumber)),
-          TextField(controller: _address, decoration: InputDecoration(labelText: l.notesField)),
+          TextField(controller: _whatsapp, decoration: InputDecoration(labelText: l.whatsapp)),
+          TextField(controller: _street, decoration: InputDecoration(labelText: l.street)),
+          TextField(controller: _building, decoration: InputDecoration(labelText: l.buildingNumber)),
+          TextField(controller: _district, decoration: InputDecoration(labelText: l.district)),
+          TextField(controller: _city, decoration: InputDecoration(labelText: l.city)),
+          TextField(controller: _postal, decoration: InputDecoration(labelText: l.postalCode)),
+          TextField(controller: _country, decoration: InputDecoration(labelText: l.country)),
+          TextField(controller: _additional, decoration: InputDecoration(labelText: l.additionalNumber)),
+          TextField(controller: _paymentTerms, decoration: InputDecoration(labelText: l.paymentTerms)),
+          TextField(controller: _address, decoration: InputDecoration(labelText: l.addressLine)),
+          TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 3),
           const SizedBox(height: 16),
           FilledButton(onPressed: _busy ? null : _save, child: Text(l.save)),
         ],

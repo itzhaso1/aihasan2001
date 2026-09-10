@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
@@ -19,33 +21,109 @@ class CustomerSelectField extends ConsumerStatefulWidget {
 }
 
 class _CustomerSelectFieldState extends ConsumerState<CustomerSelectField> {
+  final _search = TextEditingController();
+  Timer? _debounce;
   List<CustomerRecord> _customers = [];
+  int _page = 0;
+  int _lastPage = 1;
+  int _requestId = 0;
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    ref.read(financeApiProvider).customers(page: 1).then((page) {
-      if (!mounted) return;
-      setState(() => _customers = page.items);
-    }).catchError((_) {});
+    _load(reset: true);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  List<CustomerRecord> _unique(List<CustomerRecord> items) {
+    final seen = <int>{};
+    return [
+      for (final row in items)
+        if (seen.add(row.id)) row,
+    ];
+  }
+
+  Future<void> _load({bool reset = false}) async {
+    final requestId = ++_requestId;
+    final pageNum = reset ? 1 : _page + 1;
+    setState(() => _loading = true);
+    try {
+      final page = await ref.read(financeApiProvider).customers(
+            search: _search.text.trim(),
+            page: pageNum,
+          );
+      if (!mounted || requestId != _requestId) return;
+      var items = reset ? page.items : [..._customers, ...page.items];
+      final selectedId = widget.selectedId;
+      if (selectedId != null && !items.any((row) => row.id == selectedId)) {
+        try {
+          final selected = await ref.read(financeApiProvider).customer(selectedId);
+          if (!mounted || requestId != _requestId) return;
+          items = [selected, ...items.where((row) => row.id != selected.id)];
+        } catch (_) {}
+      }
+      setState(() {
+        _customers = _unique(items);
+        _page = page.page;
+        _lastPage = page.lastPage;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted && requestId == _requestId) setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final ids = {for (final c in _customers) c.id};
-    final value = widget.selectedId != null && ids.contains(widget.selectedId) ? widget.selectedId : null;
-    return DropdownButtonFormField<int>(
-      // ignore: deprecated_member_use
-      value: value,
-      decoration: InputDecoration(labelText: l.selectCustomer),
-      items: [
-        for (final customer in _customers)
-          DropdownMenuItem(value: customer.id, child: Text(customer.name)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _search,
+          decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: l.selectCustomer),
+          onChanged: (_) {
+            _debounce?.cancel();
+            _debounce = Timer(const Duration(milliseconds: 300), () => _load(reset: true));
+          },
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 220,
+          child: _customers.isEmpty && _loading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  key: const Key('customer-select-list'),
+                  child: Column(
+                    children: [
+                      for (final customer in _customers)
+                        ListTile(
+                          dense: true,
+                          selected: widget.selectedId == customer.id,
+                          title: Text(customer.name),
+                          subtitle: Text(customer.outstandingBalance),
+                          onTap: () => widget.onSelected(customer.id),
+                        ),
+                    ],
+                  ),
+                ),
+        ),
+        if (_page >= 1 && _page < _lastPage)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton(
+              onPressed: _loading ? null : () => _load(),
+              child: Text(l.loadMore),
+            ),
+          ),
       ],
-      onChanged: (id) {
-        if (id != null) widget.onSelected(id);
-      },
     );
   }
 }

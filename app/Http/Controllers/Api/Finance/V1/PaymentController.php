@@ -36,7 +36,7 @@ class PaymentController extends FinanceApiController
         ]);
 
         $page = FinanceInvoicePayment::query()
-            ->with(['invoice.customer', 'receipt'])
+            ->with(['invoice.customer', 'receipt', 'treasuryAccount'])
             ->when($validated['search'] ?? null, function ($query, $search): void {
                 $query->where(function ($inner) use ($search): void {
                     $inner->where('reference', 'like', '%'.$search.'%')
@@ -57,7 +57,7 @@ class PaymentController extends FinanceApiController
     {
         $workspace = $this->clientWorkspace($this->workspaceContext);
         $this->clientActor($request, $workspace, 'payments.view');
-        $payment->load(['invoice.customer', 'receipt']);
+        $payment->load(['invoice.customer', 'receipt', 'treasuryAccount']);
 
         return $this->ok($this->presenter->payment($payment));
     }
@@ -77,7 +77,7 @@ class PaymentController extends FinanceApiController
                 $validated['reversal_reason'] ?? null
             )
         );
-        $reversed->load(['invoice.customer', 'receipt']);
+        $reversed->load(['invoice.customer', 'receipt', 'treasuryAccount']);
 
         return $this->ok($this->presenter->payment($reversed), message: 'تم عكس الدفعة.');
     }

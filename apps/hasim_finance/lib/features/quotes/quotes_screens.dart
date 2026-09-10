@@ -10,18 +10,40 @@ import 'package:hasim_finance/features/shared/document_lines_editor.dart';
 import 'package:hasim_finance/features/shared/paged.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
-class QuotesScreen extends ConsumerWidget {
+class QuotesScreen extends ConsumerStatefulWidget {
   const QuotesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<QuotesScreen> createState() => _QuotesScreenState();
+}
+
+class _QuotesScreenState extends ConsumerState<QuotesScreen> {
+  String? _status;
+
+  @override
+  Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<QuoteRecord>(
+      key: ValueKey(_status),
       title: l.quotes,
       allowed: auth.permissions.quotesView,
       onCreate: auth.permissions.quotesCreate ? () => context.push('/quotes/new') : null,
-      loader: (api, search, page) => api.quotes(search: search, page: page),
+      filterBar: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Wrap(
+          spacing: 8,
+          children: [
+            for (final option in <String?>[null, 'draft', 'issued', 'cancelled'])
+              ChoiceChip(
+                label: Text(option ?? l.filterAll),
+                selected: _status == option,
+                onSelected: (_) => setState(() => _status = option),
+              ),
+          ],
+        ),
+      ),
+      loader: (api, search, page) => api.quotes(search: search, page: page, status: _status),
       itemBuilder: (context, quote) => Card(
         child: ListTile(
           title: Text(quote.quoteNumber ?? '#${quote.id}'),
@@ -110,7 +132,18 @@ class _QuoteDetailScreenState extends ConsumerState<QuoteDetailScreen> {
                   customer: q.customerName,
                 ),
                 const SizedBox(height: 12),
-                TotalsCard(subtotal: q.subtotal, tax: q.taxAmount, total: q.total),
+                TotalsCard(
+                  subtotal: q.subtotal,
+                  discount: q.discount,
+                  taxable: q.taxableAmount,
+                  tax: q.taxAmount,
+                  total: q.total,
+                ),
+                InfoRow(label: l.issueDate, value: q.issueDate),
+                InfoRow(label: l.expiryDate, value: q.expiryDate),
+                InfoRow(label: l.notesField, value: q.notes),
+                InfoRow(label: l.terms, value: q.terms),
+                InfoRow(label: l.rejectionReason, value: q.rejectionReason),
                 const SizedBox(height: 12),
                 LineTable(lines: q.lines),
                 DeliveryTimeline(deliveries: q.deliveries),

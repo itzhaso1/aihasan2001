@@ -116,8 +116,8 @@ class DashboardService
             ],
             'latest' => [
                 'invoices' => FinanceInvoice::query()->with(['customer', 'supplier'])->latest('id')->limit(10)->get(),
-                'payments' => FinanceInvoicePayment::query()->with('invoice')->latest('id')->limit(10)->get(),
-                'expenses' => FinanceExpense::query()->with(['supplier', 'category'])->latest('id')->limit(10)->get(),
+                'payments' => FinanceInvoicePayment::query()->with(['invoice.customer', 'receipt', 'treasuryAccount'])->latest('id')->limit(10)->get(),
+                'expenses' => FinanceExpense::query()->with(['supplier', 'category', 'treasuryAccount'])->latest('id')->limit(10)->get(),
                 'overdue_invoices' => FinanceInvoice::query()
                     ->with('customer')
                     ->where('type', 'sales')

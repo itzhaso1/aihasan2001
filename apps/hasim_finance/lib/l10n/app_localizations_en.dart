@@ -524,4 +524,125 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get invoiceId => 'Invoice ID';
+
+  @override
+  String get taxableAmount => 'Taxable amount';
+  @override
+  String get amountCredited => 'Credited';
+  @override
+  String get amountDebited => 'Debited';
+  @override
+  String get whatsapp => 'WhatsApp';
+  @override
+  String get buildingNumber => 'Building number';
+  @override
+  String get district => 'District';
+  @override
+  String get postalCode => 'Postal code';
+  @override
+  String get city => 'City';
+  @override
+  String get street => 'Street';
+  @override
+  String get country => 'Country';
+  @override
+  String get paymentTerms => 'Payment terms';
+  @override
+  String get treasuryAccount => 'Treasury account';
+  @override
+  String get recurring => 'Recurring flag';
+  @override
+  String get netProfit => 'Net profit';
+  @override
+  String get outputVat => 'Output VAT';
+  @override
+  String get inputVat => 'Input VAT';
+  @override
+  String get netVat => 'Net VAT';
+  @override
+  String get cashBalance => 'Cash';
+  @override
+  String get bankBalance => 'Bank';
+  @override
+  String get activeContracts => 'Active contracts';
+  @override
+  String get recentExpenses => 'Recent expenses';
+  @override
+  String get statementDebit => 'Debit';
+  @override
+  String get statementCredit => 'Credit';
+  @override
+  String get runningBalance => 'Running balance';
+  @override
+  String get invoicesTotal => 'Invoices total';
+  @override
+  String get paymentsTotal => 'Payments total';
+  @override
+  String get creditsTotal => 'Credits total';
+  @override
+  String get debitsTotal => 'Debits total';
+  @override
+  String get zatcaQr => 'ZATCA QR present';
+  @override
+  String get terms => 'Terms';
+  @override
+  String get rejectionReason => 'Rejection reason';
+  @override
+  String get website => 'Website';
+  @override
+  String get currency => 'Currency';
+  @override
+  String get invoicePrefix => 'Invoice prefix';
+  @override
+  String get defaultVatRate => 'Default VAT rate';
+  @override
+  String get zatcaMode => 'ZATCA mode';
+  @override
+  String get nextRun => 'Next run';
+  @override
+  String get frequency => 'Frequency';
+  @override
+  String get autoIssue => 'Auto issue';
+  @override
+  String get generatedCount => 'Generated';
+  @override
+  String get paymentDate => 'Payment date';
+  @override
+  String get supplier => 'Supplier';
+  @override
+  String get openingCash => 'Opening cash';
+  @override
+  String get netChange => 'Net change';
+  @override
+  String get closingCash => 'Closing cash';
+  @override
+  String get assets => 'Assets';
+  @override
+  String get liabilities => 'Liabilities';
+  @override
+  String get equity => 'Equity';
+  @override
+  String get revenue => 'Revenue';
+  @override
+  String get cogs => 'Cost of sales';
+  @override
+  String get grossProfit => 'Gross profit';
+  @override
+  String get additionalNumber => 'Additional number';
+  @override
+  String get companyNameAr => 'Arabic company name';
+  @override
+  String get addressLine => 'Address line';
+  @override
+  String get filterAll => 'All';
+  @override
+  String get generatedInvoices => 'Generated invoices';
+  @override
+  String get invoicedTotal => 'Invoiced';
+  @override
+  String get snapshots => 'Snapshots';
+  @override
+  String get reason => 'Reason';
+  @override
+  String get inventoryValuation => 'Inventory valuation';
 }

@@ -9,9 +9,11 @@ import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/core/utils/files.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
+import 'package:hasim_finance/features/shared/customer_select.dart';
 import 'package:hasim_finance/features/shared/document_lines_editor.dart';
 import 'package:hasim_finance/features/shared/paged.dart';
 import 'package:hasim_finance/features/shared/supplier_select.dart';
+import 'package:hasim_finance/features/reports/report_view.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
 class PaymentsScreen extends ConsumerWidget {
@@ -88,6 +90,11 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen> {
                 ListTile(title: Text(l.amount), trailing: Text(p.amount)),
                 ListTile(title: Text(l.method), trailing: Text(p.method ?? '')),
                 ListTile(title: Text(l.reference), trailing: Text(p.reference ?? '')),
+                InfoRow(label: l.paymentDate, value: p.paymentDate),
+                InfoRow(label: l.notesField, value: p.notes),
+                InfoRow(label: l.treasuryAccount, value: p.treasuryAccountName),
+                InfoRow(label: l.reversed, value: p.reversedAt),
+                InfoRow(label: l.reason, value: p.reversalReason),
                 if (p.invoiceId != null) TextButton(onPressed: () => context.push('/invoices/${p.invoiceId}'), child: Text(p.invoiceNumber ?? l.invoices)),
                 if (p.receiptId != null) TextButton(onPressed: () => context.push('/receipts/${p.receiptId}'), child: Text(p.receiptNumber ?? l.receipts)),
                 if (p.status == 'posted' && ref.watch(authControllerProvider).permissions.can('invoices.reverse_payment'))
@@ -176,6 +183,11 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
               children: [
                 StatusChip(label: r.status ?? '', tone: toneFor(r.status)),
                 ListTile(title: Text(l.amount), trailing: Text(r.amount)),
+                InfoRow(label: l.method, value: r.method),
+                InfoRow(label: l.reference, value: r.reference),
+                InfoRow(label: l.paymentDate, value: r.paymentDate),
+                if (r.invoiceId != null)
+                  TextButton(onPressed: () => context.push('/invoices/${r.invoiceId}'), child: Text(r.invoiceNumber ?? l.invoices)),
                 DeliveryTimeline(deliveries: r.deliveries),
                 Wrap(spacing: 8, children: [
                   FilledButton.tonal(
@@ -209,7 +221,7 @@ class StatementScreen extends ConsumerStatefulWidget {
 }
 
 class _StatementScreenState extends ConsumerState<StatementScreen> {
-  final _customerId = TextEditingController();
+  int? _customerId;
   late final TextEditingController _from;
   late final TextEditingController _to;
   StatementRecord? _data;
@@ -219,20 +231,22 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
   @override
   void initState() {
     super.initState();
-    _customerId.text = widget.customerId?.toString() ?? '';
+    _customerId = widget.customerId;
     final now = DateTime.now();
     _from = TextEditingController(text: DateTime(now.year, now.month, 1).toIso8601String().substring(0, 10));
     _to = TextEditingController(text: now.toIso8601String().substring(0, 10));
   }
 
   Future<void> _load() async {
+    final customerId = _customerId;
+    if (customerId == null) return;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final data = await ref.read(financeApiProvider).statement(
-            customerId: int.parse(_customerId.text.trim()),
+            customerId: customerId,
             from: _from.text.trim(),
             to: _to.text.trim(),
           );
@@ -259,27 +273,57 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            TextField(controller: _customerId, decoration: InputDecoration(labelText: '${l.customer} ID')),
+            CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
             TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
             TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
             const SizedBox(height: 8),
-            FilledButton(onPressed: _loading ? null : _load, child: Text(l.refresh)),
+            FilledButton(onPressed: _loading || _customerId == null ? null : _load, child: Text(l.refresh)),
             if (_error != null) Text(_error!),
             if (_data != null) ...[
               const SizedBox(height: 16),
+              Text('${l.customer}: ${_data!.customerName ?? ''}'),
               Text('${l.openingBalance}: ${_data!.openingBalance}'),
               Text('${l.closingBalance}: ${_data!.closingBalance}'),
-              for (final line in _data!.lines)
-                ListTile(
-                  title: Text('${line['kind']} ${line['reference'] ?? ''}'),
-                  subtitle: Text('${line['date']}'),
-                  trailing: Text('${line['balance']}'),
+              Text('${l.invoicesTotal}: ${_data!.invoicesTotal}'),
+              Text('${l.paymentsTotal}: ${_data!.paymentsTotal}'),
+              Text('${l.creditsTotal}: ${_data!.creditsTotal}'),
+              Text('${l.debitsTotal}: ${_data!.debitsTotal}'),
+              Card(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: DataTable(
+                    columns: [
+                      DataColumn(label: Text(l.date)),
+                      DataColumn(label: Text(l.description)),
+                      DataColumn(label: Text(l.reference)),
+                      DataColumn(label: Text(l.statementDebit)),
+                      DataColumn(label: Text(l.statementCredit)),
+                      DataColumn(label: Text(l.runningBalance)),
+                    ],
+                    rows: [
+                      for (final line in _data!.lines)
+                        DataRow(
+                          cells: [
+                            DataCell(Text('${line['date'] ?? ''}')),
+                            DataCell(Text('${line['kind'] ?? ''} ${line['description'] ?? ''}')),
+                            DataCell(Text('${line['reference'] ?? ''}')),
+                            DataCell(Text('${line['debit'] ?? ''}')),
+                            DataCell(Text('${line['credit'] ?? ''}')),
+                            DataCell(Text('${line['balance'] ?? ''}')),
+                          ],
+                          onSelectChanged: line['invoice_id'] == null
+                              ? null
+                              : (_) => context.push('/invoices/${line['invoice_id']}'),
+                        ),
+                    ],
+                  ),
                 ),
+              ),
               Wrap(spacing: 8, children: [
                 FilledButton.tonal(
                   onPressed: () async {
                     final bytes = await ref.read(financeApiProvider).pdf('statements', query: {
-                      'customer_id': _customerId.text.trim(),
+                      'customer_id': _customerId,
                       'from': _from.text.trim(),
                       'to': _to.text.trim(),
                       'format': 'pdf',
@@ -291,7 +335,7 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
                 FilledButton.tonal(
                   onPressed: () async {
                     final bytes = await ref.read(financeApiProvider).pdf('statements', query: {
-                      'customer_id': _customerId.text.trim(),
+                      'customer_id': _customerId,
                       'from': _from.text.trim(),
                       'to': _to.text.trim(),
                       'format': 'csv',
@@ -381,7 +425,13 @@ class _NoteDetailScreenState extends ConsumerState<NoteDetailScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 StatusChip(label: '${n.type} · ${n.status}', tone: toneFor(n.status)),
-                Text(n.total),
+                InfoRow(label: l.reason, value: n.reason),
+                InfoRow(label: l.notesField, value: n.notes),
+                InfoRow(label: l.issueDate, value: n.issueDate),
+                if (n.invoiceId != null)
+                  TextButton(onPressed: () => context.push('/invoices/${n.invoiceId}'), child: Text(n.invoiceNumber ?? l.invoices)),
+                TotalsCard(subtotal: n.subtotal, tax: n.taxAmount, total: n.total),
+                LineTable(lines: n.lines),
                 Wrap(spacing: 8, children: [
                   if (n.status == 'draft')
                     FilledButton(onPressed: () async {
@@ -550,29 +600,75 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                 StatusChip(label: c.status ?? '', tone: toneFor(c.status)),
                 Text('${c.startDate} → ${c.endDate}'),
                 Text(c.value),
-                for (final s in c.schedules)
+                InfoRow(label: l.notesField, value: c.notes),
+                InfoRow(label: l.terms, value: c.terms),
+                if (c.billingSummary.isNotEmpty)
+                  TotalsCard(
+                    subtotal: '${c.billingSummary['invoiced_total'] ?? c.value}',
+                    tax: '0.00',
+                    total: '${c.billingSummary['invoiced_total'] ?? c.value}',
+                    paid: '${c.billingSummary['paid_total'] ?? ''}',
+                    due: '${c.billingSummary['outstanding'] ?? ''}',
+                  ),
+                if (c.items.isNotEmpty) ...[
+                  Text(l.lines, style: Theme.of(context).textTheme.titleMedium),
+                  for (final item in c.items)
+                    ListTile(
+                      title: Text(item.title ?? item.description ?? ''),
+                      subtitle: Text('${l.quantity}: ${item.quantity} · ${l.price}: ${item.unitPrice}'),
+                      trailing: Text(item.total ?? ''),
+                    ),
+                ],
+                for (final s in c.scheduleRecords)
                   ListTile(
-                    title: Text('${s['title'] ?? l.billingSchedule}'),
-                    subtitle: Text('${s['frequency']} · ${s['status']}'),
-                    trailing: TextButton(
-                      onPressed: () async {
-                        try {
-                          final invoice = await ref.read(financeApiProvider).generateScheduleInvoice(c.id, (s['id'] as num).toInt());
-                          await _load();
-                          if (context.mounted) {
-                            showSnack(context, invoice?.invoiceNumber ?? AppLocalizations.of(context).success);
-                          }
-                        } catch (e) {
-                          if (context.mounted) showApiError(context, e);
-                        }
-                      },
-                      child: Text(l.generateInvoice),
+                    title: Text(s.title ?? l.billingSchedule),
+                    subtitle: Text('${s.frequency} · ${s.status} · ${l.nextRun}: ${s.nextRunOn ?? ''} · ${l.autoIssue}: ${s.autoIssue}'),
+                    trailing: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(s.amount),
+                        TextButton(
+                          onPressed: () async {
+                            try {
+                              final invoice = await ref.read(financeApiProvider).generateScheduleInvoice(c.id, s.id);
+                              await _load();
+                              if (context.mounted) {
+                                showSnack(context, invoice?.invoiceNumber ?? AppLocalizations.of(context).success);
+                              }
+                            } catch (e) {
+                              if (context.mounted) showApiError(context, e);
+                            }
+                          },
+                          child: Text(l.generateInvoice),
+                        ),
+                      ],
                     ),
                   ),
+                if (c.generatedInvoices.isNotEmpty) ...[
+                  Text(l.generatedInvoices, style: Theme.of(context).textTheme.titleMedium),
+                  for (final invoice in c.generatedInvoices)
+                    ListTile(
+                      title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),
+                      trailing: Text(invoice.total),
+                      onTap: () => context.push('/invoices/${invoice.id}'),
+                    ),
+                ],
                 Wrap(spacing: 8, children: [
                   if (c.status == 'draft') FilledButton(onPressed: () async { await ref.read(financeApiProvider).contractAction(c.id, 'activate'); await _load(); }, child: Text(l.signContract)),
                   if (c.status == 'open') OutlinedButton(onPressed: () async { await ref.read(financeApiProvider).contractAction(c.id, 'close'); await _load(); }, child: Text(l.closeContract)),
                   OutlinedButton(onPressed: () async { await ref.read(financeApiProvider).contractAction(c.id, 'cancel'); await _load(); }, child: Text(l.cancel)),
+                  FilledButton.tonal(
+                    onPressed: () async {
+                      try {
+                        final bytes = await ref.read(financeApiProvider).pdf('contracts/${c.id}/pdf');
+                        await saveAndOpenBytes(bytes, 'contract-${c.contractNumber}.pdf');
+                      } catch (e) {
+                        if (context.mounted) showApiError(context, e);
+                      }
+                    },
+                    child: Text(l.pdf),
+                  ),
                 ]),
               ],
             ),
@@ -588,8 +684,10 @@ class ContractFormScreen extends ConsumerStatefulWidget {
 
 class _ContractFormScreenState extends ConsumerState<ContractFormScreen> {
   final _title = TextEditingController();
-  final _customerId = TextEditingController();
+  int? _customerId;
   final _value = TextEditingController(text: '0');
+  final _notes = TextEditingController();
+  final _terms = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -600,17 +698,23 @@ class _ContractFormScreenState extends ConsumerState<ContractFormScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           TextField(controller: _title, decoration: InputDecoration(labelText: l.description)),
-          TextField(controller: _customerId, decoration: InputDecoration(labelText: '${l.customer} ID')),
+          CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
           TextField(controller: _value, decoration: InputDecoration(labelText: l.amount)),
+          TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 2),
+          TextField(controller: _terms, decoration: InputDecoration(labelText: l.terms), maxLines: 2),
           FilledButton(
-            onPressed: () async {
-              final saved = await ref.read(financeApiProvider).saveContract({
-                'title': _title.text.trim(),
-                'customer_id': int.tryParse(_customerId.text.trim()),
-                'value': _value.text.trim(),
-              });
-              if (context.mounted) context.go('/contracts/${saved.id}');
-            },
+            onPressed: _customerId == null
+                ? null
+                : () async {
+                    final saved = await ref.read(financeApiProvider).saveContract({
+                      'title': _title.text.trim(),
+                      'customer_id': _customerId,
+                      'value': _value.text.trim(),
+                      'notes': _notes.text.trim(),
+                      'terms': _terms.text.trim(),
+                    });
+                    if (context.mounted) context.go('/contracts/${saved.id}');
+                  },
             child: Text(l.save),
           ),
         ],
@@ -652,12 +756,18 @@ class ExpenseFormScreen extends ConsumerStatefulWidget {
 class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   final _desc = TextEditingController();
   final _amount = TextEditingController();
+  final _taxRate = TextEditingController(text: '15');
+  final _method = TextEditingController();
+  int? _supplierId;
+  bool _recurring = false;
   PlatformFile? _file;
 
   @override
   void dispose() {
     _desc.dispose();
     _amount.dispose();
+    _taxRate.dispose();
+    _method.dispose();
     super.dispose();
   }
 
@@ -671,6 +781,14 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
         children: [
           TextField(controller: _desc, decoration: InputDecoration(labelText: l.description)),
           TextField(controller: _amount, decoration: InputDecoration(labelText: l.amount)),
+          TextField(controller: _taxRate, decoration: InputDecoration(labelText: l.taxRate)),
+          TextField(controller: _method, decoration: InputDecoration(labelText: l.method)),
+          SupplierSelectField(selectedId: _supplierId, onSelected: (id) => setState(() => _supplierId = id)),
+          SwitchListTile(
+            title: Text(l.recurring),
+            value: _recurring,
+            onChanged: (v) => setState(() => _recurring = v),
+          ),
           OutlinedButton(
             onPressed: () async {
               final result = await FilePicker.platform.pickFiles(
@@ -687,27 +805,27 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
             onPressed: () async {
               try {
                 late final ExpenseRecord saved;
+                final payload = <String, dynamic>{
+                  'description': _desc.text.trim(),
+                  'amount': _amount.text.trim(),
+                  'expense_date': DateTime.now().toIso8601String().substring(0, 10),
+                  'status': 'draft',
+                  'tax_rate': _taxRate.text.trim(),
+                  'is_recurring': _recurring,
+                  if (_method.text.trim().isNotEmpty) 'payment_method': _method.text.trim(),
+                  if (_supplierId != null) 'supplier_id': _supplierId,
+                };
                 final path = _file?.path;
                 if (path != null && path.isNotEmpty) {
                   saved = await ref.read(financeApiProvider).saveExpense(
                     {},
                     form: FormData.fromMap({
-                      'description': _desc.text.trim(),
-                      'amount': _amount.text.trim(),
-                      'expense_date': DateTime.now().toIso8601String().substring(0, 10),
-                      'status': 'draft',
-                      'tax_rate': 15,
+                      ...payload,
                       'attachment_file': await MultipartFile.fromFile(path, filename: _file!.name),
                     }),
                   );
                 } else {
-                  saved = await ref.read(financeApiProvider).saveExpense({
-                    'description': _desc.text.trim(),
-                    'amount': _amount.text.trim(),
-                    'expense_date': DateTime.now().toIso8601String().substring(0, 10),
-                    'status': 'draft',
-                    'tax_rate': 15,
-                  });
+                  saved = await ref.read(financeApiProvider).saveExpense(payload);
                 }
                 if (context.mounted) context.go('/expenses/${saved.id}');
               } catch (e) {
@@ -771,7 +889,13 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
               children: [
                 StatusChip(label: e.status ?? '', tone: toneFor(e.status)),
                 Text(e.description ?? ''),
-                Text(e.total),
+                TotalsCard(subtotal: e.amount, tax: e.taxAmount, total: e.total),
+                InfoRow(label: l.supplier, value: e.supplierName),
+                InfoRow(label: l.category, value: e.categoryName),
+                InfoRow(label: l.method, value: e.paymentMethod),
+                InfoRow(label: l.treasuryAccount, value: e.treasuryAccountName),
+                InfoRow(label: l.taxRate, value: e.taxRate),
+                InfoRow(label: l.recurring, value: e.isRecurring ? l.recurring : null),
                 if (e.hasAttachment)
                   FilledButton.tonal(
                     onPressed: () async {
@@ -863,7 +987,15 @@ class _PurchaseDetailScreenState extends ConsumerState<PurchaseDetailScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 DocumentHeader(number: invoice.invoiceNumber ?? '', documentStatus: invoice.documentStatus, paymentStatus: invoice.paymentStatus, customer: invoice.supplierName),
-                TotalsCard(subtotal: invoice.subtotal, tax: invoice.taxAmount, total: invoice.total, paid: invoice.amountPaid, due: invoice.amountDue),
+                TotalsCard(
+                  subtotal: invoice.subtotal,
+                  discount: invoice.discount,
+                  taxable: invoice.taxableAmount,
+                  tax: invoice.taxAmount,
+                  total: invoice.total,
+                  paid: invoice.amountPaid,
+                  due: invoice.amountDue,
+                ),
                 LineTable(lines: invoice.lines),
               ],
             ),
@@ -946,11 +1078,28 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   Map<String, dynamic>? _data;
   bool _loading = false;
   String? _error;
+  late final TextEditingController _from;
+  late final TextEditingController _to;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _from = TextEditingController(text: DateTime(now.year, now.month, 1).toIso8601String().substring(0, 10));
+    _to = TextEditingController(text: now.toIso8601String().substring(0, 10));
+  }
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    super.dispose();
+  }
 
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final data = await ref.read(financeApiProvider).report(_key);
+      final data = await ref.read(financeApiProvider).report(_key, from: _from.text.trim(), to: _to.text.trim());
       setState(() {
         _data = data;
         _loading = false;
@@ -976,6 +1125,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       'general-ledger': l.generalLedger,
       'ar-aging': l.arAging,
       'ap-aging': l.apAging,
+      'inventory-valuation': l.inventoryValuation,
     };
     return PermissionGate(
       allowed: auth.permissions.reportsView,
@@ -992,11 +1142,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               ],
             ),
             const SizedBox(height: 12),
+            TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
+            TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
             FilledButton(onPressed: _loading ? null : _load, child: Text(l.refresh)),
             if (_error != null) Text(_error!),
             if (_data != null) ...[
               const SizedBox(height: 12),
-              JsonView(_data),
+              FinanceReportView(_data!),
               FilledButton.tonal(
                 onPressed: () async {
                   final bytes = await ref.read(financeApiProvider).pdf('reports/$_key', query: {'format': 'csv'});
@@ -1040,15 +1192,71 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _host = TextEditingController();
+  final _company = TextEditingController();
+  final _companyAr = TextEditingController();
+  final _vat = TextEditingController();
+  final _cr = TextEditingController();
+  final _phone = TextEditingController();
+  final _email = TextEditingController();
+  final _website = TextEditingController();
+  final _address = TextEditingController();
+  final _building = TextEditingController();
+  final _street = TextEditingController();
+  final _district = TextEditingController();
+  final _city = TextEditingController();
+  final _postal = TextEditingController();
+  final _currency = TextEditingController();
+  final _vatRate = TextEditingController();
+  final _terms = TextEditingController();
   Map<String, dynamic>? _settings;
 
   @override
   void initState() {
     super.initState();
     _host.text = ref.read(prefsStoreProvider).apiBaseOverride ?? '';
-    ref.read(financeApiProvider).settings().then((s) {
-      if (mounted) setState(() => _settings = s);
-    }).catchError((_) {});
+    ref.read(financeApiProvider).settings().then(_applySettings).catchError((_) {});
+  }
+
+  void _applySettings(Map<String, dynamic> s) {
+    _company.text = '${s['company_name'] ?? ''}';
+    _companyAr.text = '${s['company_name_ar'] ?? ''}';
+    _vat.text = '${s['vat_number'] ?? ''}';
+    _cr.text = '${s['commercial_registration'] ?? ''}';
+    _phone.text = '${s['phone'] ?? ''}';
+    _email.text = '${s['email'] ?? ''}';
+    _website.text = '${s['website'] ?? ''}';
+    _address.text = '${s['address_line'] ?? ''}';
+    _building.text = '${s['building_number'] ?? ''}';
+    _street.text = '${s['street'] ?? ''}';
+    _district.text = '${s['district'] ?? ''}';
+    _city.text = '${s['city'] ?? ''}';
+    _postal.text = '${s['postal_code'] ?? ''}';
+    _currency.text = '${s['currency'] ?? 'SAR'}';
+    _vatRate.text = '${s['default_vat_rate'] ?? ''}';
+    _terms.text = '${s['default_payment_terms'] ?? ''}';
+    if (mounted) setState(() => _settings = s);
+  }
+
+  @override
+  void dispose() {
+    _host.dispose();
+    _company.dispose();
+    _companyAr.dispose();
+    _vat.dispose();
+    _cr.dispose();
+    _phone.dispose();
+    _email.dispose();
+    _website.dispose();
+    _address.dispose();
+    _building.dispose();
+    _street.dispose();
+    _district.dispose();
+    _city.dispose();
+    _postal.dispose();
+    _currency.dispose();
+    _vatRate.dispose();
+    _terms.dispose();
+    super.dispose();
   }
 
   @override
@@ -1096,19 +1304,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ]),
           if (_settings != null) ...[
             const Divider(),
-            Text('${_settings!['company_name'] ?? ''}'),
-            Text('${l.vatNumber}: ${_settings!['vat_number'] ?? ''}'),
-            Text('${l.crNumber}: ${_settings!['commercial_registration'] ?? ''}'),
+            TextField(controller: _company, decoration: InputDecoration(labelText: l.company)),
+            TextField(controller: _companyAr, decoration: InputDecoration(labelText: l.companyNameAr)),
+            TextField(controller: _vat, decoration: InputDecoration(labelText: l.vatNumber)),
+            TextField(controller: _cr, decoration: InputDecoration(labelText: l.crNumber)),
+            TextField(controller: _phone, decoration: InputDecoration(labelText: l.phone)),
+            TextField(controller: _email, decoration: InputDecoration(labelText: l.email)),
+            TextField(controller: _website, decoration: InputDecoration(labelText: l.website)),
+            TextField(controller: _address, decoration: InputDecoration(labelText: l.addressLine)),
+            TextField(controller: _building, decoration: InputDecoration(labelText: l.buildingNumber)),
+            TextField(controller: _street, decoration: InputDecoration(labelText: l.street)),
+            TextField(controller: _district, decoration: InputDecoration(labelText: l.district)),
+            TextField(controller: _city, decoration: InputDecoration(labelText: l.city)),
+            TextField(controller: _postal, decoration: InputDecoration(labelText: l.postalCode)),
+            TextField(controller: _currency, decoration: InputDecoration(labelText: l.currency)),
+            TextField(controller: _vatRate, decoration: InputDecoration(labelText: l.defaultVatRate)),
+            TextField(controller: _terms, decoration: InputDecoration(labelText: l.paymentTerms)),
+            InfoRow(label: l.invoicePrefix, value: '${_settings!['invoice_prefix'] ?? ''}'),
+            InfoRow(label: l.zatcaMode, value: '${_settings!['zatca_integration_mode'] ?? ''}'),
             if (auth.permissions.settings)
               FilledButton.tonal(
                 onPressed: () async {
                   try {
                     final next = await ref.read(financeApiProvider).updateSettings({
-                      'company_name': _settings!['company_name'],
-                      'vat_number': _settings!['vat_number'],
-                      'commercial_registration': _settings!['commercial_registration'],
+                      'company_name': _company.text.trim(),
+                      'company_name_ar': _companyAr.text.trim(),
+                      'vat_number': _vat.text.trim(),
+                      'commercial_registration': _cr.text.trim(),
+                      'phone': _phone.text.trim(),
+                      'email': _email.text.trim(),
+                      'website': _website.text.trim(),
+                      'address_line': _address.text.trim(),
+                      'building_number': _building.text.trim(),
+                      'street': _street.text.trim(),
+                      'district': _district.text.trim(),
+                      'city': _city.text.trim(),
+                      'postal_code': _postal.text.trim(),
+                      'currency': _currency.text.trim(),
+                      'default_vat_rate': _vatRate.text.trim(),
+                      'default_payment_terms': _terms.text.trim(),
                     });
-                    setState(() => _settings = next);
+                    _applySettings(next);
                     if (context.mounted) showSnack(context, l.success);
                   } catch (e) {
                     if (context.mounted) showApiError(context, e);

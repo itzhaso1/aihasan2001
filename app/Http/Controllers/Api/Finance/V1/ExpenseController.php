@@ -38,7 +38,7 @@ class ExpenseController extends FinanceApiController
         ]);
 
         $page = FinanceExpense::query()
-            ->with(['supplier', 'category'])
+            ->with(['supplier', 'category', 'treasuryAccount'])
             ->when($validated['search'] ?? null, function ($query, $search): void {
                 $query->where(function ($inner) use ($search): void {
                     $inner->where('expense_number', 'like', '%'.$search.'%')
@@ -59,7 +59,7 @@ class ExpenseController extends FinanceApiController
     {
         $workspace = $this->clientWorkspace($this->workspaceContext);
         $this->clientActor($request, $workspace, 'expenses.view');
-        $expense->load(['supplier', 'category']);
+        $expense->load(['supplier', 'category', 'treasuryAccount']);
 
         return $this->ok($this->presenter->expense($expense));
     }
@@ -79,7 +79,7 @@ class ExpenseController extends FinanceApiController
         );
 
         return $this->ok(
-            $this->presenter->expense($expense->load(['supplier', 'category'])),
+            $this->presenter->expense($expense->load(['supplier', 'category', 'treasuryAccount'])),
             message: 'تم إنشاء المصروف.',
             status: 201,
         );
@@ -98,7 +98,7 @@ class ExpenseController extends FinanceApiController
             fn () => $this->expenseService->updateDraft($expense, $payload, (int) $request->user()?->id)
         );
 
-        return $this->ok($this->presenter->expense($updated->load(['supplier', 'category'])), message: 'تم تحديث مسودة المصروف.');
+        return $this->ok($this->presenter->expense($updated->load(['supplier', 'category', 'treasuryAccount'])), message: 'تم تحديث مسودة المصروف.');
     }
 
     public function destroy(Request $request, FinanceExpense $expense): JsonResponse
@@ -136,6 +136,7 @@ class ExpenseController extends FinanceApiController
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'currency' => ['nullable', 'string', 'size:3'],
             'payment_method' => ['nullable', 'in:cash,bank_transfer,card,other,credit'],
+            'is_recurring' => ['nullable', 'boolean'],
             'attachment_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:4096'],
         ];
 
