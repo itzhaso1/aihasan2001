@@ -376,6 +376,27 @@ class InvoiceController extends FinanceBaseController
             ->with('success', 'تم إرسال تذكير إلى '.$delivery->recipient);
     }
 
+    public function createCheckout(Request $request, FinanceInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'payments.manage');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        $result = $this->invoiceCheckoutService->createCheckout($invoice);
+
+        if (! $result->hasCheckoutUrl()) {
+            return back()->with('error', $result->message !== '' ? $result->message : 'تعذر إنشاء رابط الدفع الإلكتروني.');
+        }
+
+        $invoice->refresh();
+        if ((float) $invoice->amount_due <= 0.009 || (string) $invoice->payment_status === 'paid') {
+            return back()->with('error', 'إنشاء رابط الدفع لا يجوز أن يغيّر حالة الفاتورة إلى مدفوعة.');
+        }
+
+        return redirect()
+            ->route('workspace.finance.invoices.show', $invoice)
+            ->with('success', 'تم إنشاء رابط الدفع الإلكتروني. التأكيد يتم عبر بوابة الدفع المشتركة وليس من إنشاء الرابط.');
+    }
+
     public function cancel(Request $request, FinanceInvoice $invoice): RedirectResponse
     {
         $this->authorizeFinance($request, 'invoices.cancel');

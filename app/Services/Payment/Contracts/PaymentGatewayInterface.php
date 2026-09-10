@@ -13,8 +13,7 @@ interface PaymentGatewayInterface
     /**
      * @param  array<string, string>  $headers
      * @param  array<string, mixed>  $payload
-     * @param  string|null  $rawBody
-     * @return array{verified:bool,event_id:?string,status:?string,reference:?string,payload:array<string,mixed>,reason:?string}
+     * @return array{verified:bool,event_id:?string,status:?string,reference:?string,amount:?float,currency:?string,payload:array<string,mixed>,reason:?string}
      */
     public function verifyWebhook(array $headers, array $payload, ?string $rawBody = null): array;
 }

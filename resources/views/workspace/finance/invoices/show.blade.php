@@ -229,10 +229,22 @@
 
         @if($checkout)
             <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 class="text-sm font-bold text-slate-900">رابط الدفع الإلكتروني</h3>
-                @if($checkout->supported && $checkout->checkoutUrl)
-                    <p class="mt-2 text-sm"><a class="font-semibold text-[#06C2A4]" href="{{ $checkout->checkoutUrl }}" target="_blank" rel="noopener">فتح رابط الدفع</a></p>
-                    <p class="mt-1 text-xs text-slate-500">إنشاء الرابط لا يعني أن الفاتورة دُفعت. التأكيد يتم عبر بوابة الدفع المشتركة.</p>
+                <h3 class="text-sm font-bold text-slate-900">الدفع الإلكتروني</h3>
+                @if($checkout->hasCheckoutUrl())
+                    <p class="mt-2 text-sm text-slate-600">رابط التحصيل جاهز. إنشاء الرابط لا يعني أن الفاتورة دُفعت. التأكيد يتم عبر بوابة الدفع المشتركة.</p>
+                    <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <input type="text" readonly value="{{ $checkout->checkoutUrl }}" class="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800" id="finance-checkout-url">
+                        <div class="flex gap-2">
+                            <a class="rounded-lg bg-[#06C2A4] px-4 py-2 text-sm font-semibold text-white hover:opacity-90" href="{{ $checkout->checkoutUrl }}" target="_blank" rel="noopener">فتح الرابط</a>
+                            <button type="button" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100" onclick="navigator.clipboard.writeText(document.getElementById('finance-checkout-url').value)">نسخ</button>
+                        </div>
+                    </div>
+                @elseif($checkout->supported)
+                    <p class="mt-2 text-sm text-slate-600">{{ $checkout->message !== '' ? $checkout->message : 'يمكن إنشاء رابط دفع إلكتروني لهذه الفاتورة.' }}</p>
+                    <form method="POST" action="{{ route('workspace.finance.invoices.checkout', $invoice) }}" class="mt-3">
+                        @csrf
+                        <button class="rounded-lg bg-[#06C2A4] px-4 py-2 text-sm font-semibold text-white hover:opacity-90">إنشاء رابط الدفع الإلكتروني</button>
+                    </form>
                 @else
                     <p class="mt-2 text-sm text-slate-600">{{ $checkout->message }}</p>
                     <p class="mt-1 text-xs text-slate-500">سجّل التحصيل يدوياً من نموذج الدفعة أدناه. لا يُنشأ طلب POS ولا بوابة دفع داخل المالية.</p>

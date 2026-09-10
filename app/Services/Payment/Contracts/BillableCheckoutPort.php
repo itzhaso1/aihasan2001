@@ -5,9 +5,10 @@ namespace App\Services\Payment\Contracts;
 /**
  * Shared checkout boundary for non-Order billables (Finance invoices, etc.).
  *
- * PaymentService::createPaymentLink() remains Order-bound: it writes
- * payments.order_id and webhooks settle Order by order_number.
- * Finance must not invent a second gateway or a dummy POS order.
+ * Order POS/commerce checkout remains PaymentService::createPaymentLink(Order).
+ * Non-Order billables use createBillablePaymentLink() and webhooks settle the
+ * stored Payment row, then the owning product (Finance) posts through its
+ * own payment service. Do not create dummy POS orders.
  */
 interface BillableCheckoutPort
 {
