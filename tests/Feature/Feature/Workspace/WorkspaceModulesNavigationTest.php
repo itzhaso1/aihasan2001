@@ -25,7 +25,7 @@ class WorkspaceModulesNavigationTest extends TestCase
 
         $response->assertOk()
             ->assertSee('Products & Inventory')
-            ->assertSee('POS / Cashier')
+            ->assertSee('POS / الإدارة')
             ->assertSee('Communication')
             ->assertSee('Payments & Subscriptions')
             ->assertSee('Finance')
