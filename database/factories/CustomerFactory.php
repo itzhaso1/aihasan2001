@@ -21,6 +21,7 @@ class CustomerFactory extends Factory
         return [
             'workspace_id' => Workspace::factory(),
             'name' => fake()->name(),
+            'party_type' => Customer::PARTY_TYPE_INDIVIDUAL,
             'phone' => '+9665'.fake()->unique()->numerify('########'),
             'whatsapp' => null,
             'email' => fake()->safeEmail(),

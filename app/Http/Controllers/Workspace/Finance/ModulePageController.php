@@ -14,14 +14,16 @@ use App\Models\Finance\FinanceTaxRate;
 use App\Models\Finance\FinanceTreasuryAccount;
 use App\Models\InventoryMovement;
 use App\Models\Product;
+use App\Services\Finance\CustomerBalanceService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class ModulePageController extends FinanceBaseController
 {
-    public function customers(Request $request): View
+    public function customers(Request $request, CustomerBalanceService $customerBalanceService): View
     {
         $this->authorizeFinance($request, 'finance.view');
+        $workspace = $this->currentWorkspace();
 
         $customers = Customer::query()
             ->withCount(['orders', 'conversations'])
@@ -29,17 +31,23 @@ class ModulePageController extends FinanceBaseController
             ->latest('id')
             ->paginate(15);
 
-        $invoiceMap = FinanceInvoice::query()
+        $customerIds = $customers->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $invoiceCountByCustomer = FinanceInvoice::query()
             ->where('type', 'sales')
             ->whereNotNull('customer_id')
+            ->whereIn('customer_id', $customerIds)
             ->groupBy('customer_id')
-            ->selectRaw('customer_id, COUNT(*) as invoices_count, COALESCE(SUM(amount_due),0) as due_total')
+            ->selectRaw('customer_id, COUNT(*) as invoices_count')
             ->pluck('invoices_count', 'customer_id')
             ->all();
 
         return view('workspace.finance.modules.customers', [
             'customers' => $customers,
-            'invoiceCountByCustomer' => $invoiceMap,
+            'invoiceCountByCustomer' => $invoiceCountByCustomer,
+            'outstandingByCustomer' => $customerBalanceService->outstandingByCustomerIds(
+                (int) $workspace->id,
+                $customerIds
+            ),
         ]);
     }
 

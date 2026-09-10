@@ -515,6 +515,20 @@ class InvoiceController extends FinanceBaseController
             ]);
         }
 
+        $items = array_map(function ($item) {
+            if (! is_array($item)) {
+                return $item;
+            }
+
+            unset($item['total'], $item['tax_amount'], $item['taxable_amount'], $item['subtotal']);
+
+            $productId = (int) ($item['product_id'] ?? 0);
+            $item['product_id'] = $productId > 0 ? $productId : null;
+            $item['unit'] = mb_substr(trim((string) ($item['unit'] ?? '')), 0, 32);
+
+            return $item;
+        }, $items);
+
         $payload = Arr::except($validated, ['items_json', 'attachments']);
         if (! isset($payload['invoice_status']) && isset($payload['status'])) {
             $payload['invoice_status'] = $payload['status'];
