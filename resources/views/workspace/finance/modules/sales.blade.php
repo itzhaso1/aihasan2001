@@ -18,6 +18,12 @@
         <div class="flex flex-wrap items-center justify-between gap-2">
             <h2 class="text-xl font-bold text-slate-900">وحدة المبيعات</h2>
             <div class="flex items-center gap-2">
+                <a href="{{ route('workspace.finance.quotes.index') }}" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                    عروض الأسعار
+                </a>
+                <a href="{{ route('workspace.finance.quotes.create') }}" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                    إنشاء عرض سعر
+                </a>
                 <a href="{{ route('workspace.finance.invoices.create', ['type' => 'sales']) }}" class="rounded-lg bg-[#06C2A4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#05ab91]">
                     إنشاء فاتورة مبيعات
                 </a>

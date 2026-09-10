@@ -29,6 +29,8 @@ class FinanceBootstrapService
                     'currency' => 'SAR',
                     'invoice_prefix' => 'INV',
                     'next_invoice_sequence' => 1,
+                    'quote_prefix' => 'Q',
+                    'next_quote_sequence' => 1,
                     'allow_manual_invoice_numbers' => false,
                     'default_vat_rate' => TaxCalculationService::FALLBACK_STANDARD_RATE,
                 ]

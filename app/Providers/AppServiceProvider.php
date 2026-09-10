@@ -46,6 +46,8 @@ use App\Models\Finance\FinanceJournalEntryLine;
 use App\Models\Finance\FinancePayrollAdjustment;
 use App\Models\Finance\FinancePriceList;
 use App\Models\Finance\FinancePurchaseOrder;
+use App\Models\Finance\FinanceQuote;
+use App\Models\Finance\FinanceQuoteItem;
 use App\Models\Finance\FinanceSalaryAdvance;
 use App\Models\Finance\FinanceSalaryAdvanceRepayment;
 use App\Models\Finance\FinanceSetting;
@@ -200,6 +202,8 @@ class AppServiceProvider extends ServiceProvider
         FinanceInvoicePayment::observe(WorkspaceAuditObserver::class);
         FinanceInvoicePayment::observe(FinanceInvoicePaymentObserver::class);
         FinanceInvoiceAttachment::observe(WorkspaceAuditObserver::class);
+        FinanceQuote::observe(WorkspaceAuditObserver::class);
+        FinanceQuoteItem::observe(WorkspaceAuditObserver::class);
         FinanceCreditNote::observe(WorkspaceAuditObserver::class);
         FinanceCreditNoteItem::observe(WorkspaceAuditObserver::class);
         FinanceBillingSchedule::observe(WorkspaceAuditObserver::class);

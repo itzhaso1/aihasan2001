@@ -1,0 +1,264 @@
+<?php
+
+namespace App\Http\Controllers\Workspace\Finance;
+
+use App\Enums\Finance\QuoteStatus;
+use App\Models\Customer;
+use App\Models\Finance\FinanceQuote;
+use App\Models\Finance\FinanceSetting;
+use App\Models\Finance\FinanceTaxRate;
+use App\Models\Product;
+use App\Services\Finance\FinanceBootstrapService;
+use App\Services\Finance\PdfQuoteService;
+use App\Services\Finance\QuoteService;
+use App\Services\Finance\Tax\TaxCalculationService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+use RuntimeException;
+
+class QuoteController extends FinanceBaseController
+{
+    public function __construct(
+        private readonly QuoteService $quoteService,
+        private readonly FinanceBootstrapService $financeBootstrapService,
+        private readonly PdfQuoteService $pdfQuoteService,
+    ) {}
+
+    public function index(Request $request): View
+    {
+        $this->authorizeFinance($request, 'quotes.view');
+        $workspace = $this->currentWorkspace();
+        $this->financeBootstrapService->ensureWorkspaceFinanceSetup($workspace);
+
+        $status = $request->string('status')->toString();
+        $query = FinanceQuote::query()->with('customer');
+        if (in_array($status, [QuoteStatus::Draft->value, QuoteStatus::Issued->value, QuoteStatus::Cancelled->value], true)) {
+            $query->where('status', $status);
+        }
+        if ($search = trim($request->string('search')->toString())) {
+            $query->where(function ($inner) use ($search): void {
+                $inner->where('quote_number', 'like', '%'.$search.'%')
+                    ->orWhereHas('customer', fn ($customer) => $customer->where('name', 'like', '%'.$search.'%'));
+            });
+        }
+
+        $quotes = $query->latest('id')->paginate(15)->withQueryString();
+
+        return view('workspace.finance.quotes.index', [
+            'quotes' => $quotes,
+            'pipeline' => [
+                'all' => FinanceQuote::query()->count(),
+                QuoteStatus::Draft->value => FinanceQuote::query()->where('status', QuoteStatus::Draft->value)->count(),
+                QuoteStatus::Issued->value => FinanceQuote::query()->where('status', QuoteStatus::Issued->value)->count(),
+                QuoteStatus::Cancelled->value => FinanceQuote::query()->where('status', QuoteStatus::Cancelled->value)->count(),
+            ],
+        ]);
+    }
+
+    public function create(Request $request): View
+    {
+        $this->authorizeFinance($request, 'quotes.create');
+        $workspace = $this->currentWorkspace();
+        $this->financeBootstrapService->ensureWorkspaceFinanceSetup($workspace);
+
+        return view('workspace.finance.quotes.create', $this->formCatalog() + [
+            'quote' => new FinanceQuote([
+                'currency' => 'SAR',
+                'status' => QuoteStatus::Draft->value,
+                'issue_date' => now()->toDateString(),
+                'expiry_date' => now()->addDays(30)->toDateString(),
+                'customer_id' => $request->integer('customer_id') ?: null,
+            ]),
+            'formAction' => route('workspace.finance.quotes.store'),
+            'formMethod' => 'POST',
+            'pageTitle' => 'إنشاء عرض سعر',
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.create');
+        $workspace = $this->currentWorkspace();
+        $this->financeBootstrapService->ensureWorkspaceFinanceSetup($workspace);
+        $validated = $this->validatedQuotePayload($request, (int) $workspace->id);
+        if (((string) ($validated['status'] ?? 'draft')) === QuoteStatus::Issued->value) {
+            $this->authorizeFinance($request, 'quotes.issue');
+        }
+
+        try {
+            $quote = $this->quoteService->create($workspace, $validated, (int) $request->user()?->id);
+        } catch (RuntimeException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('workspace.finance.quotes.show', $quote)->with('success', 'تم حفظ عرض السعر.');
+    }
+
+    public function show(Request $request, FinanceQuote $quote): View
+    {
+        $this->authorizeFinance($request, 'quotes.view');
+        $this->assertSameWorkspace($quote->workspace_id);
+
+        return view('workspace.finance.quotes.show', [
+            'quote' => $quote->load(['customer', 'items', 'creator', 'issuer']),
+        ]);
+    }
+
+    public function edit(Request $request, FinanceQuote $quote): View|RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.edit');
+        $this->assertSameWorkspace($quote->workspace_id);
+        if (! $quote->isDraft()) {
+            return redirect()->route('workspace.finance.quotes.show', $quote)
+                ->with('error', 'يمكن تعديل المسودات فقط.');
+        }
+
+        return view('workspace.finance.quotes.create', $this->formCatalog() + [
+            'quote' => $quote->load('items'),
+            'formAction' => route('workspace.finance.quotes.update', $quote),
+            'formMethod' => 'PUT',
+            'pageTitle' => 'تعديل المسودة '.$quote->quote_number,
+        ]);
+    }
+
+    public function update(Request $request, FinanceQuote $quote): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.edit');
+        $this->assertSameWorkspace($quote->workspace_id);
+        $workspace = $this->currentWorkspace();
+        $validated = $this->validatedQuotePayload($request, (int) $workspace->id);
+
+        try {
+            $updated = $this->quoteService->updateDraft($quote, $validated, (int) $request->user()?->id);
+        } catch (RuntimeException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('workspace.finance.quotes.show', $updated)->with('success', 'تم تحديث مسودة عرض السعر.');
+    }
+
+    public function destroy(Request $request, FinanceQuote $quote): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.delete');
+        $this->assertSameWorkspace($quote->workspace_id);
+
+        try {
+            $this->quoteService->deleteDraft($quote);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('workspace.finance.quotes.index')->with('success', 'تم حذف مسودة عرض السعر.');
+    }
+
+    public function issue(Request $request, FinanceQuote $quote): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.issue');
+        $this->assertSameWorkspace($quote->workspace_id);
+
+        try {
+            $issued = $this->quoteService->issue($quote, (int) $request->user()?->id);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('workspace.finance.quotes.show', $issued)->with('success', 'تم إصدار عرض السعر. هذا المستند ليس فاتورة ولا يُرحّل محاسبيًا.');
+    }
+
+    public function cancel(Request $request, FinanceQuote $quote): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.cancel');
+        $this->assertSameWorkspace($quote->workspace_id);
+
+        try {
+            $this->quoteService->cancel($quote);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('workspace.finance.quotes.show', $quote)->with('success', 'تم إلغاء عرض السعر.');
+    }
+
+    public function downloadPdf(Request $request, FinanceQuote $quote)
+    {
+        $this->authorizeFinance($request, 'quotes.view');
+        $this->assertSameWorkspace($quote->workspace_id);
+
+        try {
+            return $this->pdfQuoteService->download($quote);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function formCatalog(): array
+    {
+        $workspace = $this->currentWorkspace();
+        $setting = FinanceSetting::forWorkspaceId((int) $workspace->id);
+
+        return [
+            'customers' => Customer::query()->orderBy('name')->get(['id', 'name', 'phone']),
+            'products' => Product::query()->orderBy('name')->get(['id', 'name', 'price', 'currency', 'sku']),
+            'taxRates' => FinanceTaxRate::query()->where('is_active', true)->orderByDesc('is_default')->get(['id', 'name', 'type', 'rate', 'code']),
+            'defaultTaxRate' => (float) ($setting?->default_vat_rate ?? TaxCalculationService::FALLBACK_STANDARD_RATE),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validatedQuotePayload(Request $request, int $workspaceId): array
+    {
+        $validated = $request->validate([
+            'customer_id' => [
+                'required',
+                'integer',
+                Rule::exists('customers', 'id')->where(
+                    fn ($query) => $query->where('workspace_id', $workspaceId)
+                ),
+            ],
+            'issue_date' => ['required', 'date'],
+            'expiry_date' => ['nullable', 'date', 'after_or_equal:issue_date'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'status' => ['nullable', 'in:draft,issued'],
+            'notes' => ['nullable', 'string'],
+            'terms' => ['nullable', 'string'],
+            'tax_profile_type' => ['nullable', 'in:standard,zero_rated,exempt,out_of_scope'],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'tax_price_mode' => ['nullable', 'in:exclusive,inclusive'],
+            'items_json' => ['required', 'string'],
+        ]);
+
+        $items = json_decode($validated['items_json'], true);
+        if (! is_array($items) || $items === []) {
+            throw ValidationException::withMessages([
+                'items_json' => 'يجب إدخال بند واحد على الأقل في عرض السعر.',
+            ]);
+        }
+
+        $items = array_map(function ($item) {
+            if (! is_array($item)) {
+                return $item;
+            }
+
+            unset($item['total'], $item['tax_amount'], $item['taxable_amount'], $item['subtotal']);
+            $productId = (int) ($item['product_id'] ?? 0);
+            $item['product_id'] = $productId > 0 ? $productId : null;
+            $item['unit'] = mb_substr(trim((string) ($item['unit'] ?? '')), 0, 32);
+
+            return $item;
+        }, $items);
+
+        $payload = Arr::except($validated, ['items_json']);
+        $payload['items'] = $items;
+
+        return $payload;
+    }
+}
