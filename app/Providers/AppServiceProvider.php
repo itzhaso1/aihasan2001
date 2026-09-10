@@ -2,7 +2,11 @@
 
 namespace App\Providers;
 
+use App\EInvoicing\QR\Harness\QrTag9Provider;
+use App\EInvoicing\QR\Harness\UnresolvedProductionQrTag9Provider;
 use App\EInvoicing\Security\CryptographicStampSigner;
+use App\EInvoicing\Security\Harness\CryptographicProfile;
+use App\EInvoicing\Security\Harness\UnresolvedProductionZatcaCryptographicProfile;
 use App\Models\Appointment\AppointmentBooking;
 use App\Models\Appointment\AppointmentHoliday;
 use App\Models\Appointment\AppointmentReminder;
@@ -125,6 +129,8 @@ class AppServiceProvider extends ServiceProvider
             HyperPayMerchantSettlementProvider::class
         );
         $this->app->bind(CryptographicStampSigner::class, DeferredCryptographicStampSigner::class);
+        $this->app->bind(CryptographicProfile::class, UnresolvedProductionZatcaCryptographicProfile::class);
+        $this->app->bind(QrTag9Provider::class, UnresolvedProductionQrTag9Provider::class);
     }
 
     /**

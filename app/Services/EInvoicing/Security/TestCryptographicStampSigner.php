@@ -37,6 +37,11 @@ final class TestCryptographicStampSigner implements CryptographicStampSigner
         return false;
     }
 
+    public function isTestOnly(): bool
+    {
+        return true;
+    }
+
     public function signCanonicalDigest(InvoiceHash $hash): CryptographicStampResult
     {
         $signature = $this->signDigest($hash->binary());

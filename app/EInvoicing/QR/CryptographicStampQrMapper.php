@@ -6,13 +6,10 @@ use App\EInvoicing\Security\CryptographicStamp;
 use App\EInvoicing\Security\Exceptions\CryptographicStampException;
 
 /**
- * Maps a local cryptographic stamp onto QR Tags 7–8.
+ * Maps a local TEST stamp onto QR Tags 7–8 for Phase 9 foundation tests.
  *
- * Tag 7: UTF-8 Base64 of the ECDSA DER signature (Detailed Technical
- * Guidelines section 6.2 example matching SignatureValue).
- * Tag 8: raw SubjectPublicKeyInfo DER (Detailed Technical Guidelines
- * section 6 hex dump).
- * Tag 9: never generated. Accepted only as an externally provisioned artifact.
+ * This mapper does not establish the production ZATCA Tag 7/8 encoding
+ * (Phase 9A: UNRESOLVED). Tag 9 is never generated here.
  */
 final class CryptographicStampQrMapper
 {

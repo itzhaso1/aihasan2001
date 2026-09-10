@@ -21,6 +21,11 @@ final class DeferredCryptographicStampSigner implements CryptographicStampSigner
         return false;
     }
 
+    public function isTestOnly(): bool
+    {
+        return false;
+    }
+
     public function signCanonicalDigest(InvoiceHash $hash): CryptographicStampResult
     {
         unset($hash);
@@ -33,7 +38,7 @@ final class DeferredCryptographicStampSigner implements CryptographicStampSigner
         unset($input);
 
         throw new CryptographicStampException(
-            'Cryptographic stamp is deferred until a ZATCA-issued CSID is provisioned. This signer is not a production identity.',
+            'Cryptographic stamp is deferred until a ZATCA-issued CSID is provisioned. Production ZATCA cryptographic profile is unresolved and unavailable. This signer is not a production identity.',
             operation: 'cryptographic_stamp',
             reason: 'stamp_deferred',
         );

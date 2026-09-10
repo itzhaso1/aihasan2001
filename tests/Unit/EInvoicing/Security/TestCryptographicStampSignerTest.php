@@ -38,6 +38,7 @@ class TestCryptographicStampSignerTest extends TestCase
         $this->assertSame(StampStatus::TestSigned, $stamp->status);
         $this->assertFalse($stamp->isProductionIdentity());
         $this->assertFalse($signer->isProductionIdentity());
+        $this->assertTrue($signer->isTestOnly());
         $this->assertSame($hash->value(), $stamp->invoiceHash->value());
         $this->assertTrue($signer->verify($hash->binary(), $der, $certificate->publicCertificatePem));
 
@@ -96,6 +97,7 @@ class TestCryptographicStampSignerTest extends TestCase
     {
         $deferred = new DeferredCryptographicStampSigner;
         $this->assertFalse($deferred->isProductionIdentity());
+        $this->assertFalse($deferred->isTestOnly());
 
         $certificate = (new X509CertificateParser)->parsePem($this->pem('test-only-egs-a.crt.pem'), true);
         $this->expectExceptionMessage('deferred');
