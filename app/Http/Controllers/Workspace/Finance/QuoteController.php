@@ -10,6 +10,7 @@ use App\Models\Finance\FinanceTaxRate;
 use App\Models\Product;
 use App\Services\Finance\FinanceBootstrapService;
 use App\Services\Finance\PdfQuoteService;
+use App\Services\Finance\QuoteEmailService;
 use App\Services\Finance\QuoteService;
 use App\Services\Finance\Tax\TaxCalculationService;
 use Illuminate\Http\RedirectResponse;
@@ -24,6 +25,7 @@ class QuoteController extends FinanceBaseController
 {
     public function __construct(
         private readonly QuoteService $quoteService,
+        private readonly QuoteEmailService $quoteEmailService,
         private readonly FinanceBootstrapService $financeBootstrapService,
         private readonly PdfQuoteService $pdfQuoteService,
     ) {}
@@ -104,7 +106,7 @@ class QuoteController extends FinanceBaseController
         $this->assertSameWorkspace($quote->workspace_id);
 
         return view('workspace.finance.quotes.show', [
-            'quote' => $quote->load(['customer', 'items', 'creator', 'issuer']),
+            'quote' => $quote->load(['customer', 'items', 'creator', 'issuer', 'deliveries.sender']),
         ]);
     }
 
@@ -181,6 +183,43 @@ class QuoteController extends FinanceBaseController
         }
 
         return redirect()->route('workspace.finance.quotes.show', $quote)->with('success', 'تم إلغاء عرض السعر.');
+    }
+
+    public function send(Request $request, FinanceQuote $quote): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.send');
+        $this->assertSameWorkspace($quote->workspace_id);
+
+        $validated = $request->validate([
+            'email' => ['required', 'email:filter', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:32'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'message' => ['nullable', 'string', 'max:15000'],
+            'attach_pdf' => ['nullable', 'boolean'],
+        ], [
+            'email.required' => 'لا يوجد بريد إلكتروني للعميل.',
+            'email.email' => 'البريد الإلكتروني غير صالح.',
+        ]);
+
+        try {
+            $delivery = $this->quoteEmailService->send(
+                $quote,
+                [
+                    'email' => $validated['email'],
+                    'phone' => $validated['phone'] ?? null,
+                    'subject' => $validated['subject'] ?? null,
+                    'message' => $validated['message'] ?? null,
+                    'attach_pdf' => $request->boolean('attach_pdf', true),
+                ],
+                (int) $request->user()?->id,
+            );
+        } catch (RuntimeException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('workspace.finance.quotes.show', $quote)
+            ->with('success', 'تم إرسال عرض السعر إلى '.$delivery->recipient);
     }
 
     public function downloadPdf(Request $request, FinanceQuote $quote)

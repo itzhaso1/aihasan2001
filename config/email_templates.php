@@ -36,6 +36,10 @@ return [
             'view' => 'emails.templates.contract-email',
             'subject' => 'إشعار عقد',
         ],
+        'quote_email' => [
+            'view' => 'emails.templates.quote-email',
+            'subject' => 'عرض سعر',
+        ],
         'payroll_email' => [
             'view' => 'emails.templates.payroll-email',
             'subject' => 'إشعار رواتب',

@@ -3,11 +3,13 @@
 namespace App\Enums\Finance;
 
 /**
- * Future quote delivery states. Phase B does not persist or transition these.
- * Send / viewed tracking belongs to a later phase.
+ * Quote-level delivery concepts kept separate from document status.
+ * Per-send history lives on finance_document_deliveries (email sent/failed).
+ * Viewed tracking is reserved for a later phase and is not persisted here.
  */
 enum QuoteDeliveryStatus: string
 {
+    case Unsent = 'unsent';
     case Sent = 'sent';
     case Viewed = 'viewed';
 }

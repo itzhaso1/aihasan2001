@@ -15,8 +15,22 @@ class PdfQuoteService
 {
     public function download(FinanceQuote $quote): Response|Responsable
     {
-        $quote->loadMissing(['customer', 'items.product']);
         $fileName = 'quote-'.$quote->quote_number.'.pdf';
+
+        return $this->buildPdf($quote)->download($fileName);
+    }
+
+    public function renderBinary(FinanceQuote $quote): string
+    {
+        return $this->buildPdf($quote)->output();
+    }
+
+    /**
+     * @return PDF
+     */
+    private function buildPdf(FinanceQuote $quote)
+    {
+        $quote->loadMissing(['customer', 'items.product']);
 
         if (! class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
             throw new RuntimeException('PDF generation is unavailable. Please install barryvdh/laravel-dompdf.');
@@ -42,10 +56,7 @@ class PdfQuoteService
         ])->render();
         $html = $this->shapeArabicForDompdf($html);
 
-        /** @var PDF $pdf */
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4');
-
-        return $pdf->download($fileName);
+        return \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4');
     }
 
     private function resolveLogoDataUri(?string $logoPath): ?string
