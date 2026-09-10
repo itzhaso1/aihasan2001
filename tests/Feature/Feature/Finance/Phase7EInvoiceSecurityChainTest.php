@@ -22,7 +22,6 @@ use App\Models\WorkspaceFeatureFlag;
 use App\Services\EInvoicing\EInvoiceFactory;
 use App\Services\EInvoicing\EInvoiceXmlGenerator;
 use App\Services\EInvoicing\Security\EInvoiceSecurityService;
-use App\Services\EInvoicing\Security\InvoiceHashService;
 use App\Services\EInvoicing\Security\SecurityChainDiagnostic;
 use App\Support\Tenancy\WorkspaceContext;
 use Database\Seeders\FoundationSeeder;
@@ -201,23 +200,22 @@ class Phase7EInvoiceSecurityChainTest extends TestCase
         [$workspace] = $this->createWorkspaceOwner();
         $prepared = $this->persistDocument($workspace, 'INV-ROLLBACK');
         $xml = app(EInvoiceXmlGenerator::class)->generate($prepared['document']);
-
-        $this->mock(InvoiceHashService::class, function ($mock): void {
-            $mock->shouldReceive('sourceDigest')->andReturn(str_repeat('A', 44));
-            $mock->shouldReceive('canonicalize')->andThrow(new InvoiceHashException(
-                'forced hash failure',
-                operation: 'canonicalize',
-                reason: 'test',
-            ));
-            $mock->shouldReceive('hash')->andThrow(new InvoiceHashException(
-                'forced hash failure',
-                operation: 'hash',
-                reason: 'test',
-            ));
-        });
+        $refused = new GeneratedEInvoiceXml(
+            xml: preg_replace('/<Invoice\b/', '<Invoice xml:lang="ar"', $xml->xml, 1) ?? $xml->xml,
+            documentKind: $xml->documentKind,
+            rootLocalName: $xml->rootLocalName,
+            rootNamespace: $xml->rootNamespace,
+            workspaceId: $xml->workspaceId,
+            sourceSnapshotId: $xml->sourceSnapshotId,
+            sourceType: $xml->sourceType,
+            sourceId: $xml->sourceId,
+            documentNumber: $xml->documentNumber,
+            documentUuid: $xml->documentUuid,
+            schemaValid: $xml->schemaValid,
+        );
 
         try {
-            app(EInvoiceSecurityService::class)->generate($prepared['document'], $xml);
+            app(EInvoiceSecurityService::class)->generate($prepared['document'], $refused);
             $this->fail('Hash failure was swallowed.');
         } catch (InvoiceHashException) {
         }
@@ -242,7 +240,7 @@ class Phase7EInvoiceSecurityChainTest extends TestCase
         EInvoiceSecurityRecord::withoutGlobalScopes()->create([
             'workspace_id' => $first->workspace_id,
             'egs_unit_id' => $first->egs_unit_id,
-            'e_invoice_document_id' => $this->persistDocument($workspace, 'INV-DUP')->record->id,
+            'e_invoice_document_id' => $this->persistDocument($workspace, 'INV-DUP')['record']->id,
             'icv' => $first->icv,
             'pih' => Pih::FIRST_DOCUMENT,
             'invoice_hash' => base64_encode(str_repeat("\x02", 32)),
@@ -357,9 +355,12 @@ class Phase7EInvoiceSecurityChainTest extends TestCase
     public function test_icv_is_not_database_id_or_invoice_number(): void
     {
         [$workspace] = $this->createWorkspaceOwner();
+        $this->persistDocument($workspace, 'INV-PLACEHOLDER');
         $prepared = $this->secure($workspace, 'INV-9999');
         $this->assertSame(1, $prepared['artifact']->icv->value());
         $this->assertNotSame(9999, $prepared['artifact']->icv->value());
+        $this->assertNotSame((int) $prepared['document']->sourceId, $prepared['artifact']->icv->value());
+        $this->assertGreaterThan(1, (int) $prepared['record']->id);
         $this->assertNotSame((int) $prepared['record']->id, $prepared['artifact']->icv->value());
         $this->assertNotSame($prepared['xml']->documentUuid, (string) $prepared['artifact']->icv);
         $this->assertNotSame($prepared['xml']->documentUuid, $prepared['artifact']->invoiceHash->value());

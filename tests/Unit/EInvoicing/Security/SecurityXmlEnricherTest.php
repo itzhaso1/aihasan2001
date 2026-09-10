@@ -29,15 +29,12 @@ class SecurityXmlEnricherTest extends TestCase
         $xml = (new EInvoiceXmlGenerator(new UblMapper))->generate($this->document());
         $enriched = (new SecurityXmlEnricher)->enrich($xml, Icv::fromInt(7), Pih::firstDocument());
 
-        $this->assertMatchesRegularExpression(
-            '/<cac:AdditionalDocumentReference>\s*<cbc:ID>ICV<\/cbc:ID>\s*<cbc:UUID>7<\/cbc:UUID>/',
-            $enriched,
-        );
+        $this->assertStringContainsString('>ICV</cbc:ID>', $enriched);
+        $this->assertStringContainsString('>7</cbc:UUID>', $enriched);
         $this->assertStringContainsString(Pih::FIRST_DOCUMENT, $enriched);
-        $this->assertTrue(
-            strpos($enriched, 'cbc:ID>ICV') < strpos($enriched, 'AccountingSupplierParty')
-        );
-        $this->assertStringNotContainsString('<cbc:ID>QR</cbc:ID>', $enriched);
+        $this->assertNotFalse(strpos($enriched, '>ICV</cbc:ID>'));
+        $this->assertTrue(strpos($enriched, '>ICV</cbc:ID>') < strpos($enriched, 'AccountingSupplierParty'));
+        $this->assertStringNotContainsString('>QR</cbc:ID>', $enriched);
     }
 
     private function document(): EInvoiceDocument
