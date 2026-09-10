@@ -181,11 +181,16 @@ class IssuedSnapshotBuilder
      */
     private function invoicePayload(FinanceInvoice $invoice): array
     {
-        $invoice->loadMissing(['items', 'contract', 'customer', 'supplier']);
+        $invoice->loadMissing(['items', 'contract', 'customer', 'supplier', 'payments']);
 
-        $seller = is_array($invoice->company_snapshot) ? $invoice->company_snapshot : [];
-        $buyer = is_array($invoice->recipient_snapshot) ? $invoice->recipient_snapshot : [];
+        $seller = $this->withStructuredAddress(
+            is_array($invoice->company_snapshot) ? $invoice->company_snapshot : []
+        );
+        $buyer = $this->withStructuredAddress(
+            is_array($invoice->recipient_snapshot) ? $invoice->recipient_snapshot : []
+        );
         $pdf = is_array($invoice->pdf_snapshot) ? $invoice->pdf_snapshot : [];
+        $subtype = $this->financeInvoiceSubtype($invoice);
 
         return [
             'document' => [
@@ -193,9 +198,11 @@ class IssuedSnapshotBuilder
                 'issue_date' => $invoice->issue_date?->toDateString(),
                 'issued_at' => $invoice->issued_at?->toIso8601String(),
                 'due_date' => $invoice->due_date?->toDateString(),
+                'supply_date' => $invoice->supply_date?->toDateString(),
                 'status' => $invoice->resolvedInvoiceStatus(),
                 'type' => $invoice->type,
-                'tax_document_subtype' => $invoice->tax_document_subtype ?: 'standard',
+                'tax_document_subtype' => $subtype,
+                'subtype' => $subtype,
                 'currency' => $invoice->currency,
                 'payment_terms' => $invoice->payment_terms,
                 'notes' => $invoice->notes,
@@ -223,11 +230,7 @@ class IssuedSnapshotBuilder
                 'amount_credited' => $this->money($invoice->amount_credited ?? 0),
                 'amount_debited' => $this->money($invoice->amount_debited ?? 0),
             ],
-            'payment' => [
-                'payment_status' => $invoice->payment_status,
-                'amount_paid' => $this->money($invoice->amount_paid),
-                'amount_due' => $this->money($invoice->amount_due),
-            ],
+            'payment' => $this->invoicePaymentSection($invoice),
             'metadata' => [
                 'schema_version' => IssuedDocumentSnapshot::SCHEMA_VERSION,
                 'source_type' => IssuedDocumentSnapshot::SOURCE_FINANCE_INVOICE,
@@ -250,29 +253,29 @@ class IssuedSnapshotBuilder
             throw new RuntimeException('Cross-workspace credit note reference is not allowed.');
         }
 
-        $seller = is_array($invoice?->company_snapshot) && $invoice->company_snapshot !== []
-            ? $invoice->company_snapshot
-            : $this->sellerFromSettings((int) $note->workspace_id);
-        $buyer = is_array($invoice?->recipient_snapshot) && $invoice->recipient_snapshot !== []
-            ? $invoice->recipient_snapshot
-            : [
-                'kind' => 'customer',
-                'name' => $note->customer?->name,
-                'vat_number' => $note->customer?->vat_number,
-                'commercial_registration' => $note->customer?->commercial_registration,
-                'address' => $note->customer?->address,
-                'phone' => $note->customer?->phone,
-                'email' => $note->customer?->email,
-            ];
+        $seller = $this->withStructuredAddress(
+            is_array($invoice?->company_snapshot) && $invoice->company_snapshot !== []
+                ? $invoice->company_snapshot
+                : $this->sellerFromSettings((int) $note->workspace_id)
+        );
+        $buyer = $this->withStructuredAddress(
+            is_array($invoice?->recipient_snapshot) && $invoice->recipient_snapshot !== []
+                ? $invoice->recipient_snapshot
+                : $this->customerParty($note->customer)
+        );
+        $subtype = $this->noteSubtypeFromOriginal($invoice);
 
         return [
             'document' => [
                 'number' => $note->note_number,
                 'issue_date' => $note->issue_date?->toDateString(),
                 'issued_at' => $note->issued_at?->toIso8601String(),
+                'supply_date' => null,
                 'status' => $note->status,
                 'type' => $note->type,
-                'reason' => $note->reason,
+                'tax_document_subtype' => $subtype,
+                'subtype' => $subtype,
+                'reason' => $this->nullableSnapshotString($note->reason),
                 'currency' => $note->currency,
                 'notes' => $note->notes,
             ],
@@ -284,11 +287,13 @@ class IssuedSnapshotBuilder
                 'invoice_number' => $invoice?->invoice_number,
                 'invoice_issue_date' => $invoice?->issue_date?->toDateString(),
                 'invoice_type' => $invoice?->type,
+                'invoice_tax_document_subtype' => $subtype,
             ],
             'lines' => $note->items->map(fn ($item): array => [
                 'description' => $item->description ?: $item->product_name,
                 'product_name' => $item->product_name,
                 'quantity' => $this->quantity($item->quantity),
+                'unit_code' => $this->nullableSnapshotString($item->unit_code ?? null),
                 'unit_price' => $this->money($item->unit_price),
                 'discount' => $this->money($item->discount),
                 'taxable_amount' => $this->money($item->taxable_amount),
@@ -313,7 +318,10 @@ class IssuedSnapshotBuilder
                 'tax_amount' => $this->money($note->tax_amount),
                 'total' => $this->money($note->total),
             ],
-            'payment' => null,
+            'payment' => [
+                'business_methods' => [],
+                'regulatory_code' => null,
+            ],
             'metadata' => [
                 'schema_version' => IssuedDocumentSnapshot::SCHEMA_VERSION,
                 'source_type' => $note->isCredit()
@@ -352,14 +360,26 @@ class IssuedSnapshotBuilder
         $amountDue = $allPaid ? $this->money(0) : $total;
         $workspace = Workspace::query()->find((int) $invoice->workspace_id);
         $configuredRate = $this->posPersistedTaxRate($invoice, $orders);
+        $subtype = $this->nullableSnapshotString($invoice->tax_document_subtype ?? null);
+        $paymentMethods = $orders
+            ->map(fn (Order $order): ?string => is_array($order->metadata)
+                ? (isset($order->metadata['payment_method']) ? (string) $order->metadata['payment_method'] : null)
+                : null)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
 
         return [
             'document' => [
                 'number' => $invoice->invoice_number,
                 'issue_date' => $invoice->closed_at?->toDateString(),
                 'issued_at' => $invoice->closed_at?->toIso8601String(),
+                'supply_date' => null,
                 'status' => $invoice->status,
                 'type' => 'pos_cashier_invoice',
+                'tax_document_subtype' => $subtype,
+                'subtype' => $subtype,
                 'currency' => $invoice->currency,
                 'source' => 'pos',
                 'notes' => is_array($invoice->metadata) ? ($invoice->metadata['notes'] ?? null) : null,
@@ -402,14 +422,9 @@ class IssuedSnapshotBuilder
             ],
             'payment' => [
                 'payment_status' => $this->posPaymentStatus($orders),
-                'payment_methods' => $orders
-                    ->map(fn (Order $order): ?string => is_array($order->metadata)
-                        ? (isset($order->metadata['payment_method']) ? (string) $order->metadata['payment_method'] : null)
-                        : null)
-                    ->filter()
-                    ->unique()
-                    ->values()
-                    ->all(),
+                'payment_methods' => $paymentMethods,
+                'business_methods' => $paymentMethods,
+                'regulatory_code' => null,
                 'amount_paid' => $amountPaid,
                 'amount_due' => $amountDue,
             ],
@@ -441,6 +456,7 @@ class IssuedSnapshotBuilder
             'item_type' => $item->item_type,
             'size_label' => $item->size_label,
             'quantity' => $this->quantity($item->quantity),
+            'unit_code' => $this->nullableSnapshotString($item->unit_code ?? null),
             'unit_price' => $this->money($item->unit_price),
             'discount' => $this->money($item->discount_amount),
             'subtotal' => $this->money($item->total_amount),
@@ -462,7 +478,7 @@ class IssuedSnapshotBuilder
             $seller['company_name'] = $workspace?->name;
         }
 
-        return $seller;
+        return $this->withStructuredAddress($seller);
     }
 
     /**
@@ -478,7 +494,7 @@ class IssuedSnapshotBuilder
             ->first();
 
         if (! $customer) {
-            return [
+            return $this->withStructuredAddress([
                 'kind' => 'anonymous',
                 'walk_in' => true,
                 'name' => null,
@@ -487,27 +503,10 @@ class IssuedSnapshotBuilder
                 'address' => null,
                 'phone' => null,
                 'email' => null,
-            ];
+            ]);
         }
 
-        return [
-            'kind' => 'customer',
-            'walk_in' => false,
-            'id' => (int) $customer->id,
-            'name' => $customer->name,
-            'vat_number' => $customer->vat_number,
-            'commercial_registration' => $customer->commercial_registration,
-            'address' => $customer->address,
-            'building_number' => $customer->building_number,
-            'street' => $customer->street,
-            'district' => $customer->district,
-            'city' => $customer->city,
-            'postal_code' => $customer->postal_code,
-            'country_code' => $customer->country_code,
-            'additional_number' => $customer->additional_number,
-            'phone' => $customer->phone,
-            'email' => $customer->email,
-        ];
+        return $this->withStructuredAddress($this->customerParty($customer, walkIn: false));
     }
 
     /**
@@ -572,6 +571,7 @@ class IssuedSnapshotBuilder
             'product_id' => $item->product_id,
             'product_name' => $item->product_name,
             'quantity' => $this->quantity($item->quantity),
+            'unit_code' => $this->nullableSnapshotString($item->unit_code ?? null),
             'unit_price' => $this->money($item->unit_price),
             'discount' => $this->money($item->discount),
             'taxable_amount' => $this->money($item->taxable_amount),
@@ -634,6 +634,132 @@ class IssuedSnapshotBuilder
         if ($contextId !== null && (int) $contextId !== $documentWorkspaceId) {
             throw new RuntimeException('Cross-workspace snapshot creation is not allowed.');
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function invoicePaymentSection(FinanceInvoice $invoice): array
+    {
+        $methods = $invoice->payments
+            ->filter(fn ($payment): bool => method_exists($payment, 'isPosted') ? $payment->isPosted() : true)
+            ->map(fn ($payment): ?string => $this->nullableSnapshotString($payment->method ?? null))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        return [
+            'payment_status' => $invoice->payment_status,
+            'amount_paid' => $this->money($invoice->amount_paid),
+            'amount_due' => $this->money($invoice->amount_due),
+            'business_methods' => $methods,
+            'regulatory_code' => null,
+        ];
+    }
+
+    private function financeInvoiceSubtype(FinanceInvoice $invoice): string
+    {
+        $raw = $this->nullableSnapshotString($invoice->tax_document_subtype);
+
+        return $raw ?? 'standard';
+    }
+
+    private function noteSubtypeFromOriginal(?FinanceInvoice $invoice): ?string
+    {
+        if ($invoice === null) {
+            return null;
+        }
+
+        return $this->financeInvoiceSubtype($invoice);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function customerParty(?Customer $customer, bool $walkIn = false): array
+    {
+        if ($customer === null) {
+            return [
+                'kind' => 'customer',
+                'walk_in' => $walkIn,
+                'name' => null,
+                'vat_number' => null,
+                'commercial_registration' => null,
+                'address' => null,
+                'phone' => null,
+                'email' => null,
+            ];
+        }
+
+        return [
+            'kind' => 'customer',
+            'walk_in' => $walkIn,
+            'id' => (int) $customer->id,
+            'name' => $customer->name,
+            'vat_number' => $customer->vat_number,
+            'commercial_registration' => $customer->commercial_registration,
+            'address' => $customer->address,
+            'building_number' => $customer->building_number,
+            'street' => $customer->street,
+            'district' => $customer->district,
+            'city' => $customer->city,
+            'postal_code' => $customer->postal_code,
+            'country_code' => $customer->country_code,
+            'additional_number' => $customer->additional_number,
+            'phone' => $customer->phone,
+            'email' => $customer->email,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $party
+     * @return array<string, mixed>
+     */
+    private function withStructuredAddress(array $party): array
+    {
+        $existing = $party['address'] ?? null;
+        $line = is_string($existing)
+            ? $existing
+            : ($party['address_line'] ?? (is_array($existing) ? ($existing['line'] ?? null) : null));
+
+        $address = [
+            'line' => $this->nullableSnapshotString($line),
+            'street' => $this->nullableSnapshotString($party['street'] ?? (is_array($existing) ? ($existing['street'] ?? null) : null)),
+            'building_number' => $this->nullableSnapshotString($party['building_number'] ?? (is_array($existing) ? ($existing['building_number'] ?? null) : null)),
+            'additional_number' => $this->nullableSnapshotString($party['additional_number'] ?? (is_array($existing) ? ($existing['additional_number'] ?? null) : null)),
+            'district' => $this->nullableSnapshotString($party['district'] ?? (is_array($existing) ? ($existing['district'] ?? null) : null)),
+            'city' => $this->nullableSnapshotString($party['city'] ?? (is_array($existing) ? ($existing['city'] ?? null) : null)),
+            'postal_code' => $this->nullableSnapshotString($party['postal_code'] ?? (is_array($existing) ? ($existing['postal_code'] ?? null) : null)),
+            'country_code' => $this->nullableSnapshotString($party['country_code'] ?? (is_array($existing) ? ($existing['country_code'] ?? null) : null)),
+        ];
+
+        $party['address'] = $address;
+        $party['address_line'] = $party['address_line'] ?? $address['line'];
+        $party['street'] = $address['street'];
+        $party['building_number'] = $address['building_number'];
+        $party['additional_number'] = $address['additional_number'];
+        $party['district'] = $address['district'];
+        $party['city'] = $address['city'];
+        $party['postal_code'] = $address['postal_code'];
+        $party['country_code'] = $address['country_code'];
+
+        return $party;
+    }
+
+    private function nullableSnapshotString(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (! is_string($value) && ! is_numeric($value)) {
+            return null;
+        }
+
+        $string = (string) $value;
+
+        return $string === '' ? null : $string;
     }
 
     private function money(mixed $value): string

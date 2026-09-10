@@ -17,6 +17,7 @@ use RuntimeException;
     'product_name',
     'description',
     'quantity',
+    'unit_code',
     'unit_price',
     'discount',
     'tax_profile_type',
@@ -86,5 +87,10 @@ class FinanceInvoiceItem extends WorkspaceScopedModel
     {
         return Schema::hasColumn('finance_invoice_items', 'exemption_reason')
             && Schema::hasColumn('finance_invoice_items', 'exemption_code');
+    }
+
+    public static function hasUnitCodeColumn(): bool
+    {
+        return Schema::hasColumn('finance_invoice_items', 'unit_code');
     }
 }

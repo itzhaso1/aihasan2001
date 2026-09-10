@@ -148,6 +148,10 @@ class InvoiceService
                 'created_by' => $actorUserId,
             ];
 
+            if (Schema::hasColumn('finance_invoices', 'supply_date')) {
+                $attributes['supply_date'] = $this->nullableDate($payload['supply_date'] ?? null);
+            }
+
             if (FinanceInvoice::hasClassificationColumns()) {
                 $attributes['tax_document_subtype'] = $classification->taxDocumentSubtype->value;
                 $attributes['zatca_requirement'] = $classification->zatcaRequirement->value;
@@ -337,6 +341,10 @@ class InvoiceService
                 'payment_terms' => ($payload['payment_terms'] ?? null) ?: null,
                 'notes' => ($payload['notes'] ?? null) ?: null,
             ];
+
+            if (Schema::hasColumn('finance_invoices', 'supply_date') && array_key_exists('supply_date', $payload)) {
+                $updates['supply_date'] = $this->nullableDate($payload['supply_date']);
+            }
 
             if (FinanceInvoice::hasSnapshotColumns()) {
                 $updates['company_snapshot'] = $snapshots['company'];
@@ -556,6 +564,7 @@ class InvoiceService
                 'total' => $line->total,
                 'exemption_reason' => $line->exemptionReason,
                 'exemption_code' => $line->exemptionCode,
+                'unit_code' => $source['unit_code'] ?? null,
                 'metadata' => $source['metadata'],
             ];
         }
@@ -607,6 +616,7 @@ class InvoiceService
                 'tax_profile_type' => $rawItem['tax_profile_type'] ?? $rawItem['tax_type'] ?? null,
                 'exemption_reason' => $rawItem['exemption_reason'] ?? null,
                 'exemption_code' => $rawItem['exemption_code'] ?? null,
+                'unit_code' => $this->nullableCode($rawItem['unit_code'] ?? null),
                 'metadata' => is_array($rawItem['metadata'] ?? null) ? $rawItem['metadata'] : null,
             ];
 
@@ -974,6 +984,10 @@ class InvoiceService
             $attributes['exemption_code'] = $item['exemption_code'] ?? null;
         }
 
+        if (FinanceInvoiceItem::hasUnitCodeColumn()) {
+            $attributes['unit_code'] = $this->nullableCode($item['unit_code'] ?? null);
+        }
+
         FinanceInvoiceItem::withoutGlobalScopes()->create($attributes);
     }
 
@@ -1051,6 +1065,26 @@ class InvoiceService
     private function money(float $value): float
     {
         return Money::round($value);
+    }
+
+    private function nullableDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (string) $value;
+    }
+
+    private function nullableCode(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $code = is_string($value) || is_numeric($value) ? (string) $value : null;
+
+        return $code === '' ? null : $code;
     }
 
     /**

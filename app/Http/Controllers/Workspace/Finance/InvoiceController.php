@@ -468,6 +468,7 @@ class InvoiceController extends FinanceBaseController
             'zatca_requirement' => ['nullable', 'in:not_required,required'],
             'issue_date' => ['required', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:issue_date'],
+            'supply_date' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'size:3'],
             'invoice_status' => ['nullable', 'in:draft,issued'],
             'status' => ['nullable', 'in:draft,sent,unpaid,partial,paid,overdue,cancelled'],

@@ -60,6 +60,9 @@ final class UblMapper
         $this->mapParty($builder, $root, 'AccountingSupplierParty', $document->seller, $document, true);
         $this->mapParty($builder, $root, 'AccountingCustomerParty', $document->buyer, $document, false);
 
+        $this->mapDelivery($builder, $root, $document);
+        $this->mapPaymentMeans($builder, $root, $document);
+
         if (Money::cmp($document->totals->discount, '0') === 1) {
             $this->mapAllowance($builder, $root, $document->totals->discount, $document);
         }
@@ -294,6 +297,27 @@ final class UblMapper
         }
     }
 
+    private function mapDelivery(XmlBuilder $builder, DOMElement $root, EInvoiceDocument $document): void
+    {
+        if ($document->supplyDate === null || $document->supplyDate === '') {
+            return;
+        }
+
+        $delivery = $builder->cac($root, 'Delivery');
+        $builder->cbc($delivery, 'ActualDeliveryDate', substr($document->supplyDate, 0, 10));
+    }
+
+    private function mapPaymentMeans(XmlBuilder $builder, DOMElement $root, EInvoiceDocument $document): void
+    {
+        $code = $document->payment['regulatory_code'] ?? null;
+        if (! is_string($code) || trim($code) === '') {
+            return;
+        }
+
+        $means = $builder->cac($root, 'PaymentMeans');
+        $builder->cbc($means, 'PaymentMeansCode', trim($code));
+    }
+
     private function mapAllowance(XmlBuilder $builder, DOMElement $parent, string $amount, EInvoiceDocument $document): void
     {
         $allowance = $builder->cac($parent, 'AllowanceCharge');
@@ -364,7 +388,10 @@ final class UblMapper
     ): void {
         $lineEl = $builder->cac($root, $isCredit ? 'CreditNoteLine' : 'InvoiceLine');
         $builder->cbc($lineEl, 'ID', (string) $id);
-        $builder->cbc($lineEl, $isCredit ? 'CreditedQuantity' : 'InvoicedQuantity', $line->quantity);
+        $quantity = $builder->cbc($lineEl, $isCredit ? 'CreditedQuantity' : 'InvoicedQuantity', $line->quantity);
+        if ($line->unitCode !== null && $line->unitCode !== '') {
+            $builder->attr($quantity, 'unitCode', $line->unitCode);
+        }
 
         $net = $line->taxableAmount ?? $line->total;
         $builder->money($lineEl, 'LineExtensionAmount', $net, $document->currency);

@@ -11,14 +11,15 @@ use RuntimeException;
 
 /**
  * Single mapping from issued-snapshot source + subtype to electronic document type.
- * Credit/debit notes and POS invoices do not currently persist standard/simplified
- * on the snapshot, so their transaction code stays unset rather than guessed.
+ * Credit/debit notes use the original invoice subtype when the snapshot captured it.
+ * POS invoices keep a nullable subtype and never guess simplified/standard.
  */
 final class InvoiceTypeCatalog
 {
     /**
      * Architecture catalog. Transaction codes stay null when the snapshot
-     * does not carry a standard/simplified subtype (credit/debit/POS today).
+     * does not carry a standard/simplified subtype (POS, or notes without
+     * an original invoice classification).
      *
      * @return array<string, array{kind: string, type_code: string|null, transaction_code: string|null}>
      */
@@ -151,7 +152,7 @@ final class InvoiceTypeCatalog
      */
     private static function subtypeFromDocument(array $document): ?InvoiceTransactionCode
     {
-        $raw = $document['tax_document_subtype'] ?? null;
+        $raw = $document['tax_document_subtype'] ?? $document['subtype'] ?? null;
         if (! is_string($raw) || $raw === '') {
             return null;
         }

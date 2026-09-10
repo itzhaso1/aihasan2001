@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'closed_by_user_id',
     'invoice_number',
     'status',
+    'tax_document_subtype',
     'currency',
     'subtotal',
     'discount_amount',
