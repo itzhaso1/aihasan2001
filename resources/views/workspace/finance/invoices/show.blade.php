@@ -18,7 +18,7 @@
         default => 'bg-amber-50 text-amber-700',
     };
     $lifecycle = \App\Support\Finance\InvoicePresentation::lifecycle($invoice);
-    $invoiceStatusLabels = ['draft' => 'مسودة', 'issued' => 'مرسلة', 'cancelled' => 'ملغاة'];
+    $invoiceStatusLabels = ['draft' => 'مسودة', 'issued' => 'معتمدة', 'cancelled' => 'ملغاة'];
     $paymentStatusLabels = ['unpaid' => 'غير مدفوعة', 'partial' => 'مدفوعة جزئيًا', 'paid' => 'مدفوعة', 'overdue' => 'متأخرة'];
     $taxDocumentLabels = ['standard' => 'قياسية', 'simplified' => 'مبسطة'];
     $zatcaRequirementLabels = ['not_required' => 'غير مطلوب', 'required' => 'مطلوب (داخلي)'];
@@ -78,6 +78,9 @@
                 @if($invoice->isSendable())
                     <a href="#invoice-send" class="rounded-lg bg-[#06C2A4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">إرسال بالبريد الإلكتروني</a>
                 @endif
+                @if($invoice->isRemindable())
+                    <a href="#invoice-remind" class="rounded-lg border border-amber-300 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-50">تذكير بالبريد</a>
+                @endif
                 @if($isDraft)
                     <a href="{{ route('workspace.finance.invoices.edit', $invoice) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">تعديل</a>
                     <form method="POST" action="{{ route('workspace.finance.invoices.issue', $invoice) }}" onsubmit="return confirm('إصدار الفاتورة وترحيل القيد المحاسبي؟')">
@@ -118,7 +121,9 @@
             $defaultMessage = "السلام عليكم،\nنرفق لكم الفاتورة رقم {$invoice->invoice_number}.\nالتاريخ: ".($invoice->issue_date?->format('Y-m-d') ?: '—')."\nالإجمالي: ".number_format((float) $invoice->total, 2).' '.($invoice->currency ?: 'SAR')."\nمع التحية،\n".$companyNameForEmail;
             $deliveryStatusLabels = ['sending' => 'جارٍ الإرسال', 'sent' => 'تم الإرسال', 'failed' => 'فشل الإرسال'];
             $channelLabels = ['email' => 'بريد إلكتروني'];
+            $deliveryTypeLabels = ['invoice' => 'فاتورة', 'invoice_reminder' => 'تذكير'];
             $latestDelivery = $invoice->relationLoaded('deliveries') ? $invoice->deliveries->first() : null;
+            $checkout = $checkout ?? null;
         @endphp
 
         <div id="invoice-send" class="grid gap-4 lg:grid-cols-2">
@@ -176,6 +181,7 @@
                     <table class="min-w-full divide-y divide-slate-200 text-sm">
                         <thead class="bg-slate-50 text-slate-600">
                             <tr>
+                                <th class="px-3 py-2 text-right">النوع</th>
                                 <th class="px-3 py-2 text-right">التاريخ</th>
                                 <th class="px-3 py-2 text-right">القناة</th>
                                 <th class="px-3 py-2 text-right">المستلم</th>
@@ -185,19 +191,54 @@
                         <tbody>
                             @forelse($invoice->deliveries as $delivery)
                                 <tr class="border-t border-slate-100">
+                                    <td class="px-3 py-2">{{ $deliveryTypeLabels[$delivery->document_type] ?? $delivery->document_type }}</td>
                                     <td class="px-3 py-2">{{ ($delivery->sent_at ?? $delivery->created_at)?->timezone(config('app.timezone'))->format('Y-m-d H:i') }}</td>
                                     <td class="px-3 py-2">{{ $channelLabels[$delivery->channel] ?? $delivery->channel }}</td>
                                     <td class="px-3 py-2">{{ $delivery->recipient }}</td>
                                     <td class="px-3 py-2">{{ $deliveryStatusLabels[$delivery->status] ?? $delivery->status }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="px-3 py-6 text-center text-slate-500">لم تُرسل هذه الفاتورة بعد.</td></tr>
+                                <tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">لم تُرسل هذه الفاتورة بعد.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
+
+        <div id="invoice-remind" class="rounded-2xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm">
+            <h3 class="text-sm font-bold text-slate-900">تذكير العميل بالبريد الإلكتروني</h3>
+            <p class="mt-1 text-xs text-slate-500">للتذكير بفواتير المبيعات الصادرة غير المسددة. التذكير لا يغيّر حالة المستند ولا حالة الدفع ولا يستهلك مرحلة التذكير المجدولة.</p>
+            @if($invoice->isRemindable())
+                <form method="POST" action="{{ route('workspace.finance.invoices.remind', $invoice) }}" class="mt-3 grid gap-3 md:grid-cols-2">
+                    @csrf
+                    <input type="email" name="email" value="{{ $sendEmail }}" required class="rounded-lg border-slate-300 text-sm" placeholder="customer@example.com">
+                    <input type="text" name="subject" value="{{ old('subject', 'تذكير بفاتورة رقم '.$invoice->invoice_number) }}" class="rounded-lg border-slate-300 text-sm">
+                    <textarea name="message" rows="3" class="rounded-lg border-slate-300 text-sm md:col-span-2">{{ old('message', 'تذكير بلطف بأن الفاتورة رقم '.$invoice->invoice_number.' ما زالت مستحقة. المتبقي: '.number_format((float) $invoice->amount_due, 2).' '.($invoice->currency ?: 'SAR')) }}</textarea>
+                    <label class="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                        <input type="hidden" name="attach_pdf" value="0">
+                        <input type="checkbox" name="attach_pdf" value="1" class="rounded border-slate-300 text-[#06C2A4]" checked>
+                        إرفاق PDF الفاتورة
+                    </label>
+                    <button class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700">إرسال التذكير</button>
+                </form>
+            @else
+                <p class="mt-2 text-sm text-slate-500">التذكير متاح فقط لفواتير المبيعات الصادرة التي ما زال عليها مبلغ مستحق.</p>
+            @endif
+        </div>
+
+        @if($checkout)
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 class="text-sm font-bold text-slate-900">رابط الدفع الإلكتروني</h3>
+                @if($checkout->supported && $checkout->checkoutUrl)
+                    <p class="mt-2 text-sm"><a class="font-semibold text-[#06C2A4]" href="{{ $checkout->checkoutUrl }}" target="_blank" rel="noopener">فتح رابط الدفع</a></p>
+                    <p class="mt-1 text-xs text-slate-500">إنشاء الرابط لا يعني أن الفاتورة دُفعت. التأكيد يتم عبر بوابة الدفع المشتركة.</p>
+                @else
+                    <p class="mt-2 text-sm text-slate-600">{{ $checkout->message }}</p>
+                    <p class="mt-1 text-xs text-slate-500">سجّل التحصيل يدوياً من نموذج الدفعة أدناه. لا يُنشأ طلب POS ولا بوابة دفع داخل المالية.</p>
+                @endif
+            </div>
+        @endif
 
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -359,6 +400,10 @@
                                     <td class="py-2 text-xs">{{ $payment->reference ?: '—' }}</td>
                                     <td class="py-2">{{ $payment->status ?: 'posted' }}</td>
                                     <td class="py-2">
+                                        @if($payment->receipt)
+                                            <a href="{{ route('workspace.finance.receipts.show', $payment->receipt) }}" class="block text-xs font-semibold text-[#06C2A4]">إيصال {{ $payment->receipt->receipt_number }}</a>
+                                            <a href="{{ route('workspace.finance.receipts.pdf', $payment->receipt) }}" class="block text-[11px] text-slate-500">PDF</a>
+                                        @endif
                                         @if(($payment->status ?: 'posted') === 'posted' && ! $isCancelled)
                                             <form method="POST" action="{{ route('workspace.finance.invoices.payments.reverse', [$invoice, $payment]) }}" onsubmit="return confirm('عكس هذه الدفعة بقيد محاسبي جديد؟')">
                                                 @csrf
@@ -393,6 +438,7 @@
                             </div>
                             <p class="text-xs text-slate-500">{{ $note->reason }}</p>
                             <div class="mt-2 flex gap-2">
+                                <a href="{{ route('workspace.finance.invoices.credit-notes.pdf', [$invoice, $note]) }}" class="text-xs font-semibold text-slate-700 hover:underline">PDF</a>
                                 @if($note->status === 'draft')
                                     <form method="POST" action="{{ route('workspace.finance.invoices.credit-notes.issue', [$invoice, $note]) }}" onsubmit="return confirm('إصدار الإشعار وترحيله محاسبياً؟')">
                                         @csrf

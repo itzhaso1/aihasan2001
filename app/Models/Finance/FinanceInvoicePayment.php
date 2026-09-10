@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\WorkspaceScopedModel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'workspace_id',
@@ -53,6 +54,11 @@ class FinanceInvoicePayment extends WorkspaceScopedModel
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function receipt(): HasOne
+    {
+        return $this->hasOne(FinanceReceipt::class, 'payment_id');
     }
 
     public function reversedBy(): BelongsTo

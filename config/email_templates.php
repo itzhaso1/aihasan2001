@@ -40,6 +40,14 @@ return [
             'view' => 'emails.templates.quote-email',
             'subject' => 'عرض سعر',
         ],
+        'receipt_email' => [
+            'view' => 'emails.templates.receipt-email',
+            'subject' => 'إيصال دفع',
+        ],
+        'invoice_reminder_email' => [
+            'view' => 'emails.templates.invoice-reminder-email',
+            'subject' => 'تذكير بفاتورة',
+        ],
         'payroll_email' => [
             'view' => 'emails.templates.payroll-email',
             'subject' => 'إشعار رواتب',

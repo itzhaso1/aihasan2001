@@ -197,8 +197,16 @@ class FinanceInvoice extends WorkspaceScopedModel
     public function deliveries(): HasMany
     {
         return $this->hasMany(FinanceDocumentDelivery::class, 'document_id')
-            ->where('document_type', FinanceDocumentType::Invoice->value)
+            ->whereIn('document_type', [
+                FinanceDocumentType::Invoice->value,
+                FinanceDocumentType::InvoiceReminder->value,
+            ])
             ->latest('id');
+    }
+
+    public function receipts(): HasMany
+    {
+        return $this->hasMany(FinanceReceipt::class, 'invoice_id')->latest('id');
     }
 
     public function issuedSnapshot(): HasOne
@@ -242,6 +250,12 @@ class FinanceInvoice extends WorkspaceScopedModel
         return $this->isIssued()
             && ! $this->trashed()
             && (string) $this->type === 'sales';
+    }
+
+    public function isRemindable(): bool
+    {
+        return $this->isSendable()
+            && (float) $this->amount_due > 0.009;
     }
 
     public function isFinanciallyLocked(): bool

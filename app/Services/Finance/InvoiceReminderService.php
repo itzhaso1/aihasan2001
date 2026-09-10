@@ -11,6 +11,7 @@ class InvoiceReminderService
     public function __construct(
         private readonly InvoiceStateService $invoiceStateService,
         private readonly DomainNotificationService $domainNotificationService,
+        private readonly InvoiceReminderEmailService $invoiceReminderEmailService,
     ) {}
 
     /**
@@ -38,7 +39,7 @@ class InvoiceReminderService
             $query->where('workspace_id', $workspaceId);
         }
 
-        $query->orderBy('id')->chunkById(100, function ($invoices) use (&$counts, $today, $upcomingDays): void {
+        $query->with('customer')->orderBy('id')->chunkById(100, function ($invoices) use (&$counts, $today, $upcomingDays): void {
             foreach ($invoices as $invoice) {
                 $due = $invoice->due_date?->copy()->startOfDay();
                 if (! $due) {
@@ -58,11 +59,17 @@ class InvoiceReminderService
                     continue;
                 }
 
+                if ((float) $invoice->amount_due <= InvoiceStateService::PAYMENT_TOLERANCE) {
+                    continue;
+                }
+
                 $this->domainNotificationService->notifyFinanceInvoiceEvent(
                     $invoice,
                     $this->titleForStage($stage, $invoice),
                     $this->messageForStage($stage, $invoice),
                 );
+
+                $this->maybeEmailCustomer($invoice, $stage);
 
                 $invoice->update([
                     'reminder_stage' => $stage,
@@ -74,6 +81,30 @@ class InvoiceReminderService
         });
 
         return $counts;
+    }
+
+    private function maybeEmailCustomer(FinanceInvoice $invoice, string $stage): void
+    {
+        if ((string) $invoice->type !== 'sales') {
+            return;
+        }
+
+        $email = trim((string) ($invoice->customer?->email ?? ''));
+        if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return;
+        }
+
+        try {
+            $this->invoiceReminderEmailService->send($invoice, [
+                'email' => $email,
+                'subject' => $this->titleForStage($stage, $invoice),
+                'message' => $this->messageForStage($stage, $invoice),
+                'attach_pdf' => true,
+                'source' => 'scheduled',
+            ], 0);
+        } catch (\Throwable) {
+            // Staff notification already recorded; customer email is best-effort.
+        }
     }
 
     private function titleForStage(string $stage, FinanceInvoice $invoice): string

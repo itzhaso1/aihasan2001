@@ -15,7 +15,10 @@
                 <h2 class="text-xl font-black text-slate-900">عروض الأسعار</h2>
                 <p class="text-sm text-slate-500">مستند مبيعات تقديري. ليس فاتورة ولا يُرحّل محاسبيًا ولا يدخل سلسلة الفوترة الإلكترونية.</p>
             </div>
-            <a href="{{ route('workspace.finance.quotes.create') }}" class="rounded-lg bg-[#06C2A4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">إنشاء عرض سعر</a>
+            <div class="flex flex-wrap gap-2">
+                <a href="{{ route('workspace.finance.exports.download', 'quotes') }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">CSV</a>
+                <a href="{{ route('workspace.finance.quotes.create') }}" class="rounded-lg bg-[#06C2A4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">إنشاء عرض سعر</a>
+            </div>
         </div>
 
         <div class="flex gap-2 overflow-x-auto pb-1">

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Workspace\Finance;
 use App\Models\Finance\FinanceCreditNote;
 use App\Models\Finance\FinanceInvoice;
 use App\Services\Finance\CreditNoteService;
+use App\Services\Finance\PdfCreditNoteService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -20,6 +21,7 @@ class CreditNoteController extends FinanceBaseController
      */
     public function __construct(
         private readonly CreditNoteService $creditNoteService,
+        private readonly PdfCreditNoteService $pdfCreditNoteService,
     ) {}
 
     public function create(Request $request, FinanceInvoice $invoice): View
@@ -100,5 +102,18 @@ class CreditNoteController extends FinanceBaseController
         }
 
         return redirect()->route('workspace.finance.invoices.show', $invoice)->with('success', 'تم إلغاء الإشعار.');
+    }
+
+    public function downloadPdf(Request $request, FinanceInvoice $invoice, FinanceCreditNote $creditNote)
+    {
+        $this->authorizeFinance($request, 'invoices.view');
+        $this->assertSameWorkspace($invoice->workspace_id);
+        abort_unless((int) $creditNote->invoice_id === (int) $invoice->id, 404);
+
+        try {
+            return $this->pdfCreditNoteService->download($creditNote);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
     }
 }

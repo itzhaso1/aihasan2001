@@ -31,6 +31,8 @@ class FinanceBootstrapService
                     'next_invoice_sequence' => 1,
                     'quote_prefix' => 'Q',
                     'next_quote_sequence' => 1,
+                    'receipt_prefix' => 'RCT',
+                    'next_receipt_sequence' => 1,
                     'allow_manual_invoice_numbers' => false,
                     'default_vat_rate' => TaxCalculationService::FALLBACK_STANDARD_RATE,
                 ]

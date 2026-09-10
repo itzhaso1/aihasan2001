@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Workspace\Finance;
 use App\Models\Customer;
 use App\Services\Finance\CustomerStatementService;
 use App\Services\Finance\FinanceBootstrapService;
+use App\Services\Finance\FinanceExportService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -16,6 +17,7 @@ class CustomerStatementController extends FinanceBaseController
     public function __construct(
         private readonly CustomerStatementService $customerStatementService,
         private readonly FinanceBootstrapService $financeBootstrapService,
+        private readonly FinanceExportService $financeExportService,
     ) {}
 
     public function index(Request $request): View
@@ -50,6 +52,15 @@ class CustomerStatementController extends FinanceBaseController
             $validated['from'],
             $validated['to']
         );
+
+        if ($request->boolean('csv')) {
+            return $this->financeExportService->statement(
+                $workspace,
+                $customer,
+                $validated['from'],
+                $validated['to']
+            );
+        }
 
         if ($request->boolean('pdf')) {
             if (! class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
