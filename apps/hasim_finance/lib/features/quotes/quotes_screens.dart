@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
+import 'package:hasim_finance/core/layout/finance_layout.dart';
+import 'package:hasim_finance/core/providers/catalog_provider.dart';
 import 'package:hasim_finance/core/utils/files.dart';
 import 'package:hasim_finance/features/shared/customer_select.dart';
 import 'package:hasim_finance/features/shared/document_lines_editor.dart';
@@ -19,13 +21,14 @@ class QuotesScreen extends ConsumerStatefulWidget {
 
 class _QuotesScreenState extends ConsumerState<QuotesScreen> {
   String? _status;
+  String? _outcome;
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<QuoteRecord>(
-      key: ValueKey(_status),
+      key: ValueKey('$_status-$_outcome'),
       title: l.quotes,
       allowed: auth.permissions.quotesView,
       onCreate: auth.permissions.quotesCreate ? () => context.push('/quotes/new') : null,
@@ -40,10 +43,21 @@ class _QuotesScreenState extends ConsumerState<QuotesScreen> {
                 selected: _status == option,
                 onSelected: (_) => setState(() => _status = option),
               ),
+            for (final option in <(String, String)>[
+              ('pending', l.pending),
+              ('accepted', l.accepted),
+              ('rejected', l.rejected),
+              ('converted', l.converted),
+            ])
+              ChoiceChip(
+                label: Text(option.$2),
+                selected: _outcome == option.$1,
+                onSelected: (_) => setState(() => _outcome = _outcome == option.$1 ? null : option.$1),
+              ),
           ],
         ),
       ),
-      loader: (api, search, page) => api.quotes(search: search, page: page, status: _status),
+      loader: (api, search, page) => api.quotes(search: search, page: page, status: _status, outcome: _outcome),
       itemBuilder: (context, quote) => Card(
         child: ListTile(
           title: Text(quote.quoteNumber ?? '#${quote.id}'),
@@ -163,6 +177,14 @@ class _QuoteDetailScreenState extends ConsumerState<QuoteDetailScreen> {
                     FilledButton(onPressed: () => _act('convert'), child: Text(l.convert)),
                   if (q.documentStatus != 'cancelled' && p.can('quotes.cancel'))
                     OutlinedButton(onPressed: () => confirmAndRun(context, () => _act('cancel')), child: Text(l.cancel)),
+                  if (q.documentStatus == 'draft' && p.quotesDelete)
+                    OutlinedButton(
+                      onPressed: () => confirmAndRun(context, () async {
+                        await ref.read(financeApiProvider).deleteQuote(q.id);
+                        if (context.mounted) context.go('/quotes');
+                      }),
+                      child: Text(l.deleteDraft),
+                    ),
                   FilledButton.tonal(
                     onPressed: () async {
                       try {
@@ -193,9 +215,14 @@ class QuoteFormScreen extends ConsumerStatefulWidget {
 
 class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
   int? _customerId;
+  String _taxProfile = 'standard';
+  String _taxMode = 'exclusive';
   final _issueDate = TextEditingController(text: isoDate());
   final _expiryDate = TextEditingController(text: isoDate(DateTime.now().add(const Duration(days: 30))));
+  final _currency = TextEditingController(text: 'SAR');
+  final _taxRate = TextEditingController(text: '15');
   final _notes = TextEditingController();
+  final _terms = TextEditingController();
   final List<LineDraft> _lines = [LineDraft(description: 'خدمة', unitPrice: '100')];
   bool _busy = false;
 
@@ -207,6 +234,10 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
         if (!mounted) return;
         _customerId = q.customerId;
         _notes.text = q.notes ?? '';
+        _terms.text = q.terms ?? '';
+        _currency.text = q.currency;
+        _taxRate.text = q.taxRate ?? '15';
+        _taxProfile = q.taxProfileType ?? 'standard';
         if (q.issueDate != null) _issueDate.text = q.issueDate!.substring(0, 10);
         if (q.expiryDate != null) _expiryDate.text = q.expiryDate!.substring(0, 10);
         if (q.lines.isNotEmpty) {
@@ -226,7 +257,10 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
   void dispose() {
     _issueDate.dispose();
     _expiryDate.dispose();
+    _currency.dispose();
+    _taxRate.dispose();
     _notes.dispose();
+    _terms.dispose();
     for (final line in _lines) {
       line.dispose();
     }
@@ -241,13 +275,18 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
         'customer_id': _customerId,
         'issue_date': _issueDate.text.trim(),
         'expiry_date': _expiryDate.text.trim(),
+        'currency': _currency.text.trim(),
         'notes': _notes.text.trim(),
+        'terms': _terms.text.trim(),
+        'tax_profile_type': _taxProfile,
+        'tax_rate': _taxRate.text.trim(),
+        'tax_price_mode': _taxMode,
         'items': _lines.map((line) => line.toPayload()).toList(),
       }, id: widget.id);
       if (!mounted) return;
       context.go('/quotes/${saved.id}');
     } catch (e) {
-      if (mounted) showApiError(context, e);
+      if (mounted) showFormError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -256,20 +295,70 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
     return Scaffold(
       appBar: AppBar(title: Text(l.quotes)),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: FinancePage(
+        child: ListView(
+        padding: EdgeInsets.zero,
         children: [
-          CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
-          TextField(controller: _issueDate, decoration: InputDecoration(labelText: l.issueDate)),
-          TextField(controller: _expiryDate, decoration: InputDecoration(labelText: l.expiryDate)),
-          const SizedBox(height: 12),
-          DocumentLinesEditor(lines: _lines, onChanged: () => setState(() {})),
-          TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 3),
-          const SizedBox(height: 16),
+          FormSection(
+            title: l.headerSection,
+            child: CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
+          ),
+          FormSection(
+            title: l.datesSection,
+            child: FormGrid(children: [
+              TextField(controller: _issueDate, decoration: InputDecoration(labelText: l.issueDate)),
+              TextField(controller: _expiryDate, decoration: InputDecoration(labelText: l.expiryDate)),
+              TextField(controller: _currency, decoration: InputDecoration(labelText: l.currency)),
+            ]),
+          ),
+          FormSection(
+            title: l.taxSection,
+            child: FormGrid(children: [
+              DropdownButtonFormField(
+                // ignore: deprecated_member_use
+                value: _taxProfile,
+                decoration: InputDecoration(labelText: l.taxProfile),
+                items: [
+                  DropdownMenuItem(value: 'standard', child: Text(l.standardTax)),
+                  DropdownMenuItem(value: 'zero_rated', child: Text(l.zeroRated)),
+                  DropdownMenuItem(value: 'exempt', child: Text(l.exempt)),
+                  DropdownMenuItem(value: 'out_of_scope', child: Text(l.outOfScope)),
+                ],
+                onChanged: (v) => setState(() => _taxProfile = v ?? 'standard'),
+              ),
+              DropdownButtonFormField(
+                // ignore: deprecated_member_use
+                value: _taxMode,
+                decoration: InputDecoration(labelText: l.taxPriceMode),
+                items: [
+                  DropdownMenuItem(value: 'exclusive', child: Text(l.exclusive)),
+                  DropdownMenuItem(value: 'inclusive', child: Text(l.inclusive)),
+                ],
+                onChanged: (v) => setState(() => _taxMode = v ?? 'exclusive'),
+              ),
+              TextField(controller: _taxRate, decoration: InputDecoration(labelText: l.taxRate)),
+            ]),
+          ),
+          FormSection(
+            title: l.itemsSection,
+            child: DocumentLinesEditor(lines: _lines, products: catalog.products, onChanged: () => setState(() {})),
+          ),
+          FormSection(
+            title: l.notesSection,
+            child: Column(
+              children: [
+                TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 3),
+                const SizedBox(height: 8),
+                TextField(controller: _terms, decoration: InputDecoration(labelText: l.terms), maxLines: 3),
+              ],
+            ),
+          ),
           FilledButton(onPressed: _busy ? null : _save, child: Text(l.save)),
         ],
+      ),
       ),
     );
   }

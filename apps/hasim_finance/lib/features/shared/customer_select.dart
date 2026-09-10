@@ -11,10 +11,16 @@ class CustomerSelectField extends ConsumerStatefulWidget {
     super.key,
     required this.selectedId,
     required this.onSelected,
+    this.compact = false,
+    this.allowClear = false,
+    this.label,
   });
 
   final int? selectedId;
-  final ValueChanged<int> onSelected;
+  final ValueChanged<int?> onSelected;
+  final bool compact;
+  final bool allowClear;
+  final String? label;
 
   @override
   ConsumerState<CustomerSelectField> createState() => _CustomerSelectFieldState();
@@ -58,6 +64,7 @@ class _CustomerSelectFieldState extends ConsumerState<CustomerSelectField> {
       final page = await ref.read(financeApiProvider).customers(
             search: _search.text.trim(),
             page: pageNum,
+            perPage: widget.compact ? 100 : 25,
           );
       if (!mounted || requestId != _requestId) return;
       var items = reset ? page.items : [..._customers, ...page.items];
@@ -83,6 +90,22 @@ class _CustomerSelectFieldState extends ConsumerState<CustomerSelectField> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    if (widget.compact) {
+      return DropdownButtonFormField<int?>(
+        // ignore: deprecated_member_use
+        value: widget.selectedId != null && _customers.any((row) => row.id == widget.selectedId)
+            ? widget.selectedId
+            : null,
+        isExpanded: true,
+        decoration: InputDecoration(labelText: widget.label ?? l.selectCustomer),
+        items: [
+          if (widget.allowClear) DropdownMenuItem<int?>(value: null, child: Text(l.filterAll)),
+          for (final customer in _customers)
+            DropdownMenuItem<int?>(value: customer.id, child: Text(customer.name)),
+        ],
+        onChanged: widget.onSelected,
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

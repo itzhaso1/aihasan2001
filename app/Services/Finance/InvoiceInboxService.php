@@ -79,6 +79,7 @@ class InvoiceInboxService
             })
             ->when($request->filled('type'), fn ($inner) => $inner->where('type', $request->string('type')->toString()))
             ->when($request->filled('customer_id'), fn ($inner) => $inner->where('customer_id', $request->integer('customer_id')))
+            ->when($request->filled('supplier_id'), fn ($inner) => $inner->where('supplier_id', $request->integer('supplier_id')))
             ->when($request->filled('currency'), fn ($inner) => $inner->where('currency', $request->string('currency')->toString()))
             ->when($request->filled('from'), fn ($inner) => $inner->whereDate('issue_date', '>=', $request->string('from')->toString()))
             ->when($request->filled('to'), fn ($inner) => $inner->whereDate('issue_date', '<=', $request->string('to')->toString()))

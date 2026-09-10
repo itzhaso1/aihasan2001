@@ -11,6 +11,7 @@ use App\Services\Finance\FinanceBootstrapService;
 use App\Services\Finance\InvoiceInboxService;
 use App\Services\Finance\InvoiceService;
 use App\Services\Finance\LedgerReportService;
+use App\Services\Finance\PdfInvoiceService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,7 @@ class PurchaseController extends FinanceApiController
         private readonly LedgerReportService $ledgerReportService,
         private readonly FinanceBootstrapService $financeBootstrapService,
         private readonly FinanceClientPresenter $presenter,
+        private readonly PdfInvoiceService $pdfInvoiceService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -158,6 +160,52 @@ class PurchaseController extends FinanceApiController
         return $this->ok($this->presenter->supplier($supplier->fresh()), message: 'تم تحديث المورد.');
     }
 
+    public function showSupplier(Request $request, FinanceSupplier $supplier): JsonResponse
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'purchases.view');
+
+        return $this->ok($this->presenter->supplier($supplier));
+    }
+
+    public function issue(Request $request, FinanceInvoice $invoice): JsonResponse
+    {
+        $workspace = $this->clientWorkspace($this->workspaceContext);
+        $this->clientActor($request, $workspace, 'purchases.manage');
+        abort_unless((string) $invoice->type === 'purchase', 404);
+        $issued = $this->runFinanceDomain(
+            fn () => $this->invoiceService->issue($invoice, (int) $request->user()?->id)
+        );
+
+        return $this->ok(
+            $this->presenter->invoiceDetail($issued->load(['supplier', 'items'])),
+            message: 'تم إصدار فاتورة الشراء.',
+        );
+    }
+
+    public function cancel(Request $request, FinanceInvoice $invoice): JsonResponse
+    {
+        $workspace = $this->clientWorkspace($this->workspaceContext);
+        $this->clientActor($request, $workspace, 'purchases.manage');
+        abort_unless((string) $invoice->type === 'purchase', 404);
+        $cancelled = $this->runFinanceDomain(
+            fn () => $this->invoiceService->cancel($invoice, (int) $request->user()?->id)
+        );
+
+        return $this->ok(
+            $this->presenter->invoiceDetail($cancelled->load(['supplier', 'items'])),
+            message: 'تم إلغاء فاتورة الشراء.',
+        );
+    }
+
+    public function pdf(Request $request, FinanceInvoice $invoice): mixed
+    {
+        $workspace = $this->clientWorkspace($this->workspaceContext);
+        $this->clientActor($request, $workspace, 'purchases.view');
+        abort_unless((string) $invoice->type === 'purchase', 404);
+
+        return $this->runFinanceDomain(fn () => $this->pdfInvoiceService->download($invoice));
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -177,6 +225,16 @@ class PurchaseController extends FinanceApiController
             'tax_profile_type' => ['nullable', 'in:standard,zero_rated,exempt,out_of_scope'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'tax_price_mode' => ['nullable', 'in:exclusive,inclusive'],
+            'project_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('finance_projects', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+            ],
+            'contract_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('contracts', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+            ],
         ]);
 
         if (empty($validated['supplier_id'])) {

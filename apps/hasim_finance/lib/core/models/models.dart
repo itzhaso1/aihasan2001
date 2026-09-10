@@ -217,6 +217,8 @@ class LineItem {
     this.taxAmount,
     this.taxableAmount,
     this.taxProfileType,
+    this.exemptionReason,
+    this.exemptionCode,
     this.total,
   });
 
@@ -232,6 +234,8 @@ class LineItem {
   final String? taxAmount;
   final String? taxableAmount;
   final String? taxProfileType;
+  final String? exemptionReason;
+  final String? exemptionCode;
   final String? total;
 
   factory LineItem.fromJson(Map<String, dynamic> json) {
@@ -248,12 +252,14 @@ class LineItem {
       taxAmount: MoneyFields.asMoney(json['tax_amount']),
       taxableAmount: MoneyFields.asMoney(json['taxable_amount']),
       taxProfileType: json['tax_profile_type']?.toString(),
+      exemptionReason: json['exemption_reason']?.toString(),
+      exemptionCode: json['exemption_code']?.toString(),
       total: MoneyFields.asMoney(json['total']),
     );
   }
 
   Map<String, dynamic> toPayload() => {
-        'product_id': productId,
+        if (productId != null) 'product_id': productId,
         'product_name': productName,
         'description': description,
         'unit': unit,
@@ -261,6 +267,8 @@ class LineItem {
         'unit_price': unitPrice,
         'discount': discount,
         'tax_rate': taxRate,
+        if (taxProfileType != null) 'tax_profile_type': taxProfileType,
+        if (exemptionReason != null && exemptionReason!.isNotEmpty) 'exemption_reason': exemptionReason,
       };
 }
 
@@ -364,6 +372,7 @@ class InvoiceRecord {
     this.deliveries = const [],
     this.checkout,
     this.audit = const [],
+    this.attachments = const [],
   });
 
   final int id;
@@ -407,6 +416,7 @@ class InvoiceRecord {
   final List<DeliveryRecord> deliveries;
   final CheckoutInfo? checkout;
   final List<Map<String, dynamic>> audit;
+  final List<Map<String, dynamic>> attachments;
 
   factory InvoiceRecord.fromJson(Map<String, dynamic> json) {
     final zatca = json['zatca'] is Map ? Map<String, dynamic>.from(json['zatca'] as Map) : null;
@@ -458,6 +468,10 @@ class InvoiceRecord {
           ? CheckoutInfo.fromJson(Map<String, dynamic>.from(json['checkout'] as Map))
           : null,
       audit: (json['audit'] as List? ?? [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(),
+      attachments: (json['attachments'] as List? ?? [])
           .whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row))
           .toList(),
@@ -735,6 +749,7 @@ class ExpenseRecord {
     this.expenseNumber,
     this.expenseDate,
     this.description,
+    this.categoryId,
     this.categoryName,
     this.supplierId,
     this.supplierName,
@@ -756,6 +771,7 @@ class ExpenseRecord {
   final String? expenseNumber;
   final String? expenseDate;
   final String? description;
+  final int? categoryId;
   final String? categoryName;
   final int? supplierId;
   final String? supplierName;
@@ -778,6 +794,7 @@ class ExpenseRecord {
       expenseNumber: json['expense_number']?.toString(),
       expenseDate: json['expense_date']?.toString(),
       description: json['description']?.toString(),
+      categoryId: json['category_id'] == null ? null : int.tryParse('${json['category_id']}'),
       categoryName: json['category_name']?.toString(),
       supplierId: json['supplier_id'] == null ? null : int.tryParse('${json['supplier_id']}'),
       supplierName: json['supplier_name']?.toString(),
@@ -914,6 +931,7 @@ class ContractRecord {
     this.scheduleRecords = const [],
     this.generatedInvoices = const [],
     this.billingSummary = const {},
+    this.attachments = const [],
   });
 
   final int id;
@@ -932,6 +950,7 @@ class ContractRecord {
   final List<BillingScheduleRecord> scheduleRecords;
   final List<InvoiceRecord> generatedInvoices;
   final Map<String, dynamic> billingSummary;
+  final List<Map<String, dynamic>> attachments;
 
   List<Map<String, dynamic>> get schedules => scheduleRecords.map((row) => row.toLegacyMap()).toList();
 
@@ -955,6 +974,10 @@ class ContractRecord {
       billingSummary: json['billing_summary'] is Map
           ? Map<String, dynamic>.from(json['billing_summary'] as Map)
           : const {},
+      attachments: (json['attachments'] as List? ?? [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(),
     );
   }
 }
@@ -1014,6 +1037,7 @@ class DashboardData {
     required this.recentPayments,
     required this.overdueInvoices,
     this.recentExpenses = const [],
+    this.analytics = const {},
   });
 
   final Map<String, String> cards;
@@ -1021,6 +1045,7 @@ class DashboardData {
   final List<PaymentRecord> recentPayments;
   final List<InvoiceRecord> overdueInvoices;
   final List<ExpenseRecord> recentExpenses;
+  final Map<String, dynamic> analytics;
 
   factory DashboardData.fromJson(Map<String, dynamic> json) {
     final cardsRaw = json['cards'] as Map? ?? {};
@@ -1030,6 +1055,7 @@ class DashboardData {
       recentPayments: _mapList(json['recent_payments'], PaymentRecord.fromJson),
       overdueInvoices: _mapList(json['overdue_invoices'], InvoiceRecord.fromJson),
       recentExpenses: _mapList(json['recent_expenses'], ExpenseRecord.fromJson),
+      analytics: Map<String, dynamic>.from(json['analytics'] as Map? ?? {}),
     );
   }
 }
@@ -1085,6 +1111,529 @@ class PagedResult<T> {
   final int page;
   final int lastPage;
   final int total;
+}
+
+class ProductRecord {
+  const ProductRecord({
+    required this.id,
+    required this.name,
+    this.sku,
+    this.barcode,
+    this.description,
+    this.price = '0.00',
+    this.salePrice,
+    this.costPrice,
+    this.vatRate,
+    this.currency = 'SAR',
+    this.stock,
+    this.inventoryTracking = false,
+    this.status,
+    this.productKind,
+    this.brand,
+    this.categoryName,
+    this.soldQty,
+    this.soldTotal,
+  });
+
+  final int id;
+  final String name;
+  final String? sku;
+  final String? barcode;
+  final String? description;
+  final String price;
+  final String? salePrice;
+  final String? costPrice;
+  final String? vatRate;
+  final String currency;
+  final dynamic stock;
+  final bool inventoryTracking;
+  final String? status;
+  final String? productKind;
+  final String? brand;
+  final String? categoryName;
+  final String? soldQty;
+  final String? soldTotal;
+
+  factory ProductRecord.fromJson(Map<String, dynamic> json) {
+    return ProductRecord(
+      id: int.parse('${json['id']}'),
+      name: json['name']?.toString() ?? '',
+      sku: json['sku']?.toString(),
+      barcode: json['barcode']?.toString(),
+      description: json['description']?.toString(),
+      price: MoneyFields.asMoney(json['price']),
+      salePrice: json['sale_price'] == null ? null : MoneyFields.asMoney(json['sale_price']),
+      costPrice: json['cost_price'] == null ? null : MoneyFields.asMoney(json['cost_price']),
+      vatRate: json['vat_rate']?.toString(),
+      currency: json['currency']?.toString() ?? 'SAR',
+      stock: json['stock'],
+      inventoryTracking: json['inventory_tracking'] == true,
+      status: json['status']?.toString(),
+      productKind: json['product_kind']?.toString(),
+      brand: json['brand']?.toString(),
+      categoryName: json['category_name']?.toString(),
+      soldQty: json['sold_qty']?.toString(),
+      soldTotal: json['sold_total'] == null ? null : MoneyFields.asMoney(json['sold_total']),
+    );
+  }
+}
+
+class InventoryMovementRecord {
+  const InventoryMovementRecord({
+    required this.id,
+    this.productId,
+    this.productName,
+    this.type,
+    this.quantity,
+    this.beforeQuantity,
+    this.afterQuantity,
+    this.referenceType,
+    this.notes,
+    this.actorName,
+    this.createdAt,
+  });
+
+  final int id;
+  final int? productId;
+  final String? productName;
+  final String? type;
+  final String? quantity;
+  final String? beforeQuantity;
+  final String? afterQuantity;
+  final String? referenceType;
+  final String? notes;
+  final String? actorName;
+  final String? createdAt;
+
+  factory InventoryMovementRecord.fromJson(Map<String, dynamic> json) {
+    return InventoryMovementRecord(
+      id: int.parse('${json['id']}'),
+      productId: json['product_id'] == null ? null : int.tryParse('${json['product_id']}'),
+      productName: json['product_name']?.toString(),
+      type: json['type']?.toString(),
+      quantity: json['quantity']?.toString(),
+      beforeQuantity: json['before_quantity']?.toString(),
+      afterQuantity: json['after_quantity']?.toString(),
+      referenceType: json['reference_type']?.toString(),
+      notes: json['notes']?.toString(),
+      actorName: json['actor_name']?.toString(),
+      createdAt: json['created_at']?.toString(),
+    );
+  }
+}
+
+class ProjectRecord {
+  const ProjectRecord({
+    required this.id,
+    required this.name,
+    this.status,
+    this.customerId,
+    this.customerName,
+    this.budget = '0.00',
+    this.startsOn,
+    this.endsOn,
+    this.notes,
+    this.revenue = '0.00',
+    this.costs = '0.00',
+    this.profit = '0.00',
+  });
+
+  final int id;
+  final String name;
+  final String? status;
+  final int? customerId;
+  final String? customerName;
+  final String budget;
+  final String? startsOn;
+  final String? endsOn;
+  final String? notes;
+  final String revenue;
+  final String costs;
+  final String profit;
+
+  factory ProjectRecord.fromJson(Map<String, dynamic> json) {
+    return ProjectRecord(
+      id: int.parse('${json['id']}'),
+      name: json['name']?.toString() ?? '',
+      status: json['status']?.toString(),
+      customerId: json['customer_id'] == null ? null : int.tryParse('${json['customer_id']}'),
+      customerName: json['customer_name']?.toString(),
+      budget: MoneyFields.asMoney(json['budget']),
+      startsOn: json['starts_on']?.toString(),
+      endsOn: json['ends_on']?.toString(),
+      notes: json['notes']?.toString(),
+      revenue: MoneyFields.asMoney(json['revenue']),
+      costs: MoneyFields.asMoney(json['costs']),
+      profit: MoneyFields.asMoney(json['profit']),
+    );
+  }
+}
+
+class PriceListItemRecord {
+  const PriceListItemRecord({
+    required this.id,
+    this.productId,
+    this.productName,
+    this.sku,
+    this.minQuantity,
+    this.price = '0.00',
+    this.taxRate,
+    this.isActive = true,
+  });
+
+  final int id;
+  final int? productId;
+  final String? productName;
+  final String? sku;
+  final String? minQuantity;
+  final String price;
+  final String? taxRate;
+  final bool isActive;
+
+  factory PriceListItemRecord.fromJson(Map<String, dynamic> json) {
+    return PriceListItemRecord(
+      id: int.parse('${json['id']}'),
+      productId: json['product_id'] == null ? null : int.tryParse('${json['product_id']}'),
+      productName: json['product_name']?.toString(),
+      sku: json['sku']?.toString(),
+      minQuantity: json['min_quantity']?.toString(),
+      price: MoneyFields.asMoney(json['price']),
+      taxRate: json['tax_rate']?.toString(),
+      isActive: json['is_active'] != false,
+    );
+  }
+}
+
+class PriceListRecord {
+  const PriceListRecord({
+    required this.id,
+    required this.name,
+    this.code,
+    this.currency = 'SAR',
+    this.status,
+    this.effectiveFrom,
+    this.effectiveTo,
+    this.notes,
+    this.itemsCount = 0,
+    this.items = const [],
+  });
+
+  final int id;
+  final String name;
+  final String? code;
+  final String currency;
+  final String? status;
+  final String? effectiveFrom;
+  final String? effectiveTo;
+  final String? notes;
+  final int itemsCount;
+  final List<PriceListItemRecord> items;
+
+  factory PriceListRecord.fromJson(Map<String, dynamic> json) {
+    return PriceListRecord(
+      id: int.parse('${json['id']}'),
+      name: json['name']?.toString() ?? '',
+      code: json['code']?.toString(),
+      currency: json['currency']?.toString() ?? 'SAR',
+      status: json['status']?.toString(),
+      effectiveFrom: json['effective_from']?.toString(),
+      effectiveTo: json['effective_to']?.toString(),
+      notes: json['notes']?.toString(),
+      itemsCount: int.tryParse('${json['items_count'] ?? 0}') ?? 0,
+      items: _mapList(json['items'], PriceListItemRecord.fromJson),
+    );
+  }
+}
+
+class PurchaseOrderRecord {
+  const PurchaseOrderRecord({
+    required this.id,
+    this.poNumber,
+    this.status,
+    this.supplierId,
+    this.supplierName,
+    this.orderDate,
+    this.expectedDate,
+    this.currency = 'SAR',
+    this.subtotal = '0.00',
+    this.taxAmount = '0.00',
+    this.total = '0.00',
+    this.notes,
+    this.invoiceId,
+    this.items = const [],
+  });
+
+  final int id;
+  final String? poNumber;
+  final String? status;
+  final int? supplierId;
+  final String? supplierName;
+  final String? orderDate;
+  final String? expectedDate;
+  final String currency;
+  final String subtotal;
+  final String taxAmount;
+  final String total;
+  final String? notes;
+  final int? invoiceId;
+  final List<LineItem> items;
+
+  factory PurchaseOrderRecord.fromJson(Map<String, dynamic> json) {
+    return PurchaseOrderRecord(
+      id: int.parse('${json['id']}'),
+      poNumber: json['po_number']?.toString(),
+      status: json['status']?.toString(),
+      supplierId: json['supplier_id'] == null ? null : int.tryParse('${json['supplier_id']}'),
+      supplierName: json['supplier_name']?.toString(),
+      orderDate: json['order_date']?.toString(),
+      expectedDate: json['expected_date']?.toString(),
+      currency: json['currency']?.toString() ?? 'SAR',
+      subtotal: MoneyFields.asMoney(json['subtotal']),
+      taxAmount: MoneyFields.asMoney(json['tax_amount']),
+      total: MoneyFields.asMoney(json['total']),
+      notes: json['notes']?.toString(),
+      invoiceId: json['invoice_id'] == null ? null : int.tryParse('${json['invoice_id']}'),
+      items: _mapList(json['items'], LineItem.fromJson),
+    );
+  }
+}
+
+class LeadRecord {
+  const LeadRecord({
+    required this.id,
+    required this.name,
+    this.companyName,
+    this.email,
+    this.phone,
+    this.source,
+    this.status,
+    this.estimatedValue = '0.00',
+    this.currency = 'SAR',
+    this.notes,
+    this.customerId,
+  });
+
+  final int id;
+  final String name;
+  final String? companyName;
+  final String? email;
+  final String? phone;
+  final String? source;
+  final String? status;
+  final String estimatedValue;
+  final String currency;
+  final String? notes;
+  final int? customerId;
+
+  factory LeadRecord.fromJson(Map<String, dynamic> json) {
+    return LeadRecord(
+      id: int.parse('${json['id']}'),
+      name: json['name']?.toString() ?? '',
+      companyName: json['company_name']?.toString(),
+      email: json['email']?.toString(),
+      phone: json['phone']?.toString(),
+      source: json['source']?.toString(),
+      status: json['status']?.toString(),
+      estimatedValue: MoneyFields.asMoney(json['estimated_value']),
+      currency: json['currency']?.toString() ?? 'SAR',
+      notes: json['notes']?.toString(),
+      customerId: json['customer_id'] == null ? null : int.tryParse('${json['customer_id']}'),
+    );
+  }
+}
+
+class FiscalYearRecord {
+  const FiscalYearRecord({
+    required this.id,
+    required this.name,
+    this.startDate,
+    this.endDate,
+    this.status,
+    this.periodsCount = 0,
+    this.periods = const [],
+  });
+
+  final int id;
+  final String name;
+  final String? startDate;
+  final String? endDate;
+  final String? status;
+  final int periodsCount;
+  final List<AccountingPeriodRecord> periods;
+
+  factory FiscalYearRecord.fromJson(Map<String, dynamic> json) {
+    return FiscalYearRecord(
+      id: int.parse('${json['id']}'),
+      name: json['name']?.toString() ?? '',
+      startDate: json['start_date']?.toString(),
+      endDate: json['end_date']?.toString(),
+      status: json['status']?.toString(),
+      periodsCount: int.tryParse('${json['periods_count'] ?? 0}') ?? 0,
+      periods: _mapList(json['periods'], AccountingPeriodRecord.fromJson),
+    );
+  }
+}
+
+class AccountingPeriodRecord {
+  const AccountingPeriodRecord({
+    required this.id,
+    this.fiscalYearId,
+    this.name,
+    this.startDate,
+    this.endDate,
+    this.status,
+  });
+
+  final int id;
+  final int? fiscalYearId;
+  final String? name;
+  final String? startDate;
+  final String? endDate;
+  final String? status;
+
+  factory AccountingPeriodRecord.fromJson(Map<String, dynamic> json) {
+    return AccountingPeriodRecord(
+      id: int.parse('${json['id']}'),
+      fiscalYearId: json['fiscal_year_id'] == null ? null : int.tryParse('${json['fiscal_year_id']}'),
+      name: json['name']?.toString(),
+      startDate: json['start_date']?.toString(),
+      endDate: json['end_date']?.toString(),
+      status: json['status']?.toString(),
+    );
+  }
+}
+
+class TreasuryAccountRecord {
+  const TreasuryAccountRecord({
+    required this.id,
+    required this.name,
+    this.type,
+    this.accountNumber,
+    this.iban,
+    this.bankName,
+    this.currency = 'SAR',
+    this.openingBalance = '0.00',
+    this.currentBalance = '0.00',
+    this.isActive = true,
+  });
+
+  final int id;
+  final String name;
+  final String? type;
+  final String? accountNumber;
+  final String? iban;
+  final String? bankName;
+  final String currency;
+  final String openingBalance;
+  final String currentBalance;
+  final bool isActive;
+
+  factory TreasuryAccountRecord.fromJson(Map<String, dynamic> json) {
+    return TreasuryAccountRecord(
+      id: int.parse('${json['id']}'),
+      name: json['name']?.toString() ?? '',
+      type: json['type']?.toString(),
+      accountNumber: json['account_number']?.toString(),
+      iban: json['iban']?.toString(),
+      bankName: json['bank_name']?.toString(),
+      currency: json['currency']?.toString() ?? 'SAR',
+      openingBalance: MoneyFields.asMoney(json['opening_balance']),
+      currentBalance: MoneyFields.asMoney(json['current_balance']),
+      isActive: json['is_active'] != false,
+    );
+  }
+}
+
+class TreasuryTransferRecord {
+  const TreasuryTransferRecord({
+    required this.id,
+    this.fromAccountName,
+    this.toAccountName,
+    this.amount = '0.00',
+    this.transferDate,
+    this.reference,
+    this.status,
+    this.notes,
+  });
+
+  final int id;
+  final String? fromAccountName;
+  final String? toAccountName;
+  final String amount;
+  final String? transferDate;
+  final String? reference;
+  final String? status;
+  final String? notes;
+
+  factory TreasuryTransferRecord.fromJson(Map<String, dynamic> json) {
+    return TreasuryTransferRecord(
+      id: int.parse('${json['id']}'),
+      fromAccountName: json['from_account_name']?.toString(),
+      toAccountName: json['to_account_name']?.toString(),
+      amount: MoneyFields.asMoney(json['amount']),
+      transferDate: json['transfer_date']?.toString(),
+      reference: json['reference']?.toString(),
+      status: json['status']?.toString(),
+      notes: json['notes']?.toString(),
+    );
+  }
+}
+
+class CatalogOption {
+  const CatalogOption({required this.id, required this.name, this.extra = const {}});
+
+  final int id;
+  final String name;
+  final Map<String, dynamic> extra;
+
+  factory CatalogOption.fromJson(Map<String, dynamic> json) {
+    return CatalogOption(
+      id: int.parse('${json['id']}'),
+      name: json['name']?.toString() ?? json['title']?.toString() ?? '#${json['id']}',
+      extra: json,
+    );
+  }
+}
+
+class FinanceCatalog {
+  const FinanceCatalog({
+    this.products = const [],
+    this.taxRates = const [],
+    this.contracts = const [],
+    this.projects = const [],
+    this.treasuryAccounts = const [],
+    this.expenseCategories = const [],
+    this.suppliers = const [],
+    this.allowManualInvoiceNumbers = false,
+    this.defaultVatRate,
+  });
+
+  final List<CatalogOption> products;
+  final List<CatalogOption> taxRates;
+  final List<CatalogOption> contracts;
+  final List<CatalogOption> projects;
+  final List<CatalogOption> treasuryAccounts;
+  final List<CatalogOption> expenseCategories;
+  final List<CatalogOption> suppliers;
+  final bool allowManualInvoiceNumbers;
+  final String? defaultVatRate;
+
+  factory FinanceCatalog.fromBootstrap(Map<String, dynamic> raw) {
+    final catalog = raw['catalog'] is Map ? Map<String, dynamic>.from(raw['catalog'] as Map) : raw;
+    final settings = raw['settings'] is Map ? Map<String, dynamic>.from(raw['settings'] as Map) : const <String, dynamic>{};
+    List<CatalogOption> list(String key) => _mapList(catalog[key], CatalogOption.fromJson);
+    return FinanceCatalog(
+      products: list('products'),
+      taxRates: list('tax_rates'),
+      contracts: list('contracts'),
+      projects: list('projects'),
+      treasuryAccounts: list('treasury_accounts'),
+      expenseCategories: list('expense_categories'),
+      suppliers: list('suppliers'),
+      allowManualInvoiceNumbers: settings['allow_manual_invoice_numbers'] == true,
+      defaultVatRate: settings['default_vat_rate']?.toString(),
+    );
+  }
 }
 
 List<T> _mapList<T>(dynamic raw, T Function(Map<String, dynamic> json) map) {

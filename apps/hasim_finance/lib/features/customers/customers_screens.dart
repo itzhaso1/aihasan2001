@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hasim_finance/core/layout/finance_layout.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
@@ -261,29 +262,39 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          DropdownButtonFormField(
-            // ignore: deprecated_member_use
-            value: _type,
-            items: [
-              DropdownMenuItem(value: 'individual', child: Text(l.individual)),
-              DropdownMenuItem(value: 'company', child: Text(l.company)),
-            ],
-            onChanged: (v) => setState(() => _type = v ?? 'individual'),
+          FormSection(
+            title: l.headerSection,
+            child: FormGrid(children: [
+              DropdownButtonFormField(
+                // ignore: deprecated_member_use
+                value: _type,
+                items: [
+                  DropdownMenuItem(value: 'individual', child: Text(l.individual)),
+                  DropdownMenuItem(value: 'company', child: Text(l.company)),
+                ],
+                onChanged: (v) => setState(() => _type = v ?? 'individual'),
+              ),
+              TextField(controller: _name, decoration: InputDecoration(labelText: l.customer)),
+              TextField(controller: _phone, decoration: InputDecoration(labelText: l.phone)),
+              TextField(controller: _email, decoration: InputDecoration(labelText: l.email)),
+              TextField(controller: _whatsapp, decoration: InputDecoration(labelText: l.whatsapp)),
+              TextField(controller: _vat, decoration: InputDecoration(labelText: l.vatNumber)),
+              TextField(controller: _cr, decoration: InputDecoration(labelText: l.crNumber)),
+              TextField(controller: _paymentTerms, decoration: InputDecoration(labelText: l.paymentTerms)),
+            ]),
           ),
-          TextField(controller: _name, decoration: InputDecoration(labelText: l.customer)),
-          TextField(controller: _phone, decoration: InputDecoration(labelText: l.phone)),
-          TextField(controller: _email, decoration: InputDecoration(labelText: l.email)),
-          TextField(controller: _vat, decoration: InputDecoration(labelText: l.vatNumber)),
-          TextField(controller: _cr, decoration: InputDecoration(labelText: l.crNumber)),
-          TextField(controller: _whatsapp, decoration: InputDecoration(labelText: l.whatsapp)),
-          TextField(controller: _street, decoration: InputDecoration(labelText: l.street)),
-          TextField(controller: _building, decoration: InputDecoration(labelText: l.buildingNumber)),
-          TextField(controller: _district, decoration: InputDecoration(labelText: l.district)),
-          TextField(controller: _city, decoration: InputDecoration(labelText: l.city)),
-          TextField(controller: _postal, decoration: InputDecoration(labelText: l.postalCode)),
-          TextField(controller: _country, decoration: InputDecoration(labelText: l.country)),
-          TextField(controller: _additional, decoration: InputDecoration(labelText: l.additionalNumber)),
-          TextField(controller: _paymentTerms, decoration: InputDecoration(labelText: l.paymentTerms)),
+          FormSection(
+            title: l.datesSection,
+            child: FormGrid(children: [
+              TextField(controller: _street, decoration: InputDecoration(labelText: l.street)),
+              TextField(controller: _building, decoration: InputDecoration(labelText: l.buildingNumber)),
+              TextField(controller: _district, decoration: InputDecoration(labelText: l.district)),
+              TextField(controller: _city, decoration: InputDecoration(labelText: l.city)),
+              TextField(controller: _postal, decoration: InputDecoration(labelText: l.postalCode)),
+              TextField(controller: _country, decoration: InputDecoration(labelText: l.country)),
+              TextField(controller: _additional, decoration: InputDecoration(labelText: l.additionalNumber)),
+            ]),
+          ),
           TextField(controller: _address, decoration: InputDecoration(labelText: l.addressLine)),
           TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 3),
           const SizedBox(height: 16),

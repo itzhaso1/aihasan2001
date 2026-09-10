@@ -122,7 +122,7 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
                 emptyTitle: l.empty,
                 onRetry: () => _load(reset: true),
                 child: ListView.separated(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(12),
                   itemCount: _items.length + (_page < _lastPage ? 1 : 0),
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, i) {

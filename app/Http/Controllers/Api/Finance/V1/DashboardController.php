@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Finance\FinanceApiController;
 use App\Models\Finance\FinanceInvoicePayment;
 use App\Services\Finance\Api\FinanceClientPresenter;
 use App\Services\Finance\DashboardService;
+use App\Services\Finance\FinanceAnalyticsService;
 use App\Services\Finance\FinanceBootstrapService;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +20,7 @@ class DashboardController extends FinanceApiController
     public function __construct(
         private readonly WorkspaceContext $workspaceContext,
         private readonly DashboardService $dashboardService,
+        private readonly FinanceAnalyticsService $financeAnalyticsService,
         private readonly FinanceBootstrapService $financeBootstrapService,
         private readonly FinanceClientPresenter $presenter,
     ) {}
@@ -28,6 +30,16 @@ class DashboardController extends FinanceApiController
         $workspace = $this->clientWorkspace($this->workspaceContext);
         $this->clientActor($request, $workspace, 'finance.view');
         $this->financeBootstrapService->ensureWorkspaceFinanceSetup($workspace);
+
+        $filters = $request->validate([
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+            'customer_id' => ['nullable', 'integer'],
+            'product_id' => ['nullable', 'integer'],
+            'project_id' => ['nullable', 'integer'],
+            'lifecycle' => ['nullable', 'string', 'max:32'],
+            'payment_method' => ['nullable', 'string', 'max:32'],
+        ]);
 
         $metrics = $this->dashboardService->metrics();
         $paidThisPeriod = $this->presenter->money(
@@ -42,6 +54,11 @@ class DashboardController extends FinanceApiController
                 ->sum('amount')
         );
 
-        return $this->ok($this->presenter->dashboard($metrics, $paidThisPeriod));
+        $payload = $this->presenter->dashboard($metrics, $paidThisPeriod);
+        $payload['analytics'] = $this->presenter->analytics(
+            $this->financeAnalyticsService->dashboard((int) $workspace->id, $filters)
+        );
+
+        return $this->ok($payload);
     }
 }

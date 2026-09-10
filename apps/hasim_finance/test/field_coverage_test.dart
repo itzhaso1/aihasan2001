@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hasim_finance/core/models/models.dart';
+import 'package:hasim_finance/features/shared/document_lines_editor.dart';
 
 void main() {
   test('InvoiceRecord retains rich nested Finance payload', () {
@@ -72,6 +73,48 @@ void main() {
     expect(quote.taxableAmount, '95.00');
     expect(quote.terms, 'صالح 30 يوماً');
     expect(quote.lines.single.unit, 'ساعة');
+  });
+
+  test('LineDraft payload omits client totals and includes product and tax fields', () {
+    final line = LineDraft(
+      description: 'استشارة',
+      quantity: '2',
+      unitPrice: '50',
+      taxRate: '15',
+      discount: '5',
+      exemptionReason: 'صادرات',
+    )..productId = 41
+     ..taxProfileType = 'standard';
+    final payload = line.toPayload();
+    expect(payload.containsKey('total'), isFalse);
+    expect(payload.containsKey('tax_amount'), isFalse);
+    expect(payload.containsKey('taxable_amount'), isFalse);
+    expect(payload['product_id'], 41);
+    expect(payload['tax_profile_type'], 'standard');
+    expect(payload['exemption_reason'], 'صادرات');
+    line.dispose();
+  });
+
+  test('Product and project presenters parse Finance catalog payloads', () {
+    final product = ProductRecord.fromJson({
+      'id': 9,
+      'name': 'Widget',
+      'sku': 'W-1',
+      'price': '50.00',
+      'sold_total': '200.00',
+      'stock': 12,
+    });
+    expect(product.sku, 'W-1');
+    expect(product.soldTotal, '200.00');
+    final project = ProjectRecord.fromJson({
+      'id': 3,
+      'name': 'Launch',
+      'budget': '1000.00',
+      'revenue': '400.00',
+      'costs': '100.00',
+      'profit': '300.00',
+    });
+    expect(project.profit, '300.00');
   });
 
   test('StatementRecord retains debit, credit, description, and invoice_id', () {
@@ -159,6 +202,9 @@ void main() {
       'generated_invoices': [
         {'id': 11, 'invoice_number': 'INV-11', 'total': '100.00'},
       ],
+      'attachments': [
+        {'id': 4, 'file_name': 'scan.pdf', 'file_type': 'application/pdf', 'file_size': 1200},
+      ],
     });
     expect(contract.terms, 'شروط عربية');
     expect(contract.items.single.title, 'صيانة شهرية');
@@ -166,6 +212,7 @@ void main() {
     expect(contract.scheduleRecords.single.nextRunOn, '2026-10-01');
     expect(contract.billingSummary['outstanding'], '100.00');
     expect(contract.generatedInvoices.single.invoiceNumber, 'INV-11');
+    expect(contract.attachments.single['file_name'], 'scan.pdf');
   });
 
   test('ExpenseRecord and PaymentRecord retain treasury and method fields', () {

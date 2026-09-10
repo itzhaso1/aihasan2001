@@ -6,7 +6,10 @@ import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
+import 'package:hasim_finance/core/layout/finance_layout.dart';
+import 'package:hasim_finance/core/providers/catalog_provider.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
+import 'package:hasim_finance/features/shared/customer_select.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -20,11 +23,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   DashboardData? _data;
   bool _loading = true;
   String? _error;
+  final _from = TextEditingController();
+  final _to = TextEditingController();
+  int? _customerId;
+  int? _productId;
+  int? _projectId;
+  String? _lifecycle;
+  String? _paymentMethod;
 
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _from.text = isoDate(DateTime(now.year, now.month, 1));
+    _to.text = isoDate(now);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -33,11 +53,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       _error = null;
     });
     try {
-      final data = await ref.read(financeApiProvider).dashboard();
+      final data = await ref.read(financeApiProvider).dashboard(
+            from: _from.text.trim(),
+            to: _to.text.trim(),
+            customerId: _customerId,
+            productId: _productId,
+            projectId: _projectId,
+            lifecycle: _lifecycle,
+            paymentMethod: _paymentMethod,
+          );
       if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
+        final analyticsFrom = data.analytics['from']?.toString();
+        final analyticsTo = data.analytics['to']?.toString();
+        if (analyticsFrom != null && analyticsFrom.isNotEmpty) _from.text = analyticsFrom;
+        if (analyticsTo != null && analyticsTo.isNotEmpty) _to.text = analyticsTo;
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -46,6 +78,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _loading = false;
       });
     }
+  }
+
+  void _resetFilters() {
+    final now = DateTime.now();
+    setState(() {
+      _from.text = isoDate(DateTime(now.year, now.month, 1));
+      _to.text = isoDate(now);
+      _customerId = null;
+      _productId = null;
+      _projectId = null;
+      _lifecycle = null;
+      _paymentMethod = null;
+    });
+    _load();
   }
 
   @override
@@ -71,10 +117,91 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           onRetry: _load,
           child: _data == null
               ? const SizedBox.shrink()
-              : LayoutBuilder(
-                  builder: (context, constraints) {
-                    final cols = constraints.maxWidth >= 1100 ? 4 : constraints.maxWidth >= 700 ? 2 : 1;
-                    final cards = <(String, String)>[
+              : FinancePage(
+                  child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    FormSection(
+                      title: l.decisionPeriod,
+                      subtitle: l.comparePrevious,
+                      child: FormGrid(children: [
+                        TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
+                        TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
+                        CustomerSelectField(
+                          selectedId: _customerId,
+                          onSelected: (id) => setState(() => _customerId = id),
+                          compact: true,
+                          allowClear: true,
+                          label: l.customers,
+                        ),
+                        OptionPicker(
+                          label: l.products,
+                          options: [
+                            for (final product in ref.watch(financeCatalogProvider).valueOrNull?.products ?? const <CatalogOption>[])
+                              NamedOption(id: product.id, name: product.name),
+                          ],
+                          value: _productId,
+                          onChanged: (id) => setState(() => _productId = id),
+                        ),
+                        OptionPicker(
+                          label: l.projects,
+                          options: [
+                            for (final project in ref.watch(financeCatalogProvider).valueOrNull?.projects ?? const <CatalogOption>[])
+                              NamedOption(id: project.id, name: project.name),
+                          ],
+                          value: _projectId,
+                          onChanged: (id) => setState(() => _projectId = id),
+                        ),
+                        DropdownButtonFormField<String?>(
+                          // ignore: deprecated_member_use
+                          value: _lifecycle,
+                          isExpanded: true,
+                          decoration: InputDecoration(labelText: l.documentStatus),
+                          items: [
+                            DropdownMenuItem<String?>(value: null, child: Text(l.filterAll)),
+                            DropdownMenuItem(value: 'draft', child: Text(l.lifecycleDraft)),
+                            DropdownMenuItem(value: 'sent', child: Text(l.lifecycleSent)),
+                            DropdownMenuItem(value: 'partial', child: Text(l.partial)),
+                            DropdownMenuItem(value: 'paid', child: Text(l.paid)),
+                            DropdownMenuItem(value: 'overdue', child: Text(l.overdue)),
+                            DropdownMenuItem(value: 'cancelled', child: Text(l.cancelled)),
+                          ],
+                          onChanged: (value) => setState(() => _lifecycle = value),
+                        ),
+                        DropdownButtonFormField<String?>(
+                          // ignore: deprecated_member_use
+                          value: _paymentMethod,
+                          isExpanded: true,
+                          decoration: InputDecoration(labelText: l.paymentMethod),
+                          items: [
+                            DropdownMenuItem<String?>(value: null, child: Text(l.filterAll)),
+                            DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),
+                            DropdownMenuItem(value: 'bank_transfer', child: Text(l.methodBank)),
+                            DropdownMenuItem(value: 'card', child: Text(l.methodCard)),
+                            DropdownMenuItem(value: 'other', child: Text(l.methodOther)),
+                          ],
+                          onChanged: (value) => setState(() => _paymentMethod = value),
+                        ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            FilledButton(onPressed: _load, child: Text(l.applyFilters)),
+                            OutlinedButton(onPressed: _resetFilters, child: Text(l.resetFilters)),
+                          ],
+                        ),
+                      ]),
+                    ),
+                    if ((_data!.analytics['hero'] as List?)?.isNotEmpty == true) ...[
+                      MetricGrid(
+                        metrics: [
+                          for (final row in (_data!.analytics['hero'] as List).whereType<Map>())
+                            ('${row['label'] ?? ''}', '${row['value'] ?? '0'}'),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    MetricGrid(metrics: [
                       (l.outstanding, _data!.cards['outstanding_customer_balance'] ?? '0'),
                       (l.invoicesDue, _data!.cards['invoices_due'] ?? '0'),
                       (l.overdueInvoices, _data!.cards['overdue_invoices'] ?? '0'),
@@ -91,79 +218,69 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       (l.cashBalance, _data!.cards['cash_balance'] ?? '0'),
                       (l.bankBalance, _data!.cards['bank_balance'] ?? '0'),
                       (l.activeContracts, _data!.cards['active_contracts_count'] ?? '0'),
-                    ];
-                    return ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        GridView.count(
-                          crossAxisCount: cols,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          childAspectRatio: 1.8,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          children: [
-                            for (final card in cards)
-                              Card(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(card.$1, style: Theme.of(context).textTheme.bodyMedium),
-                                      const Spacer(),
-                                      Text(card.$2, style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                          ],
+                    ]),
+                    if ((_data!.analytics['attention'] as List?)?.isNotEmpty == true) ...[
+                      const SizedBox(height: 20),
+                      Text(l.attentionItems, style: Theme.of(context).textTheme.titleLarge),
+                      for (final row in (_data!.analytics['attention'] as List).whereType<Map>())
+                        ListTile(
+                          title: Text('${row['title'] ?? ''}'),
+                          subtitle: Text('${row['reason'] ?? ''}'),
                         ),
-                        const SizedBox(height: 20),
-                        Text(l.recentInvoices, style: Theme.of(context).textTheme.titleLarge),
-                        const SizedBox(height: 8),
-                        for (final invoice in _data!.recentInvoices)
-                          ListTile(
-                            title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),
-                            subtitle: Text('${invoice.customerName ?? ''} · ${invoice.documentStatus} · ${invoice.paymentStatus}'),
-                            trailing: Text(invoice.total),
-                            onTap: () => context.push('/invoices/${invoice.id}'),
-                          ),
-                        const SizedBox(height: 16),
-                        Text(l.recentPayments, style: Theme.of(context).textTheme.titleLarge),
-                        for (final payment in _data!.recentPayments)
-                          ListTile(
-                            title: Text(payment.invoiceNumber ?? '#${payment.id}'),
-                            subtitle: Text('${payment.method ?? ''} · ${payment.status}'),
-                            trailing: Text(payment.amount),
-                            onTap: () => context.push('/payments/${payment.id}'),
-                          ),
-                        if (_data!.overdueInvoices.isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          Text(l.overdueInvoices, style: Theme.of(context).textTheme.titleLarge),
-                          for (final invoice in _data!.overdueInvoices)
-                            ListTile(
-                              title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),
-                              subtitle: Text('${invoice.customerName ?? ''} · ${invoice.dueDate ?? ''}'),
-                              trailing: Text(invoice.amountDue),
-                              onTap: () => context.push('/invoices/${invoice.id}'),
-                            ),
-                        ],
-                        if (_data!.recentExpenses.isNotEmpty) ...[
-                          const SizedBox(height: 16),
-                          Text(l.recentExpenses, style: Theme.of(context).textTheme.titleLarge),
-                          for (final expense in _data!.recentExpenses)
-                            ListTile(
-                              title: Text(expense.description ?? expense.expenseNumber ?? '#${expense.id}'),
-                              subtitle: Text('${expense.categoryName ?? ''} · ${expense.status ?? ''}'),
-                              trailing: Text(expense.total),
-                              onTap: () => context.push('/expenses/${expense.id}'),
-                            ),
-                        ],
-                      ],
-                    );
-                  },
+                    ],
+                    if ((_data!.analytics['top_customers'] as List?)?.isNotEmpty == true) ...[
+                      const SizedBox(height: 16),
+                      Text(l.topCustomers, style: Theme.of(context).textTheme.titleLarge),
+                      for (final row in (_data!.analytics['top_customers'] as List).whereType<Map>())
+                        ListTile(
+                          title: Text('${row['name'] ?? ''}'),
+                          trailing: Text('${row['total'] ?? ''}'),
+                        ),
+                    ],
+                    const SizedBox(height: 20),
+                    Text(l.recentInvoices, style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 8),
+                    for (final invoice in _data!.recentInvoices)
+                      ListTile(
+                        title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),
+                        subtitle: Text('${invoice.customerName ?? ''} · ${invoice.documentStatus} · ${invoice.paymentStatus}'),
+                        trailing: Text(invoice.total),
+                        onTap: () => context.push('/invoices/${invoice.id}'),
+                      ),
+                    const SizedBox(height: 16),
+                    Text(l.recentPayments, style: Theme.of(context).textTheme.titleLarge),
+                    for (final payment in _data!.recentPayments)
+                      ListTile(
+                        title: Text(payment.invoiceNumber ?? '#${payment.id}'),
+                        subtitle: Text('${payment.method ?? ''} · ${payment.status}'),
+                        trailing: Text(payment.amount),
+                        onTap: () => context.push('/payments/${payment.id}'),
+                      ),
+                    if (_data!.overdueInvoices.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(l.overdueInvoices, style: Theme.of(context).textTheme.titleLarge),
+                      for (final invoice in _data!.overdueInvoices)
+                        ListTile(
+                          title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),
+                          subtitle: Text('${invoice.customerName ?? ''} · ${invoice.dueDate ?? ''}'),
+                          trailing: Text(invoice.amountDue),
+                          onTap: () => context.push('/invoices/${invoice.id}'),
+                        ),
+                    ],
+                    if (_data!.recentExpenses.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(l.recentExpenses, style: Theme.of(context).textTheme.titleLarge),
+                      for (final expense in _data!.recentExpenses)
+                        ListTile(
+                          title: Text(expense.description ?? expense.expenseNumber ?? '#${expense.id}'),
+                          subtitle: Text('${expense.categoryName ?? ''} · ${expense.status ?? ''}'),
+                          trailing: Text(expense.total),
+                          onTap: () => context.push('/expenses/${expense.id}'),
+                        ),
+                    ],
+                  ],
                 ),
+              ),
         ),
       ),
     );
@@ -265,7 +382,11 @@ class _FinanceSearchScreenState extends ConsumerState<FinanceSearchScreen> {
                                   'expense' => '/expenses/$id',
                                   'contract' => '/contracts/$id',
                                   'purchase' => '/purchases/$id',
-                                  'supplier' => '/purchases',
+                                  'supplier' => '/suppliers/$id',
+                                  'product' => '/products/$id',
+                                  'project' => '/projects/$id',
+                                  'purchase_order' => '/purchase-orders/$id',
+                                  'lead' => '/leads/$id',
                                   _ => null,
                                 };
                                 if (path != null) context.push(path);

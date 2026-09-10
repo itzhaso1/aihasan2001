@@ -4,24 +4,42 @@ namespace App\Services\Finance\Api;
 
 use App\Models\AuditLog;
 use App\Models\Contract\Contract;
+use App\Models\Crm\CrmLead;
 use App\Models\Customer;
+use App\Models\Finance\FinanceAccount;
+use App\Models\Finance\FinanceAccountingPeriod;
+use App\Models\Finance\FinanceBankStatement;
+use App\Models\Finance\FinanceBankStatementLine;
 use App\Models\Finance\FinanceCreditNote;
 use App\Models\Finance\FinanceDocumentDelivery;
 use App\Models\Finance\FinanceExpense;
+use App\Models\Finance\FinanceFiscalYear;
 use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\FinanceInvoiceItem;
 use App\Models\Finance\FinanceInvoicePayment;
+use App\Models\Finance\FinanceJournalEntry;
+use App\Models\Finance\FinancePriceList;
+use App\Models\Finance\FinancePriceListItem;
+use App\Models\Finance\FinancePurchaseOrder;
+use App\Models\Finance\FinancePurchaseOrderItem;
 use App\Models\Finance\FinanceQuote;
 use App\Models\Finance\FinanceQuoteItem;
 use App\Models\Finance\FinanceReceipt;
 use App\Models\Finance\FinanceSetting;
 use App\Models\Finance\FinanceSupplier;
+use App\Models\Finance\FinanceTaxRate;
+use App\Models\Finance\FinanceTreasuryAccount;
+use App\Models\Finance\FinanceTreasuryTransfer;
+use App\Models\InventoryMovement;
+use App\Models\Product;
+use App\Models\Projects\FinanceProject;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Services\Payment\Contracts\BillableCheckoutResult;
 use App\Support\Money\Money;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 
 class FinanceClientPresenter
 {
@@ -117,6 +135,12 @@ class FinanceClientPresenter
         $payload['credit_notes'] = $invoice->creditNotes?->map(fn ($note) => $this->noteSummary($note))->values()->all() ?? [];
         $payload['deliveries'] = $invoice->deliveries?->map(fn ($delivery) => $this->delivery($delivery))->values()->all() ?? [];
         $payload['checkout'] = $checkout ? $this->checkout($checkout) : null;
+        $payload['attachments'] = $invoice->attachments?->map(fn ($attachment) => [
+            'id' => (int) $attachment->id,
+            'file_name' => $attachment->file_name,
+            'file_type' => $attachment->file_type,
+            'file_size' => $attachment->file_size,
+        ])->values()->all() ?? [];
         $payload['zatca'] = [
             'requirement' => $invoice->zatca_requirement,
             'tax_document_subtype' => $invoice->tax_document_subtype,
@@ -145,6 +169,8 @@ class FinanceClientPresenter
             'taxable_amount' => $this->money($item->taxable_amount),
             'total' => $this->money($item->total),
             'tax_profile_type' => $item->tax_profile_type,
+            'exemption_reason' => $item->exemption_reason ?? null,
+            'exemption_code' => $item->exemption_code ?? null,
         ];
     }
 
@@ -400,6 +426,22 @@ class FinanceClientPresenter
                     'notes' => $schedule->notes,
                 ])->values()->all()
                 : [],
+            'attachments' => $contract->relationLoaded('attachments')
+                ? $contract->attachments->map(fn ($attachment) => $this->contractAttachment($attachment))->values()->all()
+                : [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function contractAttachment(mixed $attachment): array
+    {
+        return [
+            'id' => (int) $attachment->id,
+            'file_name' => $attachment->file_name,
+            'file_type' => $attachment->file_type,
+            'file_size' => $attachment->file_size,
         ];
     }
 
@@ -515,6 +557,81 @@ class FinanceClientPresenter
     }
 
     /**
+     * JSON-safe decision dashboard. Totals stay server-formatted; Laravel route hrefs are omitted.
+     *
+     * @param  array<string, mixed>  $analytics
+     * @return array<string, mixed>
+     */
+    public function analytics(array $analytics): array
+    {
+        $kpis = function (iterable $rows): array {
+            return collect($rows)->map(fn ($row): array => [
+                'key' => (string) ($row['key'] ?? ''),
+                'label' => (string) ($row['label'] ?? ''),
+                'value' => $this->money($row['value'] ?? 0),
+                'previous' => $this->money($row['previous'] ?? 0),
+                'delta' => $this->money($row['delta'] ?? 0),
+                'direction' => (int) ($row['direction'] ?? 0),
+                'hint' => (string) ($row['hint'] ?? ''),
+            ])->values()->all();
+        };
+
+        $named = function (iterable $rows): array {
+            return collect($rows)->map(function ($row): array {
+                $data = is_array($row) ? $row : (array) $row;
+
+                return [
+                    'id' => isset($data['id']) ? (int) $data['id'] : null,
+                    'name' => (string) ($data['name'] ?? $data['title'] ?? ''),
+                    'total' => $this->money($data['total'] ?? 0),
+                    'due' => $this->money($data['due'] ?? 0),
+                    'invoices' => (int) ($data['invoices'] ?? 0),
+                    'quantity' => $this->money($data['quantity'] ?? 0),
+                ];
+            })->values()->all();
+        };
+
+        return [
+            'from' => $analytics['from'] ?? null,
+            'to' => $analytics['to'] ?? null,
+            'previous_from' => $analytics['previous_from'] ?? null,
+            'previous_to' => $analytics['previous_to'] ?? null,
+            'hero' => $kpis($analytics['hero'] ?? []),
+            'secondary' => $kpis($analytics['secondary'] ?? []),
+            'attention' => collect($analytics['attention'] ?? [])->map(fn ($row): array => [
+                'title' => (string) ($row['title'] ?? ''),
+                'reason' => (string) ($row['reason'] ?? ''),
+            ])->values()->all(),
+            'top_customers' => $named($analytics['top_customers'] ?? []),
+            'overdue_customers' => $named($analytics['overdue_customers'] ?? []),
+            'products' => $named($analytics['products'] ?? []),
+            'projects' => collect($analytics['projects'] ?? [])->map(fn ($row): array => [
+                'id' => (int) ($row['id'] ?? 0),
+                'name' => (string) ($row['name'] ?? ''),
+                'revenue' => $this->money($row['revenue'] ?? 0),
+                'costs' => $this->money($row['costs'] ?? 0),
+                'profit' => $this->money($row['profit'] ?? 0),
+            ])->values()->all(),
+            'expenses_by_category' => $named($analytics['expenses_by_category'] ?? []),
+            'series' => collect($analytics['series'] ?? [])->map(fn ($row): array => [
+                'month' => (string) ($row['month'] ?? ''),
+                'sales' => $this->money($row['sales'] ?? 0),
+                'expenses' => $this->money($row['expenses'] ?? 0),
+                'profit' => $this->money($row['profit'] ?? 0),
+            ])->values()->all(),
+            'expiring_contracts' => collect($analytics['expiring_contracts'] ?? [])->map(function ($contract): array {
+                $end = data_get($contract, 'end_date');
+
+                return [
+                    'id' => (int) data_get($contract, 'id'),
+                    'title' => (string) (data_get($contract, 'title') ?: data_get($contract, 'contract_number') ?: ''),
+                    'end_date' => $end instanceof \DateTimeInterface ? $end->format('Y-m-d') : (string) $end,
+                ];
+            })->values()->all(),
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function settings(FinanceSetting $setting): array
@@ -536,10 +653,40 @@ class FinanceClientPresenter
             'website' => $setting->website,
             'currency' => $setting->currency ?: 'SAR',
             'invoice_prefix' => $setting->invoice_prefix,
+            'invoice_primary_color' => $setting->invoice_primary_color ?: '#06C2A4',
+            'invoice_footer_text' => $setting->invoice_footer_text,
             'default_vat_rate' => $this->money($setting->default_vat_rate ?? 0),
             'default_payment_terms' => $setting->default_payment_terms,
             'allow_manual_invoice_numbers' => (bool) $setting->allow_manual_invoice_numbers,
             'zatca_integration_mode' => $setting->zatca_integration_mode,
+            'has_logo' => filled($setting->logo_path),
+            'logo_url' => $this->publicFileUrl($setting->logo_path),
+            'tax_rates' => FinanceTaxRate::query()
+                ->orderByDesc('is_default')
+                ->orderBy('id')
+                ->get()
+                ->map(fn (FinanceTaxRate $rate) => $this->taxRate($rate))
+                ->values()
+                ->all(),
+            'treasury_accounts' => FinanceTreasuryAccount::query()
+                ->with('linkedAccount')
+                ->orderBy('type')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (FinanceTreasuryAccount $account) => $this->treasuryAccount($account))
+                ->values()
+                ->all(),
+            'finance_accounts' => FinanceAccount::query()
+                ->orderBy('code')
+                ->get(['id', 'code', 'name', 'type'])
+                ->map(fn (FinanceAccount $account) => [
+                    'id' => (int) $account->id,
+                    'code' => $account->code,
+                    'name' => $account->name,
+                    'type' => $account->type,
+                ])
+                ->values()
+                ->all(),
         ];
     }
 
@@ -588,6 +735,360 @@ class FinanceClientPresenter
             'phone' => $user->phone,
             'locale' => $user->locale,
         ];
+    }
+
+    /**
+     * @param  array{sold_qty?:mixed,sold_total?:mixed}|null  $sales
+     * @return array<string, mixed>
+     */
+    public function product(Product $product, ?array $sales = null): array
+    {
+        return [
+            'id' => (int) $product->id,
+            'name' => $product->name,
+            'sku' => $product->sku,
+            'barcode' => $product->barcode,
+            'description' => $product->description,
+            'price' => $this->money($product->price ?? 0),
+            'sale_price' => $product->sale_price !== null ? $this->money($product->sale_price) : null,
+            'cost_price' => $product->cost_price !== null ? $this->money($product->cost_price) : null,
+            'vat_rate' => $this->money($product->vat_rate ?? 0),
+            'currency' => $product->currency ?: 'SAR',
+            'stock' => $product->stock,
+            'inventory_tracking' => (bool) $product->inventory_tracking,
+            'status' => $product->status,
+            'product_kind' => $product->product_kind,
+            'brand' => $product->brand,
+            'category_id' => $product->category_id ? (int) $product->category_id : null,
+            'category_name' => $product->category?->name,
+            'sold_qty' => $this->money($sales['sold_qty'] ?? 0),
+            'sold_total' => $this->money($sales['sold_total'] ?? 0),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function inventoryMovement(InventoryMovement $movement): array
+    {
+        return [
+            'id' => (int) $movement->id,
+            'product_id' => $movement->product_id ? (int) $movement->product_id : null,
+            'product_name' => $movement->product?->name,
+            'type' => $movement->type,
+            'quantity' => (string) $movement->quantity,
+            'before_quantity' => (string) $movement->before_quantity,
+            'after_quantity' => (string) $movement->after_quantity,
+            'reference_type' => $movement->reference_type,
+            'reference_id' => $movement->reference_id ? (int) $movement->reference_id : null,
+            'notes' => $movement->notes,
+            'actor_name' => $movement->user?->name,
+            'created_at' => $movement->created_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $profit
+     * @return array<string, mixed>
+     */
+    public function project(FinanceProject $project, ?array $profit = null): array
+    {
+        return [
+            'id' => (int) $project->id,
+            'name' => $project->name,
+            'status' => $project->status,
+            'customer_id' => $project->customer_id ? (int) $project->customer_id : null,
+            'customer_name' => $project->customer?->name,
+            'budget' => $this->money($project->budget ?? 0),
+            'starts_on' => $this->date($project->starts_on),
+            'ends_on' => $this->date($project->ends_on),
+            'notes' => $project->notes,
+            'revenue' => $this->money($profit['revenue'] ?? 0),
+            'costs' => $this->money($profit['costs'] ?? 0),
+            'profit' => $this->money($profit['profit'] ?? 0),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function priceList(FinancePriceList $list, bool $withItems = false): array
+    {
+        $payload = [
+            'id' => (int) $list->id,
+            'name' => $list->name,
+            'code' => $list->code,
+            'currency' => $list->currency ?: 'SAR',
+            'status' => $list->status,
+            'effective_from' => $this->date($list->effective_from),
+            'effective_to' => $this->date($list->effective_to),
+            'notes' => $list->notes,
+            'items_count' => $list->relationLoaded('items') ? $list->items->count() : (int) ($list->items_count ?? 0),
+        ];
+
+        if ($withItems) {
+            $payload['items'] = $list->items?->map(fn (FinancePriceListItem $item) => $this->priceListItem($item))->values()->all() ?? [];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function priceListItem(FinancePriceListItem $item): array
+    {
+        return [
+            'id' => (int) $item->id,
+            'price_list_id' => (int) $item->price_list_id,
+            'product_id' => $item->product_id ? (int) $item->product_id : null,
+            'product_name' => $item->product_name,
+            'sku' => $item->sku,
+            'min_quantity' => (string) $item->min_quantity,
+            'price' => $this->money($item->price),
+            'tax_rate' => $this->money($item->tax_rate ?? 0),
+            'is_active' => (bool) $item->is_active,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function purchaseOrder(FinancePurchaseOrder $order): array
+    {
+        return [
+            'id' => (int) $order->id,
+            'po_number' => $order->po_number,
+            'status' => $order->status,
+            'supplier_id' => $order->supplier_id ? (int) $order->supplier_id : null,
+            'supplier_name' => $order->supplier?->name,
+            'order_date' => $this->date($order->order_date),
+            'expected_date' => $this->date($order->expected_date),
+            'currency' => $order->currency ?: 'SAR',
+            'subtotal' => $this->money($order->subtotal),
+            'tax_amount' => $this->money($order->tax_amount),
+            'total' => $this->money($order->total),
+            'notes' => $order->notes,
+            'invoice_id' => $order->finance_invoice_id ? (int) $order->finance_invoice_id : null,
+            'items' => $order->items?->map(fn (FinancePurchaseOrderItem $item) => [
+                'id' => (int) $item->id,
+                'product_id' => $item->product_id ? (int) $item->product_id : null,
+                'product_name' => $item->product_name,
+                'quantity' => (string) $item->quantity,
+                'received_quantity' => (string) $item->received_quantity,
+                'unit_price' => $this->money($item->unit_price),
+                'tax_rate' => $this->money($item->tax_rate ?? 0),
+                'tax_amount' => $this->money($item->tax_amount),
+                'taxable_amount' => $this->money($item->taxable_amount),
+                'total' => $this->money($item->total),
+            ])->values()->all() ?? [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function lead(CrmLead $lead): array
+    {
+        return [
+            'id' => (int) $lead->id,
+            'name' => $lead->name,
+            'company_name' => $lead->company_name,
+            'email' => $lead->email,
+            'phone' => $lead->phone,
+            'source' => $lead->source,
+            'status' => $lead->status,
+            'estimated_value' => $this->money($lead->estimated_value ?? 0),
+            'currency' => $lead->currency ?: 'SAR',
+            'notes' => $lead->notes,
+            'customer_id' => $lead->customer_id ? (int) $lead->customer_id : null,
+            'converted_at' => $lead->converted_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function treasuryAccount(FinanceTreasuryAccount $account): array
+    {
+        return [
+            'id' => (int) $account->id,
+            'name' => $account->name,
+            'type' => $account->type,
+            'account_number' => $account->account_number,
+            'iban' => $account->iban,
+            'bank_name' => $account->bank_name,
+            'currency' => $account->currency ?: 'SAR',
+            'opening_balance' => $this->money($account->opening_balance ?? 0),
+            'current_balance' => $this->money($account->current_balance ?? 0),
+            'linked_finance_account_id' => $account->linked_finance_account_id ? (int) $account->linked_finance_account_id : null,
+            'linked_account_code' => $account->linkedAccount?->code,
+            'linked_account_name' => $account->linkedAccount?->name,
+            'is_active' => (bool) $account->is_active,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function bankStatement(FinanceBankStatement $statement): array
+    {
+        return [
+            'id' => (int) $statement->id,
+            'treasury_account_id' => (int) $statement->treasury_account_id,
+            'treasury_account_name' => $statement->treasuryAccount?->name,
+            'statement_date' => $this->date($statement->statement_date),
+            'opening_balance' => $this->money($statement->opening_balance ?? 0),
+            'closing_balance' => $this->money($statement->closing_balance ?? 0),
+            'status' => $statement->status,
+            'notes' => $statement->notes,
+            'reconciled_at' => $statement->reconciled_at?->toIso8601String(),
+            'lines' => $statement->relationLoaded('lines')
+                ? $statement->lines->map(fn (FinanceBankStatementLine $line) => $this->bankStatementLine($line))->values()->all()
+                : [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function bankStatementLine(FinanceBankStatementLine $line): array
+    {
+        return [
+            'id' => (int) $line->id,
+            'posted_date' => $this->date($line->posted_date),
+            'description' => $line->description,
+            'reference' => $line->reference,
+            'amount' => $this->money($line->amount ?? 0),
+            'status' => $line->status,
+            'suggested_type' => $line->suggested_type,
+            'suggested_id' => $line->suggested_id ? (int) $line->suggested_id : null,
+            'suggestion_confidence' => $line->suggestion_confidence,
+            'suggestion_reason' => $line->suggestion_reason,
+            'matched_type' => $line->matched_type,
+            'matched_id' => $line->matched_id ? (int) $line->matched_id : null,
+        ];
+    }
+
+    public function treasuryTransfer(FinanceTreasuryTransfer $transfer): array
+    {
+        return [
+            'id' => (int) $transfer->id,
+            'from_treasury_account_id' => (int) $transfer->from_treasury_account_id,
+            'from_account_name' => $transfer->fromAccount?->name,
+            'to_treasury_account_id' => (int) $transfer->to_treasury_account_id,
+            'to_account_name' => $transfer->toAccount?->name,
+            'amount' => $this->money($transfer->amount),
+            'transfer_date' => $this->date($transfer->transfer_date),
+            'reference' => $transfer->reference,
+            'status' => $transfer->status,
+            'notes' => $transfer->notes,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function fiscalYear(FinanceFiscalYear $year, bool $withPeriods = false): array
+    {
+        $payload = [
+            'id' => (int) $year->id,
+            'name' => $year->name,
+            'start_date' => $this->date($year->start_date),
+            'end_date' => $this->date($year->end_date),
+            'status' => $year->status,
+            'periods_count' => $year->relationLoaded('periods') ? $year->periods->count() : (int) ($year->periods_count ?? 0),
+        ];
+
+        if ($withPeriods) {
+            $payload['periods'] = $year->periods?->map(fn (FinanceAccountingPeriod $period) => $this->accountingPeriod($period))->values()->all() ?? [];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function accountingPeriod(FinanceAccountingPeriod $period): array
+    {
+        return [
+            'id' => (int) $period->id,
+            'fiscal_year_id' => (int) $period->fiscal_year_id,
+            'name' => $period->name,
+            'start_date' => $this->date($period->start_date),
+            'end_date' => $this->date($period->end_date),
+            'status' => $period->status,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function taxRate(FinanceTaxRate $rate): array
+    {
+        return [
+            'id' => (int) $rate->id,
+            'name' => $rate->name,
+            'code' => $rate->code,
+            'type' => $rate->type,
+            'rate' => $this->money($rate->rate ?? 0),
+            'is_default' => (bool) $rate->is_default,
+            'is_active' => (bool) $rate->is_active,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function ledgerAccount(FinanceAccount $account): array
+    {
+        $debit = $account->debit_total ?? 0;
+        $credit = $account->credit_total ?? 0;
+
+        return [
+            'id' => (int) $account->id,
+            'code' => $account->code,
+            'name' => $account->name,
+            'type' => $account->type,
+            'debit_total' => $this->money($debit),
+            'credit_total' => $this->money($credit),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function journalEntry(FinanceJournalEntry $entry): array
+    {
+        return [
+            'id' => (int) $entry->id,
+            'entry_number' => $entry->entry_number,
+            'entry_date' => $this->date($entry->entry_date),
+            'type' => $entry->type,
+            'description' => $entry->description,
+            'status' => $entry->status,
+            'lines' => $entry->lines?->map(fn ($line) => [
+                'account_code' => $line->account?->code,
+                'account_name' => $line->account?->name,
+                'debit' => $this->money($line->debit ?? 0),
+                'credit' => $this->money($line->credit ?? 0),
+            ])->values()->all() ?? [],
+        ];
+    }
+
+    private function publicFileUrl(?string $path): ?string
+    {
+        if (! filled($path)) {
+            return null;
+        }
+
+        $url = Storage::disk('public')->url($path);
+        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+            return $url;
+        }
+
+        return rtrim((string) config('app.url'), '/').'/'.ltrim($url, '/');
     }
 
     private function date(mixed $value): ?string
