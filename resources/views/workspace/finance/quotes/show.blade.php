@@ -59,6 +59,7 @@
                     </form>
                 @endif
                 @if($quote->isIssued())
+                    <a href="#quote-send" class="rounded-lg bg-[#06C2A4] px-3 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">إرسال عرض السعر</a>
                     <form method="POST" action="{{ route('workspace.finance.quotes.cancel', $quote) }}" onsubmit="return confirm('إلغاء عرض السعر الصادر؟')">
                         @csrf
                         <button class="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50">إلغاء</button>
@@ -84,6 +85,91 @@
         </div>
 
         <p class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">عرض السعر ليس فاتورة ضريبية ولا ينشئ قيدًا محاسبيًا ولا دفعة ولا يدخل سلسلة ZATCA.</p>
+
+        @php
+            $sendEmail = old('email', $quote->customer?->email);
+            $sendPhone = old('phone', $quote->customer?->phone);
+            $companyName = $companyName ?: (string) config('app.name', 'HASEM');
+            $defaultSubject = 'عرض سعر رقم '.$quote->quote_number;
+            $defaultMessage = "السلام عليكم،\nنرفق لكم عرض السعر رقم {$quote->quote_number}.\nالإجمالي: ".number_format((float) $quote->total, 2).' '.($quote->currency ?: 'SAR')."\nصلاحية العرض حتى: ".($quote->expiry_date?->format('Y-m-d') ?: '—')."\nمع التحية،\n".$companyName;
+            $deliveryStatusLabels = ['sending' => 'جارٍ الإرسال', 'sent' => 'تم الإرسال', 'failed' => 'فشل الإرسال'];
+            $channelLabels = ['email' => 'بريد إلكتروني'];
+        @endphp
+
+        <div id="quote-send" class="grid gap-4 lg:grid-cols-2">
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 class="text-sm font-bold text-slate-900">إرسال عرض السعر</h3>
+                @if($quote->isDraft())
+                    <p class="mt-2 text-sm text-slate-500">يجب إصدار عرض السعر قبل إرساله بالبريد.</p>
+                @elseif($quote->isCancelled())
+                    <p class="mt-2 text-sm text-slate-500">لا يمكن إرسال عرض سعر ملغى.</p>
+                @else
+                    @if(! $quote->customer?->email)
+                        <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">لا يوجد بريد إلكتروني للعميل. أدخل بريداً صالحاً قبل الإرسال.</p>
+                    @endif
+                    <form method="POST" action="{{ route('workspace.finance.quotes.send', $quote) }}" class="mt-3 space-y-3">
+                        @csrf
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600">العميل</label>
+                            <input type="text" value="{{ $recipientName }}" class="w-full rounded-lg border-slate-200 bg-slate-50 text-sm" disabled>
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600">البريد الإلكتروني</label>
+                            <input type="email" name="email" value="{{ $sendEmail }}" required class="w-full rounded-lg border-slate-300 text-sm" placeholder="customer@example.com">
+                            @error('email')<p class="mt-1 text-xs font-semibold text-red-600">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600">رقم الجوال (اختياري — لا يُستخدم للإرسال حالياً)</label>
+                            <input type="text" name="phone" value="{{ $sendPhone }}" maxlength="32" class="w-full rounded-lg border-slate-300 text-sm" placeholder="05xxxxxxxx">
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600">الموضوع</label>
+                            <input type="text" name="subject" value="{{ old('subject', $defaultSubject) }}" class="w-full rounded-lg border-slate-300 text-sm">
+                            @error('subject')<p class="mt-1 text-xs font-semibold text-red-600">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600">الرسالة</label>
+                            <textarea name="message" rows="5" class="w-full rounded-lg border-slate-300 text-sm">{{ old('message', $defaultMessage) }}</textarea>
+                            @error('message')<p class="mt-1 text-xs font-semibold text-red-600">{{ $message }}</p>@enderror
+                        </div>
+                        <label class="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                            <input type="hidden" name="attach_pdf" value="0">
+                            <input type="checkbox" name="attach_pdf" value="1" class="rounded border-slate-300 text-[#06C2A4]" @checked(old('attach_pdf', '1') === '1' || old('attach_pdf') === 1 || old('attach_pdf') === true)>
+                            إرفاق ملف PDF
+                        </label>
+                        <button class="rounded-lg bg-[#06C2A4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">إرسال عبر البريد</button>
+                    </form>
+                @endif
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 class="text-sm font-bold text-slate-900">سجل الإرسال</h3>
+                <p class="mt-1 text-xs text-slate-500">حالة الإرسال منفصلة عن حالة المستند ({{ $statusLabels[$status] ?? $status }}).</p>
+                <div class="mt-3 overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="bg-slate-50 text-slate-600">
+                            <tr>
+                                <th class="px-3 py-2 text-right">التاريخ</th>
+                                <th class="px-3 py-2 text-right">القناة</th>
+                                <th class="px-3 py-2 text-right">المستلم</th>
+                                <th class="px-3 py-2 text-right">الحالة</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($quote->deliveries as $delivery)
+                                <tr class="border-t border-slate-100">
+                                    <td class="px-3 py-2">{{ ($delivery->sent_at ?? $delivery->created_at)?->timezone(config('app.timezone'))->format('Y-m-d H:i') }}</td>
+                                    <td class="px-3 py-2">{{ $channelLabels[$delivery->channel] ?? $delivery->channel }}</td>
+                                    <td class="px-3 py-2">{{ $delivery->recipient }}</td>
+                                    <td class="px-3 py-2">{{ $deliveryStatusLabels[$delivery->status] ?? $delivery->status }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="4" class="px-3 py-6 text-center text-slate-500">لم يُرسل هذا العرض بعد.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
 
         <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-100 px-5 py-3 text-sm font-bold">البنود</div>

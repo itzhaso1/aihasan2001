@@ -2,6 +2,7 @@
 
 namespace App\Models\Finance;
 
+use App\Enums\Finance\FinanceDocumentType;
 use App\Enums\Finance\QuoteStatus;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Customer;
@@ -86,6 +87,13 @@ class FinanceQuote extends WorkspaceScopedModel
         return $this->hasMany(FinanceQuoteItem::class, 'quote_id');
     }
 
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(FinanceDocumentDelivery::class, 'document_id')
+            ->where('document_type', FinanceDocumentType::Quote->value)
+            ->latest('id');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -134,6 +142,11 @@ class FinanceQuote extends WorkspaceScopedModel
     public function isLocked(): bool
     {
         return $this->quoteStatus()->isLocked();
+    }
+
+    public function isSendable(): bool
+    {
+        return $this->isIssued() && ! $this->trashed();
     }
 
     public function snapshotsAreAuthoritative(): bool

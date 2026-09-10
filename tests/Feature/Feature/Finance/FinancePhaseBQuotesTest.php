@@ -371,7 +371,6 @@ class FinancePhaseBQuotesTest extends TestCase
         $this->assertSame('cancelled', $quote->status);
         $this->assertNotNull($quote->cancelled_at);
         $this->assertSame(0, FinanceJournalEntry::withoutGlobalScopes()->count());
-        $this->assertFalse(Route::has('workspace.finance.quotes.send'));
         $this->assertFalse(Route::has('workspace.finance.quotes.convert'));
         $this->assertFalse(Route::has('workspace.finance.quotes.accept'));
     }

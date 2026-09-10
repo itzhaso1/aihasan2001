@@ -401,6 +401,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::get('quotes/{quote}/pdf', [FinanceQuoteController::class, 'downloadPdf'])->name('quotes.pdf');
             Route::post('quotes/{quote}/issue', [FinanceQuoteController::class, 'issue'])->name('quotes.issue');
             Route::post('quotes/{quote}/cancel', [FinanceQuoteController::class, 'cancel'])->name('quotes.cancel');
+            Route::post('quotes/{quote}/send', [FinanceQuoteController::class, 'send'])->name('quotes.send');
 
             Route::post('contracts/{contract}/billing-schedules', [FinanceBillingScheduleController::class, 'store'])->name('contracts.billing-schedules.store');
             Route::post('contracts/{contract}/billing-schedules/{schedule}/activate', [FinanceBillingScheduleController::class, 'activate'])->name('contracts.billing-schedules.activate');
