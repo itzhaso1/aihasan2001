@@ -179,6 +179,7 @@
                     <thead class="bg-slate-50 text-slate-600">
                         <tr>
                             <th class="px-4 py-2 text-right">الوصف</th>
+                            <th class="px-4 py-2 text-right">الوحدة</th>
                             <th class="px-4 py-2 text-right">الكمية</th>
                             <th class="px-4 py-2 text-right">السعر</th>
                             <th class="px-4 py-2 text-right">الخصم</th>
@@ -191,7 +192,8 @@
                     <tbody>
                         @forelse($invoice->items as $item)
                             <tr class="border-t border-slate-100">
-                                <td class="px-4 py-2">{{ $item->product_name ?: $item->description }}</td>
+                                <td class="px-4 py-2">{{ $item->lineTitle() }}</td>
+                                <td class="px-4 py-2">{{ $item->displayUnit() !== '' ? $item->displayUnit() : '-' }}</td>
                                 <td class="px-4 py-2">{{ number_format((float) $item->quantity, 2) }}</td>
                                 <td class="px-4 py-2">{{ number_format((float) $item->unit_price, 2) }}</td>
                                 <td class="px-4 py-2">{{ number_format((float) $item->discount, 2) }}</td>
@@ -201,7 +203,7 @@
                                 <td class="px-4 py-2 font-semibold">{{ number_format((float) $item->total, 2) }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">لا توجد بنود.</td></tr>
+                            <tr><td colspan="9" class="px-4 py-8 text-center text-slate-500">لا توجد بنود.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

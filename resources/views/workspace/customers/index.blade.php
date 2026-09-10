@@ -16,8 +16,10 @@
                     <thead class="bg-gray-50">
                         <tr>
                             <th class="px-4 py-3 text-right">الاسم</th>
+                            <th class="px-4 py-3 text-right">النوع</th>
                             <th class="px-4 py-3 text-right">الهاتف</th>
                             <th class="px-4 py-3 text-right">البريد</th>
+                            <th class="px-4 py-3 text-right">الرقم الضريبي</th>
                             <th class="px-4 py-3 text-right">الطلبات</th>
                             <th class="px-4 py-3 text-right"></th>
                         </tr>
@@ -26,8 +28,10 @@
                         @forelse($customers as $customer)
                             <tr>
                                 <td class="px-4 py-3">{{ $customer->name }}</td>
+                                <td class="px-4 py-3">{{ $customer->partyType() === 'company' ? 'شركة' : 'فرد' }}</td>
                                 <td class="px-4 py-3">{{ $customer->phone }}</td>
                                 <td class="px-4 py-3">{{ $customer->email ?? '-' }}</td>
+                                <td class="px-4 py-3">{{ $customer->vat_number ?: '-' }}</td>
                                 <td class="px-4 py-3">{{ $customer->orders_count }}</td>
                                 <td class="px-4 py-3 text-left">
                                     <a href="{{ route('workspace.customers.edit', $customer) }}" class="text-blue-600">تعديل</a>
@@ -38,7 +42,7 @@
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="px-4 py-6 text-center text-gray-500">لا يوجد عملاء.</td></tr>
+                            <tr><td colspan="7" class="px-4 py-6 text-center text-gray-500">لا يوجد عملاء.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

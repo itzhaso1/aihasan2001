@@ -22,13 +22,13 @@ class UpdateCustomerRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        return array_merge([
             'name' => ['sometimes', 'string', 'max:255'],
             'phone' => ['sometimes', 'string', 'max:32'],
             'whatsapp' => ['nullable', 'string', 'max:32'],
             'email' => ['nullable', 'email', 'max:255'],
             'notes' => ['nullable', 'string'],
             'metadata' => ['nullable', 'array'],
-        ];
+        ], CustomerPayloadRules::financial());
     }
 }

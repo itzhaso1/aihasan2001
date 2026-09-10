@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'workspace_id',
     'name',
+    'party_type',
     'phone',
     'client_reference',
     'whatsapp',
@@ -43,6 +44,10 @@ class Customer extends WorkspaceScopedModel
     /** @use HasFactory<CustomerFactory> */
     use BelongsToWorkspace, HasFactory, SoftDeletes;
 
+    public const PARTY_TYPE_INDIVIDUAL = 'individual';
+
+    public const PARTY_TYPE_COMPANY = 'company';
+
     protected function casts(): array
     {
         return [
@@ -52,6 +57,29 @@ class Customer extends WorkspaceScopedModel
             'last_conversation_at' => 'datetime',
             'metadata' => 'array',
         ];
+    }
+
+    public function partyType(): string
+    {
+        $type = strtolower(trim((string) ($this->party_type ?: self::PARTY_TYPE_INDIVIDUAL)));
+
+        return $type === self::PARTY_TYPE_COMPANY
+            ? self::PARTY_TYPE_COMPANY
+            : self::PARTY_TYPE_INDIVIDUAL;
+    }
+
+    public function isCompany(): bool
+    {
+        return $this->partyType() === self::PARTY_TYPE_COMPANY;
+    }
+
+    /**
+     * Stored cache column. Not the AR source of truth.
+     * Use CustomerBalanceService::outstanding() for what the customer owes.
+     */
+    public function storedBalance(): float
+    {
+        return round((float) $this->balance, 2);
     }
 
     public function orders(): HasMany

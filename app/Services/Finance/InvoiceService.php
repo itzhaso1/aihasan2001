@@ -573,6 +573,7 @@ class InvoiceService
                 'exemption_reason' => $line->exemptionReason,
                 'exemption_code' => $line->exemptionCode,
                 'unit_code' => $source['unit_code'] ?? null,
+                'unit' => $source['unit'] ?? null,
                 'metadata' => $source['metadata'],
             ];
         }
@@ -594,15 +595,26 @@ class InvoiceService
             }
 
             $productName = trim((string) ($rawItem['product_name'] ?? ''));
+            $description = trim((string) ($rawItem['description'] ?? ''));
             $quantity = (float) ($rawItem['quantity'] ?? 0);
             $unitPrice = (float) ($rawItem['unit_price'] ?? 0);
             $discount = (float) ($rawItem['discount'] ?? 0);
+            $unit = $this->nullableDisplayUnit($rawItem['unit'] ?? null);
 
-            if ($productName === '' && $quantity <= 0 && $unitPrice <= 0) {
+            if ($productName === '' && $description === '' && $quantity <= 0 && $unitPrice <= 0) {
                 continue;
             }
 
-            $productId = isset($rawItem['product_id']) ? (int) $rawItem['product_id'] : null;
+            if ($productName === '' && $description !== '') {
+                $productName = $description;
+            }
+
+            if ($productName === '') {
+                throw new RuntimeException('يجب إدخال وصف أو اسم للبند.');
+            }
+
+            $productId = isset($rawItem['product_id']) ? (int) $rawItem['product_id'] : 0;
+            $productId = $productId > 0 ? $productId : null;
             if ($productId) {
                 $validProduct = Product::withoutGlobalScopes()
                     ->where('workspace_id', $workspaceId)
@@ -616,7 +628,7 @@ class InvoiceService
             $line = [
                 'product_id' => $productId,
                 'product_name' => $productName,
-                'description' => $rawItem['description'] ?? null,
+                'description' => $description !== '' ? $description : null,
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
                 'discount' => $discount,
@@ -625,6 +637,7 @@ class InvoiceService
                 'exemption_reason' => $rawItem['exemption_reason'] ?? null,
                 'exemption_code' => $rawItem['exemption_code'] ?? null,
                 'unit_code' => $this->nullableCode($rawItem['unit_code'] ?? null),
+                'unit' => $unit,
                 'metadata' => is_array($rawItem['metadata'] ?? null) ? $rawItem['metadata'] : null,
             ];
 
@@ -996,6 +1009,10 @@ class InvoiceService
             $attributes['unit_code'] = $this->nullableCode($item['unit_code'] ?? null);
         }
 
+        if (FinanceInvoiceItem::hasUnitColumn()) {
+            $attributes['unit'] = $item['unit'] ?? null;
+        }
+
         FinanceInvoiceItem::withoutGlobalScopes()->create($attributes);
     }
 
@@ -1093,6 +1110,16 @@ class InvoiceService
         $code = is_string($value) || is_numeric($value) ? (string) $value : null;
 
         return $code === '' ? null : $code;
+    }
+
+    private function nullableDisplayUnit(mixed $value): ?string
+    {
+        $unit = trim((string) ($value ?? ''));
+        if ($unit === '') {
+            return null;
+        }
+
+        return mb_substr($unit, 0, 32);
     }
 
     /**

@@ -36,7 +36,12 @@ class CustomerPolicy
      */
     public function update(User $user, Customer $customer): bool
     {
-        return $this->hasAnyWorkspaceRole($user, $customer->workspace, ['owner', 'admin', 'manager', 'agent']);
+        if ($this->hasAnyWorkspaceRole($user, $customer->workspace, ['owner', 'admin', 'manager', 'agent'])) {
+            return true;
+        }
+
+        return $this->hasMembership($user, $customer->workspace)
+            && ($user->can('customers.manage') || $user->can('invoices.create') || $user->can('finance.manage'));
     }
 
     /**

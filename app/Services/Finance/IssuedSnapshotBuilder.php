@@ -572,6 +572,9 @@ class IssuedSnapshotBuilder
             'product_name' => $item->product_name,
             'quantity' => $this->quantity($item->quantity),
             'unit_code' => $this->nullableSnapshotString($item->unit_code ?? null),
+            'unit' => FinanceInvoiceItem::hasUnitColumn()
+                ? $this->nullableSnapshotString($item->unit ?? null)
+                : null,
             'unit_price' => $this->money($item->unit_price),
             'discount' => $this->money($item->discount),
             'taxable_amount' => $this->money($item->taxable_amount),
