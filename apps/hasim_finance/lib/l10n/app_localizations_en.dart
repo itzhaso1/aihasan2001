@@ -1302,4 +1302,104 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get peopleCount => 'People count';
+
+  @override
+  String get taxInvoice => 'Tax invoice';
+
+  @override
+  String get invoiceItems => 'Invoice items';
+
+  @override
+  String get customerInfo => 'Customer information';
+
+  @override
+  String get invoiceSummary => 'Invoice summary';
+
+  @override
+  String get notesAndTerms => 'Notes and terms';
+
+  @override
+  String get attachmentsTitle => 'Attachments';
+
+  @override
+  String get downloadPdf => 'Download PDF';
+
+  @override
+  String get printDocument => 'Print';
+
+  @override
+  String get goBack => 'Back';
+
+  @override
+  String get invoiceGrandTotal => 'Grand total';
+
+  @override
+  String get invoiceTotalAmount => 'Invoice total';
+
+  @override
+  String get noAttachments => 'No attachments';
+
+  @override
+  String get uploadInvoiceAttachmentsHint =>
+      'Upload files related to this invoice here.';
+
+  @override
+  String get noNotes => 'No notes.';
+
+  @override
+  String get noTerms => 'No terms were set on this invoice.';
+
+  @override
+  String get termsAndConditions => 'Terms and conditions';
+
+  @override
+  String get auditEvent => 'Event';
+
+  @override
+  String get auditDescription => 'Description';
+
+  @override
+  String get auditUser => 'User';
+
+  @override
+  String get auditDate => 'Date';
+
+  @override
+  String get invoiceCreatedEvent => 'Invoice created';
+
+  @override
+  String get invoiceIssuedEvent => 'Invoice issued';
+
+  @override
+  String get invoiceCancelledEvent => 'Invoice cancelled';
+
+  @override
+  String get invoiceSentEvent => 'Invoice sent';
+
+  @override
+  String get invoiceUpdatedEvent => 'Invoice updated';
+
+  @override
+  String get invoiceReminderSentEvent => 'Invoice reminder sent';
+
+  @override
+  String get tableTotal => 'Total';
+
+  @override
+  String get relatedDocuments => 'Related documents';
+
+  @override
+  String get zatcaInfo => 'E-invoicing';
+
+  @override
+  String get telephone => 'Phone';
+
+  @override
+  String get lineNumber => '#';
+
+  @override
+  String get paidInFull => 'Paid';
+
+  @override
+  String get draftStatus => 'Draft';
 }

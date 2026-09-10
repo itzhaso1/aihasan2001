@@ -6,9 +6,13 @@ import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
+import 'package:hasim_finance/core/permissions/finance_permissions.dart';
 import 'package:hasim_finance/core/layout/finance_layout.dart';
 import 'package:hasim_finance/core/providers/catalog_provider.dart';
+import 'package:hasim_finance/core/theme/finance_tokens.dart';
 import 'package:hasim_finance/core/utils/files.dart';
+import 'package:hasim_finance/core/widgets/widgets.dart';
+import 'package:hasim_finance/features/invoices/invoice_detail_widgets.dart';
 import 'package:hasim_finance/features/shared/customer_select.dart';
 import 'package:hasim_finance/features/shared/document_lines_editor.dart';
 import 'package:hasim_finance/features/shared/paged.dart';
@@ -213,220 +217,258 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     }
   }
 
+  Future<void> _openPdf() async {
+    final invoice = _data;
+    if (invoice == null) return;
+    try {
+      final bytes = await ref.read(financeApiProvider).pdf('sales-invoices/${invoice.id}/pdf');
+      await saveAndOpenBytes(bytes, 'invoice-${invoice.invoiceNumber}.pdf');
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+    }
+  }
+
+  Future<void> _pickAttachments() async {
+    final invoice = _data;
+    if (invoice == null) return;
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+    );
+    if (result == null || result.files.isEmpty) return;
+    try {
+      final form = FormData();
+      for (final file in result.files) {
+        final part = await multipartFromPicked(file);
+        if (part == null) continue;
+        form.files.add(MapEntry('attachments[]', part));
+      }
+      if (form.files.isEmpty) return;
+      await ref.read(financeApiProvider).uploadInvoiceAttachments(invoice.id, form);
+      await _load();
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final p = ref.watch(authControllerProvider).permissions;
     final invoice = _data;
-    return DetailScaffold(
-      title: invoice?.invoiceNumber ?? l.invoices,
-      loading: _loading,
-      error: _error,
-      onRetry: _load,
-      child: invoice == null
-          ? const SizedBox.shrink()
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                DocumentHeader(
-                  number: invoice.invoiceNumber ?? '#${invoice.id}',
-                  documentStatus: invoice.documentStatus,
-                  paymentStatus: invoice.paymentStatus,
-                  deliveryStatus: invoice.deliveryStatus,
-                  customer: invoice.customerName,
-                ),
-                const SizedBox(height: 12),
-                TotalsCard(
-                  subtotal: invoice.subtotal,
-                  discount: invoice.discount,
-                  taxable: invoice.taxableAmount,
-                  tax: invoice.taxAmount,
-                  total: invoice.total,
-                  paid: invoice.amountPaid,
-                  due: invoice.amountDue,
-                  credited: invoice.amountCredited,
-                  debited: invoice.amountDebited,
-                ),
-                InfoRow(label: l.issueDate, value: invoice.issueDate),
-                InfoRow(label: l.dueDate, value: invoice.dueDate),
-                InfoRow(label: l.paymentTerms, value: invoice.paymentTerms),
-                InfoRow(label: l.notesField, value: invoice.notes),
-                if (invoice.hasZatcaQr) InfoRow(label: l.zatcaQr, value: invoice.zatcaRequirement ?? 'QR'),
-                if (invoice.companySnapshot != null)
-                  InfoRow(label: l.snapshots, value: '${invoice.companySnapshot!['name'] ?? invoice.companySnapshot!['vat_number'] ?? ''}'),
-                Text(l.neverMarkPaidLocally, style: Theme.of(context).textTheme.bodySmall),
-                const SizedBox(height: 12),
-                LineTable(lines: invoice.lines),
-                DeliveryTimeline(deliveries: invoice.deliveries),
-                if (invoice.payments.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(l.payments, style: Theme.of(context).textTheme.titleMedium),
-                  for (final payment in invoice.payments)
-                    ListTile(
-                      title: Text('${payment.amount} · ${payment.method} · ${payment.status}'),
-                      subtitle: Text(payment.receiptNumber ?? ''),
-                      trailing: payment.status == 'posted' && p.can('invoices.reverse_payment')
-                          ? TextButton(
-                              onPressed: () => confirmAndRun(context, () async {
-                                await ref.read(financeApiProvider).reverseInvoicePayment(invoice.id, payment.id);
-                                await _load();
-                              }),
-                              child: Text(l.reversePayment),
-                            )
-                          : null,
-                      onTap: () => context.push('/payments/${payment.id}'),
+    return Scaffold(
+      backgroundColor: FinanceTokens.canvas,
+      body: AsyncBody(
+        loading: _loading,
+        error: _error,
+        onRetry: _load,
+        child: invoice == null
+            ? const SizedBox.shrink()
+            : FinancePage(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+                child: ListView(
+                  children: [
+                    InvoiceHeader(
+                      invoice: invoice,
+                      actions: _toolbar(context, l, p, invoice),
                     ),
-                ],
-                if (invoice.creditNotes.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(l.notes, style: Theme.of(context).textTheme.titleMedium),
-                  for (final note in invoice.creditNotes)
-                    ListTile(
-                      title: Text(note.noteNumber ?? '#${note.id}'),
-                      subtitle: Text('${note.type} · ${note.status}'),
-                      trailing: Text(note.total),
-                      onTap: () => context.push('/notes/${note.id}'),
-                    ),
-                ],
-                if (invoice.receipts.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(l.receipts, style: Theme.of(context).textTheme.titleMedium),
-                  for (final receipt in invoice.receipts)
-                    ListTile(
-                      title: Text(receipt.receiptNumber ?? '#${receipt.id}'),
-                      trailing: Text(receipt.amount),
-                      onTap: () => context.push('/receipts/${receipt.id}'),
-                    ),
-                ],
-                if (invoice.audit.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(l.auditTrail, style: Theme.of(context).textTheme.titleMedium),
-                  for (final row in invoice.audit.take(20))
-                    ListTile(
-                      dense: true,
-                      title: Text('${row['action'] ?? ''}'),
-                      subtitle: Text('${row['actor_name'] ?? ''} · ${row['created_at'] ?? ''}'),
-                    ),
-                ],
-                const SizedBox(height: 8),
-                Text(l.attachment, style: Theme.of(context).textTheme.titleMedium),
-                for (final row in invoice.attachments)
-                  ListTile(
-                    dense: true,
-                    title: Text('${row['file_name'] ?? l.attachment}'),
-                    trailing: Wrap(spacing: 4, children: [
-                      IconButton(
-                        icon: const Icon(Icons.download_outlined),
-                        onPressed: () async {
-                          try {
-                            final id = int.parse('${row['id']}');
-                            final bytes = await ref.read(financeApiProvider).downloadInvoiceAttachment(invoice.id, id);
-                            await saveAndOpenBytes(bytes, '${row['file_name'] ?? 'attachment-$id'}');
-                          } catch (e) {
-                            if (context.mounted) showApiError(context, e);
-                          }
-                        },
+                    const SizedBox(height: 14),
+                    InvoiceTwoColumn(
+                      leading: CustomerInfoCard(
+                        invoice: invoice,
+                        onOpenCustomer: invoice.customerId == null ? null : () => context.push('/customers/${invoice.customerId}'),
                       ),
-                      if (invoice.documentStatus == 'draft' && p.can('invoices.edit'))
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            try {
-                              await ref.read(financeApiProvider).deleteInvoiceAttachment(invoice.id, int.parse('${row['id']}'));
-                              await _load();
-                            } catch (e) {
-                              if (context.mounted) showApiError(context, e);
-                            }
-                          },
-                        ),
-                    ]),
-                  ),
-                if (invoice.documentStatus == 'draft' && p.can('invoices.edit'))
-                  OutlinedButton(
-                    onPressed: () async {
-                      final result = await FilePicker.platform.pickFiles(
-                        allowMultiple: true,
-                        type: FileType.custom,
-                        allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
-                      );
-                      if (result == null || result.files.isEmpty) return;
-                      try {
-                        final form = FormData();
-                        for (final file in result.files) {
-                          final part = await multipartFromPicked(file);
-                          if (part == null) continue;
-                          form.files.add(MapEntry('attachments[]', part));
-                        }
-                        if (form.files.isEmpty) return;
-                        await ref.read(financeApiProvider).uploadInvoiceAttachments(invoice.id, form);
-                        await _load();
-                      } catch (e) {
-                        if (context.mounted) showApiError(context, e);
-                      }
-                    },
-                    child: Text(l.attachment),
-                  ),
-                const SizedBox(height: 12),
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  if (invoice.documentStatus == 'draft' && p.can('invoices.edit'))
-                    FilledButton(onPressed: () => context.push('/invoices/${invoice.id}/edit'), child: Text(l.edit)),
-                  if (invoice.documentStatus == 'draft' && p.can('invoices.issue'))
-                    FilledButton(onPressed: () => confirmAndRun(context, () => _act('issue')), child: Text(l.issue)),
-                  if (invoice.documentStatus == 'issued' && p.can('invoices.send'))
-                    FilledButton(onPressed: () => promptEmailAndSend(context, (email) => _act('send', body: {'email': email})), child: Text(l.send)),
-                  if (invoice.documentStatus == 'issued' && p.can('invoices.remind'))
-                    FilledButton.tonal(onPressed: () => promptEmailAndSend(context, (email) => _act('remind', body: {'email': email})), child: Text(l.remind)),
-                  if (invoice.documentStatus == 'issued' && invoice.paymentStatus != 'paid' && p.paymentsManage)
-                    FilledButton(onPressed: _manualPayment, child: Text(l.recordPayment)),
-                  if (invoice.documentStatus == 'issued' && invoice.paymentStatus != 'paid' && p.paymentsManage)
-                    FilledButton.tonal(onPressed: _checkout, child: Text(l.createCheckout)),
-                  if (invoice.checkout?.hasUrl == true) ...[
-                    OutlinedButton(
-                      onPressed: () async {
-                        await copyText(invoice.checkout!.checkoutUrl!);
-                        if (context.mounted) showSnack(context, l.copied);
-                      },
-                      child: Text(l.copy),
+                      trailing: InvoiceSummaryCard(invoice: invoice),
                     ),
-                    OutlinedButton(
-                      onPressed: () async {
-                        await openExternalUrl(invoice.checkout!.checkoutUrl!);
-                        await _load();
-                      },
-                      child: Text(l.open),
-                    ),
+                    const SizedBox(height: 12),
+                    InvoiceItemsTable(invoice: invoice),
+                    if (invoice.deliveries.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      DeliveryTimeline(deliveries: invoice.deliveries),
+                    ],
+                    const SizedBox(height: 12),
+                    _lowerGrid(context, l, p, invoice),
+                    if (invoice.creditNotes.isNotEmpty || invoice.receipts.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _relatedDocuments(context, l, invoice),
+                    ],
+                    const SizedBox(height: 12),
+                    AuditLogCard(invoice: invoice),
                   ],
-                  if (invoice.documentStatus == 'issued' && p.notesCreate)
-                    OutlinedButton(
-                      onPressed: () => context.push('/notes/new?invoice_id=${invoice.id}'),
-                      child: Text(l.creditNoteFromInvoice),
-                    ),
-                  if (invoice.documentStatus != 'cancelled' && p.can('invoices.cancel'))
-                    OutlinedButton(onPressed: () => confirmAndRun(context, () => _act('cancel')), child: Text(l.cancel)),
-                  if (invoice.documentStatus == 'draft' && p.invoicesDelete)
-                    OutlinedButton(
-                      onPressed: () => confirmAndRun(context, () async {
-                        await ref.read(financeApiProvider).deleteInvoice(invoice.id);
-                        if (context.mounted) context.go('/invoices');
-                      }),
-                      child: Text(l.deleteDraft),
-                    ),
-                  FilledButton.tonal(
-                    onPressed: () async {
-                      try {
-                        final bytes = await ref.read(financeApiProvider).pdf('sales-invoices/${invoice.id}/pdf');
-                        await saveAndOpenBytes(bytes, 'invoice-${invoice.invoiceNumber}.pdf');
-                      } catch (e) {
-                        if (context.mounted) showApiError(context, e);
-                      }
-                    },
-                    child: Text(l.pdf),
-                  ),
-                  if (invoice.customerId != null)
-                    TextButton(onPressed: () => context.push('/customers/${invoice.customerId}'), child: Text(l.customer)),
-                ]),
-              ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _lowerGrid(BuildContext context, AppLocalizations _, FinancePermissions p, InvoiceRecord invoice) {
+    final attachments = AttachmentsCard(
+      invoice: invoice,
+      onUpload: invoice.documentStatus == 'draft' && p.can('invoices.edit') ? _pickAttachments : null,
+      onDownload: (row) async {
+        try {
+          final id = int.parse('${row['id']}');
+          final bytes = await ref.read(financeApiProvider).downloadInvoiceAttachment(invoice.id, id);
+          await saveAndOpenBytes(bytes, '${row['file_name'] ?? 'attachment-$id'}');
+        } catch (e) {
+          if (context.mounted) showApiError(context, e);
+        }
+      },
+      onDelete: invoice.documentStatus == 'draft' && p.can('invoices.edit')
+          ? (row) async {
+              try {
+                await ref.read(financeApiProvider).deleteInvoiceAttachment(invoice.id, int.parse('${row['id']}'));
+                await _load();
+              } catch (e) {
+                if (context.mounted) showApiError(context, e);
+              }
+            }
+          : null,
+    );
+    final notes = NotesTermsCard(invoice: invoice);
+    final payment = PaymentStatusCard(
+      invoice: invoice,
+      onRecordPayment: invoice.documentStatus == 'issued' && invoice.paymentStatus != 'paid' && p.paymentsManage ? _manualPayment : null,
+      onOpenPayment: p.paymentsView ? (payment) => context.push('/payments/${payment.id}') : null,
+      onReversePayment: p.can('invoices.reverse_payment')
+          ? (payment) => confirmAndRun(context, () async {
+                await ref.read(financeApiProvider).reverseInvoicePayment(invoice.id, payment.id);
+                await _load();
+              })
+          : null,
+    );
+    final wide = MediaQuery.sizeOf(context).width >= 1100;
+    if (!wide) {
+      return Column(
+        children: [
+          InvoiceTotalsCard(invoice: invoice),
+          const SizedBox(height: 12),
+          payment,
+          const SizedBox(height: 12),
+          notes,
+          const SizedBox(height: 12),
+          attachments,
+        ],
+      );
+    }
+    return Column(
+      children: [
+        InvoiceTwoColumn(
+          leading: InvoiceTotalsCard(invoice: invoice),
+          trailing: payment,
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: attachments),
+            const SizedBox(width: 12),
+            Expanded(child: notes),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _relatedDocuments(BuildContext context, AppLocalizations l, InvoiceRecord invoice) {
+    return InvoiceSectionCard(
+      title: l.relatedDocuments,
+      icon: Icons.account_tree_outlined,
+      child: Column(
+        children: [
+          for (final note in invoice.creditNotes)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(note.noteNumber ?? '#${note.id}'),
+              subtitle: Text('${note.type} · ${note.status}'),
+              trailing: Text(note.total, style: const TextStyle(fontWeight: FontWeight.w800)),
+              onTap: () => context.push('/notes/${note.id}'),
             ),
+          for (final receipt in invoice.receipts)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(receipt.receiptNumber ?? '#${receipt.id}'),
+              trailing: Text(receipt.amount, style: const TextStyle(fontWeight: FontWeight.w800)),
+              onTap: () => context.push('/receipts/${receipt.id}'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _toolbar(BuildContext context, AppLocalizations l, FinancePermissions p, InvoiceRecord invoice) {
+    final moreItems = <PopupMenuEntry<String>>[
+      if (invoice.documentStatus == 'draft' && p.can('invoices.edit')) PopupMenuItem(value: 'edit', child: Text(l.edit)),
+      if (invoice.documentStatus == 'issued' && p.can('invoices.remind')) PopupMenuItem(value: 'remind', child: Text(l.remind)),
+      if (invoice.documentStatus == 'issued' && invoice.paymentStatus != 'paid' && p.paymentsManage)
+        PopupMenuItem(value: 'checkout', child: Text(l.createCheckout)),
+      if (invoice.checkout?.hasUrl == true) PopupMenuItem(value: 'copy', child: Text(l.copy)),
+      if (invoice.checkout?.hasUrl == true) PopupMenuItem(value: 'open', child: Text(l.open)),
+      if (invoice.documentStatus == 'issued' && p.notesCreate) PopupMenuItem(value: 'credit', child: Text(l.creditNoteFromInvoice)),
+      if (invoice.documentStatus != 'cancelled' && p.can('invoices.cancel')) PopupMenuItem(value: 'cancel', child: Text(l.cancel)),
+      if (invoice.documentStatus == 'draft' && p.invoicesDelete) PopupMenuItem(value: 'delete', child: Text(l.deleteDraft)),
+    ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.end,
+      children: [
+        InvoiceActionButton(
+          label: l.goBack,
+          icon: Icons.arrow_forward_rounded,
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).maybePop();
+            } else {
+              context.go('/invoices');
+            }
+          },
+        ),
+        if (invoice.documentStatus == 'draft' && p.can('invoices.issue'))
+          InvoiceActionButton(label: l.issue, icon: Icons.check_circle_outline, filled: true, onPressed: () => confirmAndRun(context, () => _act('issue'))),
+        if (invoice.documentStatus == 'issued' && p.can('invoices.send'))
+          InvoiceActionButton(label: l.send, icon: Icons.send_outlined, filled: true, onPressed: () => promptEmailAndSend(context, (email) => _act('send', body: {'email': email}))),
+        InvoiceActionButton(label: l.downloadPdf, icon: Icons.download_outlined, onPressed: _openPdf),
+        InvoiceActionButton(label: l.printDocument, icon: Icons.print_outlined, onPressed: _openPdf),
+        if (invoice.documentStatus == 'issued' && invoice.paymentStatus != 'paid' && p.paymentsManage)
+          InvoiceActionButton(label: l.recordPayment, icon: Icons.payments_outlined, onPressed: _manualPayment),
+        if (moreItems.isNotEmpty)
+          PopupMenuButton<String>(
+            tooltip: l.more,
+            onSelected: (value) async {
+              switch (value) {
+                case 'edit':
+                  context.push('/invoices/${invoice.id}/edit');
+                case 'remind':
+                  await promptEmailAndSend(context, (email) => _act('remind', body: {'email': email}));
+                case 'checkout':
+                  await _checkout();
+                case 'copy':
+                  await copyText(invoice.checkout!.checkoutUrl!);
+                  if (context.mounted) showSnack(context, l.copied);
+                case 'open':
+                  await openExternalUrl(invoice.checkout!.checkoutUrl!);
+                  await _load();
+                case 'credit':
+                  context.push('/notes/new?invoice_id=${invoice.id}');
+                case 'cancel':
+                  await confirmAndRun(context, () => _act('cancel'));
+                case 'delete':
+                  await confirmAndRun(context, () async {
+                    await ref.read(financeApiProvider).deleteInvoice(invoice.id);
+                    if (context.mounted) context.go('/invoices');
+                  });
+              }
+            },
+            itemBuilder: (_) => moreItems,
+            child: IgnorePointer(
+              child: InvoiceActionButton(label: l.more, icon: Icons.more_horiz, onPressed: () {}),
+            ),
+          ),
+      ],
     );
   }
 }
