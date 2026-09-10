@@ -527,122 +527,509 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get taxableAmount => 'Taxable amount';
+
   @override
   String get amountCredited => 'Credited';
+
   @override
   String get amountDebited => 'Debited';
+
   @override
   String get whatsapp => 'WhatsApp';
+
   @override
   String get buildingNumber => 'Building number';
+
   @override
   String get district => 'District';
+
   @override
   String get postalCode => 'Postal code';
+
   @override
   String get city => 'City';
+
   @override
   String get street => 'Street';
+
   @override
   String get country => 'Country';
+
   @override
   String get paymentTerms => 'Payment terms';
+
   @override
   String get treasuryAccount => 'Treasury account';
+
   @override
   String get recurring => 'Recurring flag';
+
   @override
   String get netProfit => 'Net profit';
+
   @override
   String get outputVat => 'Output VAT';
+
   @override
   String get inputVat => 'Input VAT';
+
   @override
   String get netVat => 'Net VAT';
+
   @override
   String get cashBalance => 'Cash';
+
   @override
   String get bankBalance => 'Bank';
+
   @override
   String get activeContracts => 'Active contracts';
+
   @override
   String get recentExpenses => 'Recent expenses';
+
   @override
   String get statementDebit => 'Debit';
+
   @override
   String get statementCredit => 'Credit';
+
   @override
   String get runningBalance => 'Running balance';
+
   @override
   String get invoicesTotal => 'Invoices total';
+
   @override
   String get paymentsTotal => 'Payments total';
+
   @override
   String get creditsTotal => 'Credits total';
+
   @override
   String get debitsTotal => 'Debits total';
+
   @override
   String get zatcaQr => 'ZATCA QR present';
+
   @override
   String get terms => 'Terms';
+
   @override
   String get rejectionReason => 'Rejection reason';
+
   @override
   String get website => 'Website';
+
   @override
   String get currency => 'Currency';
+
   @override
   String get invoicePrefix => 'Invoice prefix';
+
   @override
   String get defaultVatRate => 'Default VAT rate';
+
   @override
   String get zatcaMode => 'ZATCA mode';
+
   @override
   String get nextRun => 'Next run';
+
   @override
   String get frequency => 'Frequency';
+
   @override
   String get autoIssue => 'Auto issue';
+
   @override
   String get generatedCount => 'Generated';
+
   @override
   String get paymentDate => 'Payment date';
+
   @override
   String get supplier => 'Supplier';
+
   @override
   String get openingCash => 'Opening cash';
+
   @override
   String get netChange => 'Net change';
+
   @override
   String get closingCash => 'Closing cash';
+
   @override
   String get assets => 'Assets';
+
   @override
   String get liabilities => 'Liabilities';
+
   @override
   String get equity => 'Equity';
+
   @override
   String get revenue => 'Revenue';
+
   @override
   String get cogs => 'Cost of sales';
+
   @override
   String get grossProfit => 'Gross profit';
+
   @override
   String get additionalNumber => 'Additional number';
+
   @override
   String get companyNameAr => 'Arabic company name';
+
   @override
   String get addressLine => 'Address line';
+
   @override
   String get filterAll => 'All';
+
   @override
   String get generatedInvoices => 'Generated invoices';
+
   @override
   String get invoicedTotal => 'Invoiced';
+
   @override
   String get snapshots => 'Snapshots';
+
   @override
   String get reason => 'Reason';
+
   @override
   String get inventoryValuation => 'Inventory valuation';
+
+  @override
+  String get navControl => 'Control';
+
+  @override
+  String get navSales => 'Sales';
+
+  @override
+  String get navPurchases => 'Purchases & suppliers';
+
+  @override
+  String get navOps => 'Expenses & inventory';
+
+  @override
+  String get navAccounting => 'Accounting & tax';
+
+  @override
+  String get navBanks => 'Banks & treasury';
+
+  @override
+  String get billingHub => 'Billing dashboard';
+
+  @override
+  String get salesHub => 'Sales';
+
+  @override
+  String get leads => 'Leads';
+
+  @override
+  String get priceLists => 'Price lists';
+
+  @override
+  String get purchaseOrders => 'Purchase orders';
+
+  @override
+  String get products => 'Products';
+
+  @override
+  String get inventory => 'Inventory';
+
+  @override
+  String get projects => 'Projects';
+
+  @override
+  String get accountingHub => 'Accounting dashboard';
+
+  @override
+  String get fiscalYears => 'Fiscal years';
+
+  @override
+  String get vatPage => 'VAT';
+
+  @override
+  String get alerts => 'Alerts';
+
+  @override
+  String get copilot => 'Finance copilot';
+
+  @override
+  String get banks => 'Bank accounts';
+
+  @override
+  String get treasury => 'Treasury transfers';
+
+  @override
+  String get walkInCustomer => 'Walk-in customer';
+
+  @override
+  String get taxDocumentSubtype => 'Tax document subtype';
+
+  @override
+  String get zatcaRequirement => 'E-invoicing requirement';
+
+  @override
+  String get taxProfile => 'Tax type';
+
+  @override
+  String get taxPriceMode => 'Tax price mode';
+
+  @override
+  String get exclusive => 'Tax exclusive';
+
+  @override
+  String get inclusive => 'Tax inclusive';
+
+  @override
+  String get standardTax => 'Standard';
+
+  @override
+  String get simplifiedTax => 'Simplified';
+
+  @override
+  String get notRequired => 'Not required';
+
+  @override
+  String get requiredLater => 'Required later';
+
+  @override
+  String get headerSection => 'Header';
+
+  @override
+  String get datesSection => 'Dates & terms';
+
+  @override
+  String get taxSection => 'Tax';
+
+  @override
+  String get itemsSection => 'Lines';
+
+  @override
+  String get notesSection => 'Notes & attachments';
+
+  @override
+  String get summarySection => 'Summary';
+
+  @override
+  String get selectProduct => 'Select product';
+
+  @override
+  String get freeTextItem => 'Free-text item';
+
+  @override
+  String get exemptionReason => 'Exemption reason';
+
+  @override
+  String get project => 'Project';
+
+  @override
+  String get contract => 'Contract';
+
+  @override
+  String get sku => 'SKU';
+
+  @override
+  String get stock => 'Stock';
+
+  @override
+  String get budget => 'Budget';
+
+  @override
+  String get profit => 'Profit';
+
+  @override
+  String get costs => 'Costs';
+
+  @override
+  String get submitPo => 'Submit';
+
+  @override
+  String get receivePo => 'Receive';
+
+  @override
+  String get billPo => 'Convert to bill';
+
+  @override
+  String get convertLead => 'Convert to customer';
+
+  @override
+  String get markLost => 'Mark lost';
+
+  @override
+  String get askCopilot => 'Ask';
+
+  @override
+  String get copilotHint =>
+      'Ask about sales, profit, overdue invoices, or what needs attention. The copilot never invents amounts.';
+
+  @override
+  String get transfer => 'Transfer';
+
+  @override
+  String get fromAccount => 'From account';
+
+  @override
+  String get toAccount => 'To account';
+
+  @override
+  String get openYear => 'Open';
+
+  @override
+  String get closeYear => 'Close';
+
+  @override
+  String get generatePeriods => 'Generate monthly periods';
+
+  @override
+  String get approve => 'Approve';
+
+  @override
+  String get markDraft => 'Mark draft';
+
+  @override
+  String get addItem => 'Add item';
+
+  @override
+  String get soldTotal => 'Sold total';
+
+  @override
+  String get currentBalance => 'Current balance';
+
+  @override
+  String get iban => 'IBAN';
+
+  @override
+  String get bankName => 'Bank name';
+
+  @override
+  String get accountNumber => 'Account number';
+
+  @override
+  String get askQuestion => 'Question';
+
+  @override
+  String get severity => 'Severity';
+
+  @override
+  String get estimatedValue => 'Estimated value';
+
+  @override
+  String get source => 'Source';
+
+  @override
+  String get orderDate => 'Order date';
+
+  @override
+  String get expectedDate => 'Expected date';
+
+  @override
+  String get createTaxRate => 'Save tax rate';
+
+  @override
+  String get createTreasuryAccount => 'Save treasury account';
+
+  @override
+  String get creditNoteFromInvoice => 'Credit / debit note';
+
+  @override
+  String get zeroRated => 'Zero-rated';
+
+  @override
+  String get exempt => 'Exempt';
+
+  @override
+  String get outOfScope => 'Out of scope';
+
+  @override
+  String get fieldName => 'Name';
+
+  @override
+  String get walkInName => 'Walk-in customer name';
+
+  @override
+  String get addSchedule => 'Add billing schedule';
+
+  @override
+  String get editPurchase => 'Edit purchase invoice';
+
+  @override
+  String get supplierDetail => 'Supplier';
+
+  @override
+  String get invoiceFooter => 'PDF footer';
+
+  @override
+  String get invoiceColor => 'Invoice color';
+
+  @override
+  String get allowManualNumbers => 'Allow manual invoice numbers';
+
+  @override
+  String get countryCode => 'Country code';
+
+  @override
+  String get methodCash => 'Cash';
+
+  @override
+  String get methodBank => 'Bank transfer';
+
+  @override
+  String get methodCard => 'Card';
+
+  @override
+  String get methodOther => 'Other';
+
+  @override
+  String get methodCredit => 'Credit';
+
+  @override
+  String get openPeriod => 'Open period';
+
+  @override
+  String get closePeriod => 'Close period';
+
+  @override
+  String get invoiceNumber => 'Invoice number';
+
+  @override
+  String get pauseSchedule => 'Pause schedule';
+
+  @override
+  String get activateSchedule => 'Activate schedule';
+
+  @override
+  String get cancelSchedule => 'Cancel schedule';
+
+  @override
+  String get deleteDraft => 'Delete draft';
+
+  @override
+  String get applyFilters => 'Apply filters';
+
+  @override
+  String get decisionPeriod => 'Decision period';
+
+  @override
+  String get topCustomers => 'Top customers';
+
+  @override
+  String get attentionItems => 'Needs attention';
+
+  @override
+  String get lifecycleDraft => 'Draft';
+
+  @override
+  String get lifecycleSent => 'Issued unpaid';
+
+  @override
+  String get comparePrevious => 'Compared with previous period';
 }

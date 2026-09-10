@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Finance\Concerns\HandlesFinanceClient;
 use App\Http\Controllers\Api\Finance\FinanceApiController;
 use App\Models\AuditLog;
 use App\Models\Finance\FinanceInvoice;
+use App\Models\Finance\FinanceInvoiceAttachment;
 use App\Models\Finance\FinanceInvoicePayment;
 use App\Services\Finance\Api\FinanceClientPresenter;
 use App\Services\Finance\FinanceBootstrapService;
@@ -21,6 +22,7 @@ use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -83,6 +85,7 @@ class SalesInvoiceController extends FinanceApiController
             'creditNotes.customer',
             'creditNotes.invoice',
             'deliveries.sender',
+            'attachments',
         ]);
 
         $checkout = $this->invoiceCheckoutService->availability($invoice);
@@ -300,6 +303,44 @@ class SalesInvoiceController extends FinanceApiController
         ], message: 'تم عكس الدفعة.');
     }
 
+    public function storeAttachment(Request $request, FinanceInvoice $invoice): JsonResponse
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'invoices.edit');
+        abort_unless((string) $invoice->type === 'sales', 404);
+        $request->validate([
+            'attachments' => ['required', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,webp'],
+        ]);
+
+        $this->runFinanceDomain(
+            fn () => $this->invoiceService->storeAttachments($invoice, $request->file('attachments', []) ?: [], (int) $request->user()?->id)
+        );
+
+        return $this->ok($this->detail($invoice), message: 'تم رفع المرفق.');
+    }
+
+    public function downloadAttachment(Request $request, FinanceInvoice $invoice, FinanceInvoiceAttachment $attachment): mixed
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'invoices.view');
+        abort_unless((string) $invoice->type === 'sales', 404);
+        abort_unless((int) $attachment->invoice_id === (int) $invoice->id, 404);
+
+        return Storage::disk('public')->download(
+            $attachment->file_path,
+            $attachment->file_name ?: ('invoice-attachment-'.$attachment->id)
+        );
+    }
+
+    public function destroyAttachment(Request $request, FinanceInvoice $invoice, FinanceInvoiceAttachment $attachment): JsonResponse
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'invoices.edit');
+        abort_unless((string) $invoice->type === 'sales', 404);
+        abort_unless((int) $attachment->invoice_id === (int) $invoice->id, 404);
+        $this->runFinanceDomain(fn () => $this->invoiceService->deleteAttachment($attachment));
+
+        return $this->ok($this->detail($invoice), message: 'تم حذف المرفق.');
+    }
+
     public function pdf(Request $request, FinanceInvoice $invoice): mixed
     {
         $workspace = $this->clientWorkspace($this->workspaceContext);
@@ -326,6 +367,7 @@ class SalesInvoiceController extends FinanceApiController
             'creditNotes.customer',
             'creditNotes.invoice',
             'deliveries.sender',
+            'attachments',
         ]);
 
         return $this->presenter->invoiceDetail($invoice, $this->invoiceCheckoutService->availability($invoice));
@@ -358,6 +400,19 @@ class SalesInvoiceController extends FinanceApiController
             'tax_profile_type' => ['nullable', 'in:standard,zero_rated,exempt,out_of_scope'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'tax_price_mode' => ['nullable', 'in:exclusive,inclusive'],
+            'tax_document_subtype' => ['nullable', 'in:standard,simplified'],
+            'zatca_requirement' => ['nullable', 'in:not_required,required'],
+            'invoice_number' => ['nullable', 'string', 'max:64'],
+            'contract_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('contracts', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+            ],
+            'project_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('finance_projects', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+            ],
             'items' => ['nullable', 'array'],
             'items_json' => ['nullable', 'string'],
         ]);

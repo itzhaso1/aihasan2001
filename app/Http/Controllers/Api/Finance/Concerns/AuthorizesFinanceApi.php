@@ -127,6 +127,12 @@ trait AuthorizesFinanceApi
             'exports.expenses' => $can('expenses.view'),
             'exports.quotes' => $can('quotes.view'),
             'accounting.view' => $can('accounting.view'),
+            'accounting.manage' => $can('accounting.manage'),
+            'finance.manage' => $can('finance.manage'),
+            'finance.price_lists.view' => $can('finance.price_lists.view'),
+            'finance.price_lists.manage' => $can('finance.price_lists.manage'),
+            'finance.fiscal_years.view' => $can('finance.fiscal_years.view'),
+            'finance.fiscal_years.manage' => $can('finance.fiscal_years.manage'),
         ];
     }
 }

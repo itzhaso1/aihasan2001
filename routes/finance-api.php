@@ -1,17 +1,25 @@
 <?php
 
 use App\Http\Controllers\Api\Finance\V1\BootstrapController;
+use App\Http\Controllers\Api\Finance\V1\CatalogController;
 use App\Http\Controllers\Api\Finance\V1\ContractClientController;
+use App\Http\Controllers\Api\Finance\V1\CopilotClientController;
 use App\Http\Controllers\Api\Finance\V1\CreditNoteClientController;
 use App\Http\Controllers\Api\Finance\V1\CustomerController;
 use App\Http\Controllers\Api\Finance\V1\DashboardController;
 use App\Http\Controllers\Api\Finance\V1\ExpenseController;
 use App\Http\Controllers\Api\Finance\V1\ExportController;
+use App\Http\Controllers\Api\Finance\V1\FiscalYearClientController;
+use App\Http\Controllers\Api\Finance\V1\HubController;
 use App\Http\Controllers\Api\Finance\V1\InvoiceController;
+use App\Http\Controllers\Api\Finance\V1\LeadClientController;
 use App\Http\Controllers\Api\Finance\V1\NoteController;
 use App\Http\Controllers\Api\Finance\V1\PaymentController;
 use App\Http\Controllers\Api\Finance\V1\PosInvoiceController;
+use App\Http\Controllers\Api\Finance\V1\PriceListClientController;
+use App\Http\Controllers\Api\Finance\V1\ProjectClientController;
 use App\Http\Controllers\Api\Finance\V1\PurchaseController;
+use App\Http\Controllers\Api\Finance\V1\PurchaseOrderClientController;
 use App\Http\Controllers\Api\Finance\V1\QuoteController;
 use App\Http\Controllers\Api\Finance\V1\ReceiptController;
 use App\Http\Controllers\Api\Finance\V1\ReportController;
@@ -19,6 +27,7 @@ use App\Http\Controllers\Api\Finance\V1\SalesInvoiceController;
 use App\Http\Controllers\Api\Finance\V1\SearchController;
 use App\Http\Controllers\Api\Finance\V1\SettingsController;
 use App\Http\Controllers\Api\Finance\V1\StatementController;
+use App\Http\Controllers\Api\Finance\V1\TreasuryClientController;
 use App\Http\Controllers\Api\Finance\V1\WorkspaceController;
 use Illuminate\Support\Facades\Route;
 
@@ -60,6 +69,9 @@ Route::get('/sales-invoices/{invoice}/checkout', [SalesInvoiceController::class,
 Route::post('/sales-invoices/{invoice}/checkout', [SalesInvoiceController::class, 'checkout'])->middleware('throttle:mobile-write');
 Route::post('/sales-invoices/{invoice}/payments', [SalesInvoiceController::class, 'storePayment'])->middleware('throttle:mobile-write');
 Route::post('/sales-invoices/{invoice}/payments/{payment}/reverse', [SalesInvoiceController::class, 'reversePayment'])->middleware('throttle:mobile-write');
+Route::post('/sales-invoices/{invoice}/attachments', [SalesInvoiceController::class, 'storeAttachment'])->middleware('throttle:mobile-write');
+Route::get('/sales-invoices/{invoice}/attachments/{attachment}', [SalesInvoiceController::class, 'downloadAttachment']);
+Route::delete('/sales-invoices/{invoice}/attachments/{attachment}', [SalesInvoiceController::class, 'destroyAttachment'])->middleware('throttle:mobile-write');
 Route::get('/sales-invoices/{invoice}/pdf', [SalesInvoiceController::class, 'pdf']);
 
 Route::get('/payments', [PaymentController::class, 'index']);
@@ -106,14 +118,75 @@ Route::post('/purchases', [PurchaseController::class, 'store'])->middleware('thr
 Route::get('/purchases/aging', [PurchaseController::class, 'aging']);
 Route::get('/purchases/{invoice}', [PurchaseController::class, 'show']);
 Route::put('/purchases/{invoice}', [PurchaseController::class, 'update'])->middleware('throttle:mobile-write');
+Route::post('/purchases/{invoice}/issue', [PurchaseController::class, 'issue'])->middleware('throttle:mobile-write');
+Route::post('/purchases/{invoice}/cancel', [PurchaseController::class, 'cancel'])->middleware('throttle:mobile-write');
+Route::get('/purchases/{invoice}/pdf', [PurchaseController::class, 'pdf']);
 Route::get('/suppliers', [PurchaseController::class, 'suppliers']);
 Route::post('/suppliers', [PurchaseController::class, 'storeSupplier'])->middleware('throttle:mobile-write');
+Route::get('/suppliers/{supplier}', [PurchaseController::class, 'showSupplier']);
 Route::put('/suppliers/{supplier}', [PurchaseController::class, 'updateSupplier'])->middleware('throttle:mobile-write');
+
+Route::get('/sales', [HubController::class, 'sales']);
+Route::get('/billing', [HubController::class, 'billing']);
+Route::get('/vat', [HubController::class, 'vat']);
+Route::get('/alerts', [HubController::class, 'alerts']);
+Route::get('/accounting', [HubController::class, 'accounting']);
+Route::get('/banks', [HubController::class, 'banks']);
+Route::get('/exports', [ExportController::class, 'index']);
+
+Route::get('/products', [CatalogController::class, 'products']);
+Route::get('/products/{product}', [CatalogController::class, 'showProduct']);
+Route::get('/inventory', [CatalogController::class, 'inventory']);
+
+Route::get('/projects', [ProjectClientController::class, 'index']);
+Route::post('/projects', [ProjectClientController::class, 'store'])->middleware('throttle:mobile-write');
+Route::get('/projects/{project}', [ProjectClientController::class, 'show']);
+
+Route::get('/price-lists', [PriceListClientController::class, 'index']);
+Route::post('/price-lists', [PriceListClientController::class, 'store'])->middleware('throttle:mobile-write');
+Route::put('/price-lists/items/{item}', [PriceListClientController::class, 'updateItem'])->middleware('throttle:mobile-write');
+Route::delete('/price-lists/items/{item}', [PriceListClientController::class, 'deleteItem'])->middleware('throttle:mobile-write');
+Route::get('/price-lists/{priceList}', [PriceListClientController::class, 'show']);
+Route::put('/price-lists/{priceList}', [PriceListClientController::class, 'update'])->middleware('throttle:mobile-write');
+Route::post('/price-lists/{priceList}/items', [PriceListClientController::class, 'addItem'])->middleware('throttle:mobile-write');
+Route::post('/price-lists/{priceList}/approve', [PriceListClientController::class, 'approve'])->middleware('throttle:mobile-write');
+Route::post('/price-lists/{priceList}/mark-draft', [PriceListClientController::class, 'markDraft'])->middleware('throttle:mobile-write');
+Route::post('/price-lists/{priceList}/cancel', [PriceListClientController::class, 'cancel'])->middleware('throttle:mobile-write');
+
+Route::get('/purchase-orders', [PurchaseOrderClientController::class, 'index']);
+Route::post('/purchase-orders', [PurchaseOrderClientController::class, 'store'])->middleware('throttle:mobile-write');
+Route::get('/purchase-orders/{purchaseOrder}', [PurchaseOrderClientController::class, 'show']);
+Route::post('/purchase-orders/{purchaseOrder}/submit', [PurchaseOrderClientController::class, 'submit'])->middleware('throttle:mobile-write');
+Route::post('/purchase-orders/{purchaseOrder}/receive', [PurchaseOrderClientController::class, 'receive'])->middleware('throttle:mobile-write');
+Route::post('/purchase-orders/{purchaseOrder}/bill', [PurchaseOrderClientController::class, 'bill'])->middleware('throttle:mobile-write');
+
+Route::get('/leads', [LeadClientController::class, 'index']);
+Route::post('/leads', [LeadClientController::class, 'store'])->middleware('throttle:mobile-write');
+Route::get('/leads/{lead}', [LeadClientController::class, 'show']);
+Route::post('/leads/{lead}/convert', [LeadClientController::class, 'convert'])->middleware('throttle:mobile-write');
+Route::post('/leads/{lead}/lost', [LeadClientController::class, 'markLost'])->middleware('throttle:mobile-write');
+
+Route::get('/treasury', [TreasuryClientController::class, 'index']);
+Route::post('/treasury/transfers', [TreasuryClientController::class, 'transfer'])->middleware('throttle:mobile-write');
+
+Route::post('/copilot/ask', [CopilotClientController::class, 'ask'])->middleware('throttle:mobile-write');
+
+Route::get('/fiscal-years', [FiscalYearClientController::class, 'index']);
+Route::post('/fiscal-years', [FiscalYearClientController::class, 'store'])->middleware('throttle:mobile-write');
+Route::post('/fiscal-years/periods/{period}/status', [FiscalYearClientController::class, 'setPeriodStatus'])->middleware('throttle:mobile-write');
+Route::get('/fiscal-years/{fiscalYear}', [FiscalYearClientController::class, 'show']);
+Route::put('/fiscal-years/{fiscalYear}', [FiscalYearClientController::class, 'update'])->middleware('throttle:mobile-write');
+Route::post('/fiscal-years/{fiscalYear}/close', [FiscalYearClientController::class, 'close'])->middleware('throttle:mobile-write');
+Route::post('/fiscal-years/{fiscalYear}/open', [FiscalYearClientController::class, 'open'])->middleware('throttle:mobile-write');
+Route::post('/fiscal-years/{fiscalYear}/generate-monthly-periods', [FiscalYearClientController::class, 'generateMonthlyPeriods'])->middleware('throttle:mobile-write');
+Route::post('/fiscal-years/{fiscalYear}/periods', [FiscalYearClientController::class, 'storePeriod'])->middleware('throttle:mobile-write');
 
 Route::get('/reports/{report}', [ReportController::class, 'show']);
 Route::get('/exports/{dataset}', [ExportController::class, 'download']);
 Route::get('/settings', [SettingsController::class, 'show']);
 Route::put('/settings', [SettingsController::class, 'update'])->middleware('throttle:mobile-write');
+Route::post('/settings/tax-rates', [SettingsController::class, 'storeTaxRate'])->middleware('throttle:mobile-write');
+Route::post('/settings/treasury-accounts', [SettingsController::class, 'storeTreasuryAccount'])->middleware('throttle:mobile-write');
 
 /*
 |--------------------------------------------------------------------------

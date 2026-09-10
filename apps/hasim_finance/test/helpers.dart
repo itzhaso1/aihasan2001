@@ -77,7 +77,9 @@ class SeededAuthController extends AuthController {
     'invoices.send': true,
     'invoices.remind': true,
     'invoices.cancel': true,
-    'invoices.reverse_payment': true,
+    'invoices.delete': true,
+    'quotes.delete': true,
+    'expenses.edit': true,
     'payments.view': true,
     'payments.manage': true,
     'receipts.view': true,
@@ -88,6 +90,22 @@ class SeededAuthController extends AuthController {
     'expenses.view': true,
     'purchases.view': true,
     'reports.view': true,
+    'finance.settings': true,
+    'finance.manage': true,
+    'accounting.view': true,
+    'accounting.manage': true,
+    'finance.price_lists.view': true,
+    'finance.price_lists.manage': true,
+    'finance.fiscal_years.view': true,
+    'finance.fiscal_years.manage': true,
+    'purchases.create': true,
+    'purchases.manage': true,
+    'purchases.edit': true,
+    'expenses.create': true,
+    'contracts.create': true,
+    'contracts.manage': true,
+    'invoices.credit': true,
+    'notes.create': true,
   };
 
   @override
@@ -132,6 +150,16 @@ class FakeFinanceApi extends FinanceApi {
     ],
     recentPayments: const [],
     overdueInvoices: const [],
+    analytics: const {
+      'from': '2026-09-01',
+      'to': '2026-09-30',
+      'hero': [
+        {'key': 'sales', 'label': 'كم بعنا؟', 'value': '115.00', 'hint': 'إيراد فواتير المبيعات الصادرة'},
+      ],
+      'attention': [
+        {'title': 'تحصيل متأخر', 'reason': 'لا توجد فواتير متأخرة في بيانات الاختبار'},
+      ],
+    },
   );
 
   CustomerRecord customerRecord = CustomerRecord(
@@ -259,9 +287,6 @@ class FakeFinanceApi extends FinanceApi {
   }
 
   @override
-  Future<Map<String, dynamic>> bootstrap() async => {};
-
-  @override
   Future<String> forgotPassword(String email) async {
     lastForgotEmail = email;
     return 'تم إرسال رابط إعادة تعيين كلمة المرور.';
@@ -279,7 +304,16 @@ class FakeFinanceApi extends FinanceApi {
   }
 
   @override
-  Future<DashboardData> dashboard() async => dashboardData;
+  Future<DashboardData> dashboard({
+    String? from,
+    String? to,
+    int? customerId,
+    int? productId,
+    int? projectId,
+    String? lifecycle,
+    String? paymentMethod,
+  }) async =>
+      dashboardData;
 
   List<CustomerRecord> catalogCustomers = [];
 
@@ -300,7 +334,13 @@ class FakeFinanceApi extends FinanceApi {
   Future<CustomerRecord> customer(int id) async => customerRecord;
 
   @override
-  Future<PagedResult<InvoiceRecord>> invoices({String? search, String? paymentStatus, int page = 1}) async {
+  Future<PagedResult<InvoiceRecord>> invoices({
+    String? search,
+    String? paymentStatus,
+    String? invoiceStatus,
+    String? lifecycle,
+    int page = 1,
+  }) async {
     return PagedResult(items: [invoiceRecord], page: 1, lastPage: 1, total: 1);
   }
 
@@ -332,7 +372,7 @@ class FakeFinanceApi extends FinanceApi {
   }
 
   @override
-  Future<PagedResult<QuoteRecord>> quotes({String? search, String? status, int page = 1}) async {
+  Future<PagedResult<QuoteRecord>> quotes({String? search, String? status, String? outcome, int page = 1}) async {
     return PagedResult(items: [quoteRecord], page: 1, lastPage: 1, total: 1);
   }
 
@@ -450,6 +490,156 @@ class FakeFinanceApi extends FinanceApi {
   Future<PagedResult<SupplierRecord>> suppliers({String? search, int page = 1}) async {
     return const PagedResult(items: [SupplierRecord(id: 3, name: 'مورد الاختبار')], page: 1, lastPage: 1, total: 1);
   }
+
+  Map<String, dynamic>? lastInvoicePayload;
+  Map<String, dynamic>? lastPurchasePayload;
+
+  @override
+  Future<InvoiceRecord> saveInvoice(Map<String, dynamic> body, {int? id}) async {
+    lastInvoicePayload = body;
+    return InvoiceRecord(id: id ?? 99, invoiceNumber: 'INV-99', documentStatus: 'draft');
+  }
+
+  @override
+  Future<InvoiceRecord> savePurchase(Map<String, dynamic> body, {int? id}) async {
+    lastPurchasePayload = body;
+    return InvoiceRecord(id: id ?? 88, invoiceNumber: 'PINV-88', documentStatus: 'draft', supplierName: 'مورد الاختبار');
+  }
+
+  @override
+  Future<Map<String, dynamic>> bootstrap() async => {
+        'settings': {
+          'allow_manual_invoice_numbers': false,
+          'default_vat_rate': '15.00',
+        },
+        'catalog': {
+          'products': [
+            {'id': 1, 'name': 'خدمة فوترة', 'price': '100.00'},
+          ],
+          'tax_rates': [
+            {'id': 1, 'name': 'VAT 15', 'rate': '15.00'},
+          ],
+          'contracts': <Map<String, dynamic>>[],
+          'projects': <Map<String, dynamic>>[],
+          'treasury_accounts': <Map<String, dynamic>>[],
+          'expense_categories': <Map<String, dynamic>>[],
+          'suppliers': [
+            {'id': 3, 'name': 'مورد الاختبار'},
+          ],
+        },
+      };
+
+  @override
+  Future<PagedResult<ProductRecord>> products({String? search, int page = 1}) async {
+    return const PagedResult(items: [ProductRecord(id: 1, name: 'خدمة فوترة', sku: 'SKU-1', price: '100.00')], page: 1, lastPage: 1, total: 1);
+  }
+
+  @override
+  Future<ProductRecord> product(int id) async => const ProductRecord(id: 1, name: 'خدمة فوترة', sku: 'SKU-1', price: '100.00', stock: 5);
+
+  @override
+  Future<PagedResult<InventoryMovementRecord>> inventory({String? search, int page = 1}) async {
+    return const PagedResult(items: [], page: 1, lastPage: 1, total: 0);
+  }
+
+  @override
+  Future<PagedResult<ProjectRecord>> projects({String? search, int page = 1}) async {
+    return const PagedResult(items: [ProjectRecord(id: 2, name: 'مشروع تجريبي')], page: 1, lastPage: 1, total: 1);
+  }
+
+  @override
+  Future<ProjectRecord> project(int id) async => const ProjectRecord(id: 2, name: 'مشروع تجريبي', budget: '1000.00', revenue: '200.00', costs: '50.00', profit: '150.00');
+
+  @override
+  Future<PagedResult<PriceListRecord>> priceLists({String? search, int page = 1}) async {
+    return const PagedResult(items: [PriceListRecord(id: 4, name: 'قائمة أساسية', status: 'draft')], page: 1, lastPage: 1, total: 1);
+  }
+
+  @override
+  Future<PriceListRecord> priceList(int id) async => const PriceListRecord(id: 4, name: 'قائمة أساسية', status: 'draft');
+
+  @override
+  Future<PagedResult<PurchaseOrderRecord>> purchaseOrders({String? search, String? status, int page = 1}) async {
+    return const PagedResult(items: [PurchaseOrderRecord(id: 6, poNumber: 'PO-6', status: 'draft', total: '50.00')], page: 1, lastPage: 1, total: 1);
+  }
+
+  @override
+  Future<PurchaseOrderRecord> purchaseOrder(int id) async => const PurchaseOrderRecord(id: 6, poNumber: 'PO-6', status: 'draft', total: '50.00', subtotal: '50.00');
+
+  @override
+  Future<PagedResult<LeadRecord>> leads({String? search, String? status, int page = 1}) async {
+    return const PagedResult(items: [LeadRecord(id: 8, name: 'فرصة تجريبية', status: 'new')], page: 1, lastPage: 1, total: 1);
+  }
+
+  @override
+  Future<LeadRecord> lead(int id) async => const LeadRecord(id: 8, name: 'فرصة تجريبية', status: 'new', estimatedValue: '500.00');
+
+  @override
+  Future<Map<String, dynamic>> salesHub({String? from, String? to}) async => {
+        'summary': {'total_sales': '115.00', 'total_paid': '0.00', 'total_due': '115.00', 'overdue_count': 0},
+        'invoices': [
+          {'id': 11, 'invoice_number': 'INV-11', 'customer_name': 'عميل الاختبار', 'payment_status': 'unpaid', 'total': '115.00'},
+        ],
+        'recent_payments': <Map<String, dynamic>>[],
+      };
+
+  @override
+  Future<Map<String, dynamic>> billingHub({String? from, String? to}) async => {
+        'total_invoices': 1,
+        'total_revenue': '115.00',
+        'outstanding_amount': '115.00',
+        'overdue_amount': '0.00',
+        'payments_received': '0.00',
+        'credits_issued': '0.00',
+      };
+
+  @override
+  Future<Map<String, dynamic>> vatHub() async => {'output': '15.00', 'input': '0.00', 'net': '15.00', 'rates': <Map<String, dynamic>>[]};
+
+  @override
+  Future<List<Map<String, dynamic>>> alerts() async => [
+        {'key': 'overdue_invoices', 'severity': 'high', 'title': 'فواتير متأخرة', 'reason': 'none'},
+      ];
+
+  @override
+  Future<Map<String, dynamic>> accountingHub() async => {
+        'accounts': <Map<String, dynamic>>[],
+        'entries': <Map<String, dynamic>>[],
+        'trial_balance': <Map<String, dynamic>>[],
+        'trial_totals': {'debit': '0.00', 'credit': '0.00'},
+      };
+
+  @override
+  Future<PagedResult<TreasuryAccountRecord>> banks({int page = 1}) async {
+    return const PagedResult(items: [TreasuryAccountRecord(id: 1, name: 'الصندوق', type: 'cash', currentBalance: '200.00')], page: 1, lastPage: 1, total: 1);
+  }
+
+  @override
+  Future<Map<String, dynamic>> treasury() async => {
+        'accounts': [
+          {'id': 1, 'name': 'الصندوق', 'type': 'cash', 'current_balance': '200.00'},
+        ],
+        'transfers': <Map<String, dynamic>>[],
+      };
+
+  @override
+  Future<List<Map<String, dynamic>>> exportIndex() async => [
+        {'dataset': 'invoices', 'label': 'الفواتير', 'hint': 'رقم وحالة المستند'},
+      ];
+
+  @override
+  Future<PagedResult<FiscalYearRecord>> fiscalYears({int page = 1}) async {
+    return const PagedResult(items: [FiscalYearRecord(id: 1, name: '2026', status: 'open')], page: 1, lastPage: 1, total: 1);
+  }
+
+  @override
+  Future<FiscalYearRecord> fiscalYear(int id) async => const FiscalYearRecord(id: 1, name: '2026', status: 'open');
+
+  @override
+  Future<SupplierRecord> supplier(int id) async => const SupplierRecord(id: 3, name: 'مورد الاختبار', vatNumber: '300000000000003');
+
+  @override
+  Future<Map<String, dynamic>> askCopilot(String question) async => {'answer': 'لا توجد مبالغ مخترعة. المبيعات 115.00'};
 }
 
 Future<SharedPreferences> mockPrefs() async {

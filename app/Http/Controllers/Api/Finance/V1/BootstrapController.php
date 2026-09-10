@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Finance\V1;
 
 use App\Http\Controllers\Api\Finance\Concerns\HandlesFinanceClient;
 use App\Http\Controllers\Api\Finance\FinanceApiController;
+use App\Models\Contract\Contract;
 use App\Models\Customer;
 use App\Models\Finance\FinanceExpenseCategory;
 use App\Models\Finance\FinanceSetting;
@@ -11,6 +12,7 @@ use App\Models\Finance\FinanceSupplier;
 use App\Models\Finance\FinanceTaxRate;
 use App\Models\Finance\FinanceTreasuryAccount;
 use App\Models\Product;
+use App\Models\Projects\FinanceProject;
 use App\Services\Feature\FeatureAccessService;
 use App\Services\Finance\Api\FinanceClientPresenter;
 use App\Services\Finance\FinanceBootstrapService;
@@ -72,6 +74,13 @@ class BootstrapController extends FinanceApiController
                     ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name])->all(),
                 'treasury_accounts' => FinanceTreasuryAccount::query()->where('is_active', true)->orderBy('type')->get(['id', 'name', 'type'])
                     ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name, 'type' => $row->type])->all(),
+                'contracts' => Contract::query()->latest('id')->limit(200)->get(['id', 'title', 'contract_number'])
+                    ->map(fn ($row) => [
+                        'id' => $row->id,
+                        'name' => $row->contract_number ? ($row->contract_number.' · '.$row->title) : $row->title,
+                    ])->all(),
+                'projects' => FinanceProject::query()->orderBy('name')->limit(200)->get(['id', 'name'])
+                    ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name])->all(),
             ],
         ]);
     }

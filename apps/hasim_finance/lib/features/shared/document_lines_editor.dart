@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hasim_finance/core/layout/finance_layout.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
@@ -10,12 +11,16 @@ class LineDraft {
     String unit = '',
     String taxRate = '15',
     String discount = '0',
+    this.productId,
+    this.taxProfileType,
+    String exemptionReason = '',
   })  : description = TextEditingController(text: description),
         quantity = TextEditingController(text: quantity),
         unitPrice = TextEditingController(text: unitPrice),
         unit = TextEditingController(text: unit),
         taxRate = TextEditingController(text: taxRate),
-        discount = TextEditingController(text: discount);
+        discount = TextEditingController(text: discount),
+        exemptionReason = TextEditingController(text: exemptionReason);
 
   factory LineDraft.fromItem(LineItem item) {
     return LineDraft(
@@ -25,17 +30,24 @@ class LineDraft {
       unit: item.unit ?? '',
       taxRate: item.taxRate ?? '15',
       discount: item.discount ?? '0',
+      productId: item.productId,
+      taxProfileType: item.taxProfileType,
+      exemptionReason: item.exemptionReason ?? '',
     );
   }
 
+  int? productId;
+  String? taxProfileType;
   final TextEditingController description;
   final TextEditingController quantity;
   final TextEditingController unitPrice;
   final TextEditingController unit;
   final TextEditingController taxRate;
   final TextEditingController discount;
+  final TextEditingController exemptionReason;
 
   Map<String, dynamic> toPayload() => {
+        if (productId != null) 'product_id': productId,
         'product_name': description.text.trim(),
         'description': description.text.trim(),
         'quantity': quantity.text.trim(),
@@ -43,6 +55,8 @@ class LineDraft {
         'unit': unit.text.trim(),
         'tax_rate': taxRate.text.trim().isEmpty ? '15' : taxRate.text.trim(),
         'discount': discount.text.trim().isEmpty ? '0' : discount.text.trim(),
+        if (taxProfileType != null && taxProfileType!.isNotEmpty) 'tax_profile_type': taxProfileType,
+        if (exemptionReason.text.trim().isNotEmpty) 'exemption_reason': exemptionReason.text.trim(),
       };
 
   void dispose() {
@@ -52,6 +66,7 @@ class LineDraft {
     unit.dispose();
     taxRate.dispose();
     discount.dispose();
+    exemptionReason.dispose();
   }
 }
 
@@ -60,10 +75,12 @@ class DocumentLinesEditor extends StatelessWidget {
     super.key,
     required this.lines,
     required this.onChanged,
+    this.products = const [],
   });
 
   final List<LineDraft> lines;
   final VoidCallback onChanged;
+  final List<CatalogOption> products;
 
   @override
   Widget build(BuildContext context) {
@@ -71,14 +88,13 @@ class DocumentLinesEditor extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(l.lines, style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
         for (var i = 0; i < lines.length; i++)
           Card(
-            margin: const EdgeInsets.only(bottom: 12),
+            margin: const EdgeInsets.only(bottom: 10),
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
                     children: [
@@ -96,53 +112,85 @@ class DocumentLinesEditor extends StatelessWidget {
                         ),
                     ],
                   ),
+                  if (products.isNotEmpty)
+                    DropdownButtonFormField<int?>(
+                      // ignore: deprecated_member_use
+                      value: lines[i].productId != null && products.any((row) => row.id == lines[i].productId)
+                          ? lines[i].productId
+                          : null,
+                      isExpanded: true,
+                      decoration: InputDecoration(labelText: l.selectProduct),
+                      items: [
+                        DropdownMenuItem<int?>(value: null, child: Text(l.freeTextItem)),
+                        for (final product in products)
+                          DropdownMenuItem<int?>(value: product.id, child: Text(product.name)),
+                      ],
+                      onChanged: (id) {
+                        lines[i].productId = id;
+                        if (id != null) {
+                          final product = products.firstWhere((row) => row.id == id);
+                          lines[i].description.text = product.name;
+                          final price = product.extra['price']?.toString();
+                          if (price != null && price.isNotEmpty) {
+                            lines[i].unitPrice.text = price;
+                          }
+                        }
+                        onChanged();
+                      },
+                    ),
+                  const SizedBox(height: 8),
                   TextField(
                     controller: lines[i].description,
                     decoration: InputDecoration(labelText: l.description),
                   ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                  FormGrid(
+                    minWidth: 140,
                     children: [
-                      SizedBox(
-                        width: 120,
-                        child: TextField(
-                          controller: lines[i].quantity,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(labelText: l.quantity),
-                        ),
+                      TextField(
+                        controller: lines[i].quantity,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(labelText: l.quantity),
                       ),
-                      SizedBox(
-                        width: 140,
-                        child: TextField(
-                          controller: lines[i].unitPrice,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(labelText: l.price),
-                        ),
+                      TextField(
+                        controller: lines[i].unitPrice,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(labelText: l.price),
                       ),
-                      SizedBox(
-                        width: 100,
-                        child: TextField(
-                          controller: lines[i].unit,
-                          decoration: InputDecoration(labelText: l.unit),
-                        ),
+                      TextField(
+                        controller: lines[i].unit,
+                        decoration: InputDecoration(labelText: l.unit),
                       ),
-                      SizedBox(
-                        width: 100,
-                        child: TextField(
-                          controller: lines[i].taxRate,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(labelText: l.taxRate),
-                        ),
+                      TextField(
+                        controller: lines[i].taxRate,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(labelText: l.taxRate),
                       ),
-                      SizedBox(
-                        width: 100,
-                        child: TextField(
-                          controller: lines[i].discount,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: InputDecoration(labelText: l.discount),
-                        ),
+                      TextField(
+                        controller: lines[i].discount,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(labelText: l.discount),
+                      ),
+                      DropdownButtonFormField<String?>(
+                        // ignore: deprecated_member_use
+                        value: lines[i].taxProfileType,
+                        isExpanded: true,
+                        decoration: InputDecoration(labelText: l.taxProfile),
+                        items: [
+                          const DropdownMenuItem<String?>(value: null, child: Text('—')),
+                          DropdownMenuItem(value: 'standard', child: Text(l.standardTax, overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'zero_rated', child: Text(l.zeroRated, overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'exempt', child: Text(l.exempt, overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'out_of_scope', child: Text(l.outOfScope, overflow: TextOverflow.ellipsis)),
+                        ],
+                        onChanged: (value) {
+                          lines[i].taxProfileType = value;
+                          onChanged();
+                        },
+                      ),
+                      TextField(
+                        controller: lines[i].exemptionReason,
+                        decoration: InputDecoration(labelText: l.exemptionReason),
                       ),
                     ],
                   ),
@@ -161,9 +209,4 @@ class DocumentLinesEditor extends StatelessWidget {
       ],
     );
   }
-}
-
-String isoDate([DateTime? value]) {
-  final date = value ?? DateTime.now();
-  return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 }
