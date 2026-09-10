@@ -3,6 +3,7 @@
 namespace App\Models\Finance;
 
 use App\Enums\Finance\FinanceDocumentType;
+use App\Enums\Finance\QuoteOutcomeStatus;
 use App\Enums\Finance\QuoteStatus;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Customer;
@@ -19,6 +20,7 @@ use RuntimeException;
     'customer_id',
     'quote_number',
     'status',
+    'outcome',
     'issue_date',
     'expiry_date',
     'currency',
@@ -40,6 +42,14 @@ use RuntimeException;
     'issued_by',
     'issued_at',
     'cancelled_at',
+    'accepted_at',
+    'accepted_by',
+    'rejected_at',
+    'rejected_by',
+    'rejection_reason',
+    'converted_invoice_id',
+    'converted_at',
+    'converted_by',
 ])]
 class FinanceQuote extends WorkspaceScopedModel
 {
@@ -55,6 +65,15 @@ class FinanceQuote extends WorkspaceScopedModel
         'cancelled_at',
         'notes',
         'updated_at',
+        'outcome',
+        'accepted_at',
+        'accepted_by',
+        'rejected_at',
+        'rejected_by',
+        'rejection_reason',
+        'converted_invoice_id',
+        'converted_at',
+        'converted_by',
     ];
 
     protected function casts(): array
@@ -64,6 +83,9 @@ class FinanceQuote extends WorkspaceScopedModel
             'expiry_date' => 'date',
             'issued_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'accepted_at' => 'datetime',
+            'rejected_at' => 'datetime',
+            'converted_at' => 'datetime',
             'subtotal' => 'decimal:2',
             'discount' => 'decimal:2',
             'taxable_amount' => 'decimal:2',
@@ -102,6 +124,26 @@ class FinanceQuote extends WorkspaceScopedModel
     public function issuer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'issued_by');
+    }
+
+    public function acceptedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'accepted_by');
+    }
+
+    public function rejectedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejected_by');
+    }
+
+    public function convertedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'converted_by');
+    }
+
+    public function convertedInvoice(): BelongsTo
+    {
+        return $this->belongsTo(FinanceInvoice::class, 'converted_invoice_id');
     }
 
     protected static function booted(): void
@@ -147,6 +189,68 @@ class FinanceQuote extends WorkspaceScopedModel
     public function isSendable(): bool
     {
         return $this->isIssued() && ! $this->trashed();
+    }
+
+    public function quoteOutcome(): QuoteOutcomeStatus
+    {
+        return QuoteOutcomeStatus::tryFrom((string) ($this->outcome ?? QuoteOutcomeStatus::Pending->value))
+            ?? QuoteOutcomeStatus::Pending;
+    }
+
+    public function isPendingOutcome(): bool
+    {
+        return $this->quoteOutcome() === QuoteOutcomeStatus::Pending;
+    }
+
+    public function isAccepted(): bool
+    {
+        return $this->quoteOutcome() === QuoteOutcomeStatus::Accepted;
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->quoteOutcome() === QuoteOutcomeStatus::Rejected;
+    }
+
+    public function isConverted(): bool
+    {
+        return $this->quoteOutcome() === QuoteOutcomeStatus::Converted
+            || $this->converted_invoice_id !== null;
+    }
+
+    public function isPastExpiry(): bool
+    {
+        if ($this->expiry_date === null) {
+            return false;
+        }
+
+        return $this->expiry_date->toDateString() < now(config('app.timezone'))->toDateString();
+    }
+
+    public function isAcceptable(): bool
+    {
+        return $this->isIssued()
+            && ! $this->trashed()
+            && $this->isPendingOutcome()
+            && ! $this->isConverted()
+            && ! $this->isPastExpiry();
+    }
+
+    public function isRejectable(): bool
+    {
+        return $this->isIssued()
+            && ! $this->trashed()
+            && $this->isPendingOutcome()
+            && ! $this->isConverted();
+    }
+
+    public function isConvertible(): bool
+    {
+        return $this->isIssued()
+            && ! $this->trashed()
+            && $this->isAccepted()
+            && ! $this->isConverted()
+            && ! $this->isPastExpiry();
     }
 
     public function snapshotsAreAuthoritative(): bool

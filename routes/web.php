@@ -402,6 +402,9 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::post('quotes/{quote}/issue', [FinanceQuoteController::class, 'issue'])->name('quotes.issue');
             Route::post('quotes/{quote}/cancel', [FinanceQuoteController::class, 'cancel'])->name('quotes.cancel');
             Route::post('quotes/{quote}/send', [FinanceQuoteController::class, 'send'])->name('quotes.send');
+            Route::post('quotes/{quote}/accept', [FinanceQuoteController::class, 'accept'])->name('quotes.accept');
+            Route::post('quotes/{quote}/reject', [FinanceQuoteController::class, 'reject'])->name('quotes.reject');
+            Route::post('quotes/{quote}/convert', [FinanceQuoteController::class, 'convert'])->name('quotes.convert');
 
             Route::post('contracts/{contract}/billing-schedules', [FinanceBillingScheduleController::class, 'store'])->name('contracts.billing-schedules.store');
             Route::post('contracts/{contract}/billing-schedules/{schedule}/activate', [FinanceBillingScheduleController::class, 'activate'])->name('contracts.billing-schedules.activate');

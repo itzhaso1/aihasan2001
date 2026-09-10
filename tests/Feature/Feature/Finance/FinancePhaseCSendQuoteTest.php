@@ -285,8 +285,9 @@ class FinancePhaseCSendQuoteTest extends TestCase
         $this->assertNotNull($route);
         $this->assertContains('POST', $route->methods());
         $this->assertNotContains('GET', $route->methods());
-        $this->assertFalse(Route::has('workspace.finance.quotes.convert'));
-        $this->assertFalse(Route::has('workspace.finance.quotes.accept'));
+        $this->assertTrue(Route::has('workspace.finance.quotes.convert'));
+        $this->assertTrue(Route::has('workspace.finance.quotes.accept'));
+        $this->assertTrue(Route::has('workspace.finance.quotes.reject'));
 
         $this->actingAs($user)->withSession(['current_workspace_id' => $workspace->id])
             ->get(route('workspace.finance.quotes.show', $quote))
@@ -295,9 +296,9 @@ class FinancePhaseCSendQuoteTest extends TestCase
             ->assertSee($customer->email)
             ->assertSee('سجل الإرسال')
             ->assertSee('إرفاق ملف PDF')
-            ->assertDontSee('WhatsApp', false)
-            ->assertDontSee('قبول العرض')
-            ->assertDontSee('رفض العرض');
+            ->assertSee('قبول العرض')
+            ->assertSee('رفض العرض')
+            ->assertDontSee('WhatsApp', false);
     }
 
     /**

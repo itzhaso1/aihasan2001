@@ -94,6 +94,7 @@ class FinancePhaseBQuotesTest extends TestCase
 
         $quote->refresh();
         $this->assertSame('issued', $quote->status);
+        $this->assertSame('pending', $quote->outcome);
         $this->assertNotNull($quote->issued_at);
         $this->assertSame('شركة الاختبار', data_get($quote->company_snapshot, 'company_name'));
         $this->assertSame('310000000000003', data_get($quote->recipient_snapshot, 'vat_number'));
@@ -371,8 +372,9 @@ class FinancePhaseBQuotesTest extends TestCase
         $this->assertSame('cancelled', $quote->status);
         $this->assertNotNull($quote->cancelled_at);
         $this->assertSame(0, FinanceJournalEntry::withoutGlobalScopes()->count());
-        $this->assertFalse(Route::has('workspace.finance.quotes.convert'));
-        $this->assertFalse(Route::has('workspace.finance.quotes.accept'));
+        $this->assertTrue(Route::has('workspace.finance.quotes.convert'));
+        $this->assertTrue(Route::has('workspace.finance.quotes.accept'));
+        $this->assertTrue(Route::has('workspace.finance.quotes.reject'));
     }
 
     public function test_quotes_edit_cannot_issue_without_quotes_issue_permission(): void
