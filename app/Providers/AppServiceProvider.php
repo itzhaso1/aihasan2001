@@ -104,8 +104,8 @@ use App\Services\Domain\NamecheapRegistrar;
 use App\Services\EInvoicing\Security\DeferredCryptographicStampSigner;
 use App\Services\Payment\Contracts\BillableCheckoutPort;
 use App\Services\Payment\Contracts\MerchantSettlementProviderInterface;
-use App\Services\Payment\OrderBoundBillableCheckout;
 use App\Services\Payment\Providers\HyperPayMerchantSettlementProvider;
+use App\Services\Payment\SharedBillableCheckout;
 use App\Services\Subscription\Contracts\SubscriptionBillingProviderInterface;
 use App\Services\Subscription\LocalSubscriptionBillingProvider;
 use App\Support\Tenancy\WorkspaceContext;
@@ -129,7 +129,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(WorkspaceContext::class);
         $this->app->bind(DomainRegistrarInterface::class, NamecheapRegistrar::class);
         $this->app->bind(SubscriptionBillingProviderInterface::class, LocalSubscriptionBillingProvider::class);
-        $this->app->bind(BillableCheckoutPort::class, OrderBoundBillableCheckout::class);
+        $this->app->bind(BillableCheckoutPort::class, SharedBillableCheckout::class);
         $this->app->bind(
             MerchantSettlementProviderInterface::class,
             HyperPayMerchantSettlementProvider::class

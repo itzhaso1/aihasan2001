@@ -20,10 +20,11 @@ class StripePaymentGateway implements PaymentGatewayInterface
             ->withToken($secret)
             ->post('https://api.stripe.com/v1/payment_links', [
                 'line_items[0][price_data][currency]' => strtolower($currency),
-                'line_items[0][price_data][product_data][name]' => 'Order '.$reference,
+                'line_items[0][price_data][product_data][name]' => (string) ($metadata['description'] ?? ('Order '.$reference)),
                 'line_items[0][price_data][unit_amount]' => (int) round($amount * 100),
                 'line_items[0][quantity]' => 1,
                 'metadata[reference]' => $reference,
+                'metadata[billable_type]' => (string) ($metadata['billable_type'] ?? 'order'),
             ])
             ->throw()
             ->json();
@@ -107,13 +108,18 @@ class StripePaymentGateway implements PaymentGatewayInterface
 
         $eventId = $payload['id'] ?? null;
         $type = $payload['type'] ?? null;
-        $reference = $payload['data']['object']['metadata']['reference'] ?? null;
+        $object = is_array($payload['data']['object'] ?? null) ? $payload['data']['object'] : [];
+        $reference = $object['metadata']['reference'] ?? null;
+        $amountTotal = $object['amount_total'] ?? null;
+        $currency = isset($object['currency']) ? strtoupper((string) $object['currency']) : null;
 
         return [
             'verified' => true,
             'event_id' => $eventId,
             'status' => $type === 'checkout.session.completed' ? 'paid' : 'pending',
             'reference' => $reference,
+            'amount' => is_numeric($amountTotal) ? round(((int) $amountTotal) / 100, 2) : null,
+            'currency' => $currency,
             'payload' => $payload,
             'reason' => null,
         ];

@@ -18,7 +18,8 @@ use RuntimeException;
 /**
  * Prepares a sales invoice email and sends it through CentralEmailService.
  *
- * Intentionally does not call Inbox, WhatsApp, SMS, payments, GL, or ZATCA.
+ * Intentionally does not call Inbox, WhatsApp, SMS, GL, or ZATCA.
+ * May include an already-generated shared checkout URL; it does not mark the invoice paid.
  */
 class InvoiceEmailService
 {
@@ -26,6 +27,7 @@ class InvoiceEmailService
         private readonly CentralEmailService $centralEmailService,
         private readonly PdfInvoiceService $pdfInvoiceService,
         private readonly AuditLogService $auditLogService,
+        private readonly InvoiceCheckoutService $invoiceCheckoutService,
     ) {}
 
     /**
@@ -102,6 +104,17 @@ class InvoiceEmailService
                 ];
             }
 
+            $checkoutUrl = $this->invoiceCheckoutService->availability($invoice)->checkoutUrl;
+            $lines = [
+                'العميل: '.$customerName,
+                'رقم الفاتورة: '.$invoice->invoice_number,
+                'تاريخ الفاتورة: '.($invoice->issue_date?->format('Y-m-d') ?: '—'),
+                'الإجمالي: '.number_format((float) $invoice->total, 2).' '.($invoice->currency ?: 'SAR'),
+            ];
+            if (is_string($checkoutUrl) && $checkoutUrl !== '') {
+                $lines[] = 'رابط الدفع: '.$checkoutUrl;
+            }
+
             $emailLog = $this->centralEmailService->send([
                 'to' => [$email],
                 'template' => 'invoice_email',
@@ -111,12 +124,9 @@ class InvoiceEmailService
                 'data' => [
                     'headline' => 'فاتورة رقم '.$invoice->invoice_number,
                     'intro' => $message,
-                    'lines' => [
-                        'العميل: '.$customerName,
-                        'رقم الفاتورة: '.$invoice->invoice_number,
-                        'تاريخ الفاتورة: '.($invoice->issue_date?->format('Y-m-d') ?: '—'),
-                        'الإجمالي: '.number_format((float) $invoice->total, 2).' '.($invoice->currency ?: 'SAR'),
-                    ],
+                    'lines' => $lines,
+                    'action_text' => $checkoutUrl ? 'دفع الفاتورة' : null,
+                    'action_url' => $checkoutUrl,
                     'brand_name' => $companyName,
                     'brand_color' => (string) (data_get($invoice->pdf_snapshot, 'primary_color') ?: '#06C2A4'),
                     'footer' => 'هذه رسالة من '.$companyName.' — إرسال البريد لا يغيّر حالة الفاتورة المالية.',

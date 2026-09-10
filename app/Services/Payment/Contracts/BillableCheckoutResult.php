@@ -20,4 +20,14 @@ final class BillableCheckoutResult
     {
         return new self(true, $checkoutUrl, 'ok', '');
     }
+
+    public static function ready(string $message = ''): self
+    {
+        return new self(true, null, 'ready', $message);
+    }
+
+    public function hasCheckoutUrl(): bool
+    {
+        return $this->supported && is_string($this->checkoutUrl) && $this->checkoutUrl !== '';
+    }
 }

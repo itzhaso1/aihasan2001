@@ -77,6 +77,8 @@ class LocalPaymentGateway implements PaymentGatewayInterface
             'event_id' => $eventId,
             'status' => $payload['status'] ?? null,
             'reference' => $payload['reference'] ?? null,
+            'amount' => array_key_exists('amount', $payload) ? (float) $payload['amount'] : null,
+            'currency' => isset($payload['currency']) ? strtoupper((string) $payload['currency']) : null,
             'payload' => $payload,
             'reason' => null,
         ];

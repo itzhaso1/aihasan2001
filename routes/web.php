@@ -44,8 +44,8 @@ use App\Http\Controllers\Workspace\Finance\IntelligenceController as FinanceInte
 use App\Http\Controllers\Workspace\Finance\InvoiceController as FinanceInvoiceController;
 use App\Http\Controllers\Workspace\Finance\LeadController as FinanceLeadController;
 use App\Http\Controllers\Workspace\Finance\ModulePageController as FinanceModulePageController;
-use App\Http\Controllers\Workspace\Finance\PayrollAdjustmentController as FinancePayrollAdjustmentController;
 use App\Http\Controllers\Workspace\Finance\PaymentController as FinancePaymentController;
+use App\Http\Controllers\Workspace\Finance\PayrollAdjustmentController as FinancePayrollAdjustmentController;
 use App\Http\Controllers\Workspace\Finance\PriceListController as FinancePriceListController;
 use App\Http\Controllers\Workspace\Finance\ProjectController as FinanceProjectController;
 use App\Http\Controllers\Workspace\Finance\PurchaseOrderController as FinancePurchaseOrderController;
@@ -385,6 +385,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::post('invoices/{invoice}/issue', [FinanceInvoiceController::class, 'issue'])->name('invoices.issue');
             Route::post('invoices/{invoice}/send', [FinanceInvoiceController::class, 'send'])->name('invoices.send');
             Route::post('invoices/{invoice}/remind', [FinanceInvoiceController::class, 'remind'])->name('invoices.remind');
+            Route::post('invoices/{invoice}/checkout', [FinanceInvoiceController::class, 'createCheckout'])->name('invoices.checkout');
             Route::post('invoices/{invoice}/cancel', [FinanceInvoiceController::class, 'cancel'])->name('invoices.cancel');
             Route::post('invoices/{invoice}/payments', [FinanceInvoiceController::class, 'storePayment'])->name('invoices.payments.store');
             Route::post('invoices/{invoice}/payments/{payment}/reverse', [FinanceInvoiceController::class, 'reversePayment'])->name('invoices.payments.reverse');

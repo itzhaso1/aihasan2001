@@ -381,8 +381,7 @@ class FinanceWebCompletionTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('رابط الدفع الإلكتروني', $html);
-        $this->assertStringContainsString('Order', $html);
+        $this->assertStringContainsString('الدفع الإلكتروني', $html);
         $this->assertSame(0, Order::query()->count());
         $this->assertSame(0, Payment::query()->count());
         $this->assertSame('unpaid', $invoice->fresh()->payment_status);
