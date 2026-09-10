@@ -2,6 +2,7 @@
 
 namespace App\Models\Finance;
 
+use App\Enums\Finance\FinanceDocumentType;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Contract\Contract;
 use App\Models\Customer;
@@ -193,6 +194,13 @@ class FinanceInvoice extends WorkspaceScopedModel
         return $this->belongsTo(User::class, 'issued_by');
     }
 
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(FinanceDocumentDelivery::class, 'document_id')
+            ->where('document_type', FinanceDocumentType::Invoice->value)
+            ->latest('id');
+    }
+
     public function issuedSnapshot(): HasOne
     {
         return $this->hasOne(IssuedDocumentSnapshot::class, 'source_id')
@@ -227,6 +235,13 @@ class FinanceInvoice extends WorkspaceScopedModel
     public function isCancelled(): bool
     {
         return $this->resolvedInvoiceStatus() === 'cancelled';
+    }
+
+    public function isSendable(): bool
+    {
+        return $this->isIssued()
+            && ! $this->trashed()
+            && (string) $this->type === 'sales';
     }
 
     public function isFinanciallyLocked(): bool
