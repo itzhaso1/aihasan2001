@@ -269,9 +269,12 @@ class Phase6UblXmlFoundationTest extends TestCase
                 'finance_invoice_items',
                 'customers',
                 'products',
-                'workspaces',
+                'from "workspaces"',
+                'from `workspaces`',
                 'finance_settings',
-                'orders',
+                'from "orders"',
+                'from `orders`',
+                'order_items',
                 'contracts',
             ] as $table) {
                 $this->assertStringNotContainsString($table, $sql);
@@ -402,6 +405,10 @@ XML;
             $this->assertStringNotContainsString('customers', $sql);
             $this->assertStringNotContainsString('products', $sql);
             $this->assertStringNotContainsString('finance_settings', $sql);
+            $this->assertStringNotContainsString('from "orders"', $sql);
+            $this->assertStringNotContainsString('from `orders`', $sql);
+            $this->assertStringNotContainsString('order_items', $sql);
+            $this->assertStringNotContainsString('finance_invoice_payments', $sql);
         }
 
         $credit = app(CreditNoteService::class)->create($workspace, $invoice, [
@@ -423,9 +430,12 @@ XML;
                 ->where('source_id', $credit->id)
                 ->firstOrFail()
         );
-        $this->assertNull($noteDocument->transactionCode());
-        $this->expectException(EInvoiceXmlMappingException::class);
-        app(UblMapper::class)->map($noteDocument);
+        $this->assertSame(InvoiceTransactionCode::Standard, $noteDocument->transactionCode());
+        $this->assertSame('خصم تجاري', $noteDocument->reason);
+        $creditXml = app(UblMapper::class)->map($noteDocument);
+        $this->assertStringContainsString('CreditNote', $creditXml);
+        $this->assertStringContainsString('0100000', $creditXml);
+        $this->assertStringContainsString($invoice->invoice_number, $creditXml);
     }
 
     /**

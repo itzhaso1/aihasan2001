@@ -110,6 +110,18 @@ class InvoiceTypeCatalogTest extends TestCase
         $this->assertNull($type->transactionCode);
     }
 
+    public function test_pos_invoice_preserves_explicit_subtype_without_inventing_type_code(): void
+    {
+        $type = InvoiceTypeCatalog::fromSnapshot($this->snapshot(
+            IssuedDocumentSnapshot::SOURCE_POS_CASHIER_INVOICE,
+            ['type' => 'pos_cashier_invoice', 'tax_document_subtype' => 'simplified'],
+        ));
+
+        $this->assertSame(ElectronicDocumentKind::PosCashierInvoice, $type->kind);
+        $this->assertNull($type->typeCode);
+        $this->assertSame(InvoiceTransactionCode::Simplified, $type->transactionCode);
+    }
+
     public function test_standard_simplified_distinction_uses_transaction_code_enum(): void
     {
         $this->assertSame('0100000', InvoiceTransactionCode::Standard->value);

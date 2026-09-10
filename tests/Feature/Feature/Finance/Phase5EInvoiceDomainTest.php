@@ -124,16 +124,19 @@ class Phase5EInvoiceDomainTest extends TestCase
 
         $this->assertSame(ElectronicDocumentKind::CreditNote, $creditDocument->kind());
         $this->assertSame(InvoiceTypeCode::CreditNote, $creditDocument->typeCode());
-        $this->assertNull($creditDocument->transactionCode());
+        $this->assertSame(InvoiceTransactionCode::Standard, $creditDocument->transactionCode());
         $this->assertSame($credit->note_number, $creditDocument->documentNumber);
         $this->assertSame((int) $invoice->id, $creditDocument->originalDocument?->invoiceId);
         $this->assertSame($invoice->invoice_number, $creditDocument->originalDocument?->invoiceNumber);
+        $this->assertSame('خصم تجاري', $creditDocument->reason);
         $this->assertSame('3.00', $creditDocument->tax->amount);
         $this->assertSame('23.00', $creditDocument->totals->total);
 
         $this->assertSame(ElectronicDocumentKind::DebitNote, $debitDocument->kind());
         $this->assertSame(InvoiceTypeCode::DebitNote, $debitDocument->typeCode());
+        $this->assertSame(InvoiceTransactionCode::Standard, $debitDocument->transactionCode());
         $this->assertSame($invoice->invoice_number, $debitDocument->originalDocument?->invoiceNumber);
+        $this->assertSame('رسوم إضافية', $debitDocument->reason);
         $this->assertSame('1.50', $debitDocument->tax->amount);
 
         $freshInvoice = $invoice->fresh();
@@ -368,6 +371,10 @@ class Phase5EInvoiceDomainTest extends TestCase
             $this->assertStringNotContainsString('finance_settings', $sql);
             $this->assertStringNotContainsString('from "workspaces"', $sql);
             $this->assertStringNotContainsString('from `workspaces`', $sql);
+            $this->assertStringNotContainsString('from "orders"', $sql);
+            $this->assertStringNotContainsString('from `orders`', $sql);
+            $this->assertStringNotContainsString('order_items', $sql);
+            $this->assertStringNotContainsString('finance_invoice_payments', $sql);
         }
     }
 

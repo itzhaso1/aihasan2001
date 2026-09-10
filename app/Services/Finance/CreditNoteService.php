@@ -114,6 +114,9 @@ class CreditNoteService
                     $itemAttributes['exemption_reason'] = $item['exemption_reason'] ?? null;
                     $itemAttributes['exemption_code'] = $item['exemption_code'] ?? null;
                 }
+                if (FinanceCreditNoteItem::hasUnitCodeColumn()) {
+                    $itemAttributes['unit_code'] = $item['unit_code'] ?? null;
+                }
                 FinanceCreditNoteItem::withoutGlobalScopes()->create($itemAttributes);
             }
 
@@ -368,6 +371,7 @@ class CreditNoteService
                 'tax_profile_type' => $rawItem['tax_profile_type'] ?? $rawItem['tax_type'] ?? $taxType,
                 'exemption_reason' => $rawItem['exemption_reason'] ?? null,
                 'exemption_code' => $rawItem['exemption_code'] ?? null,
+                'unit_code' => $this->nullableCode($rawItem['unit_code'] ?? null),
                 'metadata' => is_array($rawItem['metadata'] ?? null) ? $rawItem['metadata'] : null,
             ];
             if (array_key_exists('tax_rate', $rawItem)) {
@@ -404,6 +408,7 @@ class CreditNoteService
                 'total' => $line->total,
                 'exemption_reason' => $line->exemptionReason,
                 'exemption_code' => $line->exemptionCode,
+                'unit_code' => $source['unit_code'] ?? null,
                 'metadata' => $source['metadata'],
             ];
         }
@@ -464,5 +469,16 @@ class CreditNoteService
             : ['next_debit_note_sequence' => $sequence + 1]);
 
         return $number;
+    }
+
+    private function nullableCode(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $code = is_string($value) || is_numeric($value) ? (string) $value : null;
+
+        return $code === '' ? null : $code;
     }
 }

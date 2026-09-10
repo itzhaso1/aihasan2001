@@ -37,6 +37,7 @@ use RuntimeException;
     'issued_at',
     'issue_date',
     'due_date',
+    'supply_date',
     'currency',
     'subtotal',
     'discount',
@@ -104,6 +105,7 @@ class FinanceInvoice extends WorkspaceScopedModel
         return [
             'issue_date' => 'date',
             'due_date' => 'date',
+            'supply_date' => 'date',
             'issued_at' => 'datetime',
             'subtotal' => 'decimal:2',
             'discount' => 'decimal:2',

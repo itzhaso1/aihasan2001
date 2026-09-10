@@ -64,6 +64,7 @@ class EInvoiceFactory
             sourceMetadata: is_array($payload['metadata'] ?? null) ? $payload['metadata'] : [],
             reason: $this->nullableString($document['reason'] ?? null),
             notes: $this->nullableString($document['notes'] ?? null),
+            supplyDate: $this->nullableDate($document['supply_date'] ?? null),
         );
     }
 
@@ -155,5 +156,20 @@ class EInvoiceFactory
         }
 
         return (string) $value;
+    }
+
+    private function nullableDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+
+        $date = (string) $value;
+
+        return $date === '' ? null : substr($date, 0, 10);
     }
 }

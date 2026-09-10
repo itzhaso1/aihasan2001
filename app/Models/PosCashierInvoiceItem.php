@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'item_type',
     'size_label',
     'quantity',
+    'unit_code',
     'unit_price',
     'discount_amount',
     'taxable_amount',

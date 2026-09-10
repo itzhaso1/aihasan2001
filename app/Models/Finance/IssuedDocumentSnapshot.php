@@ -31,7 +31,11 @@ class IssuedDocumentSnapshot extends WorkspaceScopedModel
 
     public const SOURCE_POS_CASHIER_INVOICE = 'pos_cashier_invoice';
 
-    public const SCHEMA_VERSION = 1;
+    /**
+     * Payload schema for newly captured snapshots.
+     * Existing rows keep the version frozen in payload.metadata.schema_version.
+     */
+    public const SCHEMA_VERSION = 2;
 
     protected function casts(): array
     {

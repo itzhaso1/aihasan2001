@@ -42,6 +42,7 @@ final class EInvoiceDocument
         public readonly array $sourceMetadata,
         public readonly ?string $reason = null,
         public readonly ?string $notes = null,
+        public readonly ?string $supplyDate = null,
     ) {}
 
     public function kind(): ElectronicDocumentKind
@@ -108,6 +109,7 @@ final class EInvoiceDocument
             'source_metadata' => $this->sourceMetadata,
             'reason' => $this->reason,
             'notes' => $this->notes,
+            'supply_date' => $this->supplyDate,
         ];
     }
 }
