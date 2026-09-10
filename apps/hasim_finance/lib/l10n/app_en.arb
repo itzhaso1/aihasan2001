@@ -357,5 +357,12 @@
   "statementDate": "Statement date",
   "monthlyCashFlow": "Monthly cash inflow",
   "journalEntries": "Journal entries",
-  "uploading": "Uploading…"
+  "uploading": "Uploading…",
+  "taxRates": "Tax rates",
+  "isDefault": "Default",
+  "isActive": "Active",
+  "linkedLedgerAccount": "Linked ledger account",
+  "accountType": "Account type",
+  "cashAccount": "Cash",
+  "bankAccount": "Bank"
 }

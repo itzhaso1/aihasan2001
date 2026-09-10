@@ -357,5 +357,12 @@
     "statementDate": "تاريخ الكشف",
     "monthlyCashFlow": "التدفق النقدي الشهري",
     "journalEntries": "قيود اليومية",
-    "uploading": "جاري الرفع…"
+    "uploading": "جاري الرفع…",
+    "taxRates": "نسب الضريبة",
+    "isDefault": "افتراضية",
+    "isActive": "فعّالة",
+    "linkedLedgerAccount": "ربط بحساب محاسبي",
+    "accountType": "نوع الحساب",
+    "cashAccount": "نقدي",
+    "bankAccount": "بنكي"
 }

@@ -283,6 +283,35 @@ class FinanceFlutterFeatureParityTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.has_logo', false);
 
+        $settings = $this->withHeaders($headers)->getJson('/api/finance/v1/settings')
+            ->assertOk()
+            ->json('data');
+        $this->assertIsArray($settings['tax_rates']);
+        $this->assertIsArray($settings['treasury_accounts']);
+        $this->assertIsArray($settings['finance_accounts']);
+
+        $this->withHeaders($headers)->postJson('/api/finance/v1/settings/tax-rates', [
+            'name' => 'VAT Extra',
+            'code' => 'VAT_X',
+            'type' => 'standard',
+            'rate' => 15,
+            'is_default' => true,
+            'is_active' => true,
+        ])->assertOk()->assertJsonPath('data.code', 'VAT_X');
+
+        $cash = $this->withHeaders($headers)->postJson('/api/finance/v1/settings/treasury-accounts', [
+            'name' => 'صندوق المكتب',
+            'type' => 'cash',
+            'currency' => 'SAR',
+            'opening_balance' => 50,
+            'current_balance' => 50,
+        ])->assertOk()->json('data');
+        $this->assertSame('cash', $cash['type']);
+
+        $settings = $this->withHeaders($headers)->getJson('/api/finance/v1/settings')->assertOk()->json('data');
+        $this->assertTrue(collect($settings['tax_rates'])->contains(fn ($row) => ($row['code'] ?? '') === 'VAT_X'));
+        $this->assertTrue(collect($settings['treasury_accounts'])->contains(fn ($row) => ($row['name'] ?? '') === 'صندوق المكتب'));
+
         $this->withHeaders($headers)->getJson('/api/finance/v1/dashboard?'.http_build_query([
             'from' => now()->startOfMonth()->toDateString(),
             'to' => now()->toDateString(),

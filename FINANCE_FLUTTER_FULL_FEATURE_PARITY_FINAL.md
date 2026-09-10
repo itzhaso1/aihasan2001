@@ -48,7 +48,7 @@ Laravel remains the financial authority. Flutter (`apps/hasim_finance`) is a ful
 | Treasury transfers | Yes | GET/POST treasury | map | `/treasury` | transfer | n/a | Yes | transfer | n/a | n/a | finance.view / accounting.manage | COMPLETE |
 | Bank statement matching | Import, lines, suggest, accept, complete | `/treasury/statements*` wrapping `BankReconciliationService` | map | `/treasury` + `/treasury/statements/:id` | Yes | lines | Yes | add lines, suggest, accept, ignore (service), complete | n/a | n/a | finance.view / accounting.manage | COMPLETE |
 | Bank matched-line undo | Not in Web UI or service | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | COMPLETE — no Web/service undo to port. Matching does not post new ledger entries. |
-| Settings company | Yes | GET/PUT `/settings` | map | `/settings` | n/a | Yes | Yes | save, tax rate, treasury account | n/a | n/a | finance.settings | COMPLETE |
+| Settings company | Yes | GET/PUT `/settings` | map | `/settings` | n/a | Yes | Yes | save company, tax rates list/create (default/active), treasury cash/bank create with balances and linked ledger account | n/a | n/a | finance.settings | COMPLETE |
 | Settings logo | logo + remove_logo | GET/POST/DELETE `/settings/logo` | has_logo / bytes | `/settings` | Yes | replace | preview | choose, upload, replace, remove | n/a | n/a | finance.settings | COMPLETE |
 | ZATCA secrets / keys / stamp UI | Server | stripped | n/a | read-only mode | No | No | Mode | n/a | n/a | n/a | server | WEB-ONLY |
 | Search | Yes | GET `/search` | buckets | `/search` | n/a | n/a | Yes | navigate | q | n/a | finance.view | COMPLETE |
@@ -83,9 +83,11 @@ Web `SettingsController::updateCompany` stores `logo` on the public disk and can
 |---|---|
 | `flutter analyze` (`apps/hasim_finance`) | No issues |
 | `flutter test` | 68 passed |
-| `FinanceFlutterFeatureParityTest` (hubs, catalog, attachments, logo, dashboard filters, bank matching, workspace isolation) | passed |
+| `FinanceFlutterFeatureParityTest` (hubs, catalog, attachments, logo, dashboard filters, bank matching, settings tax/treasury lists, workspace isolation) | passed |
 | Additional Finance Flutter / checkout / billing PHPUnit | passed |
 | Pint | dirty files formatted |
+
+Live authenticated visual QA is recorded after this revision against a local Finance workspace.
 
 ## Product boundaries respected
 

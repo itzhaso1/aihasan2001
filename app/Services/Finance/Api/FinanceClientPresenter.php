@@ -661,6 +661,32 @@ class FinanceClientPresenter
             'zatca_integration_mode' => $setting->zatca_integration_mode,
             'has_logo' => filled($setting->logo_path),
             'logo_url' => $this->publicFileUrl($setting->logo_path),
+            'tax_rates' => FinanceTaxRate::query()
+                ->orderByDesc('is_default')
+                ->orderBy('id')
+                ->get()
+                ->map(fn (FinanceTaxRate $rate) => $this->taxRate($rate))
+                ->values()
+                ->all(),
+            'treasury_accounts' => FinanceTreasuryAccount::query()
+                ->with('linkedAccount')
+                ->orderBy('type')
+                ->orderBy('name')
+                ->get()
+                ->map(fn (FinanceTreasuryAccount $account) => $this->treasuryAccount($account))
+                ->values()
+                ->all(),
+            'finance_accounts' => FinanceAccount::query()
+                ->orderBy('code')
+                ->get(['id', 'code', 'name', 'type'])
+                ->map(fn (FinanceAccount $account) => [
+                    'id' => (int) $account->id,
+                    'code' => $account->code,
+                    'name' => $account->name,
+                    'type' => $account->type,
+                ])
+                ->values()
+                ->all(),
         ];
     }
 
@@ -896,6 +922,8 @@ class FinanceClientPresenter
             'opening_balance' => $this->money($account->opening_balance ?? 0),
             'current_balance' => $this->money($account->current_balance ?? 0),
             'linked_finance_account_id' => $account->linked_finance_account_id ? (int) $account->linked_finance_account_id : null,
+            'linked_account_code' => $account->linkedAccount?->code,
+            'linked_account_name' => $account->linkedAccount?->name,
             'is_active' => (bool) $account->is_active,
         ];
     }

@@ -1081,4 +1081,25 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get uploading => 'جاري الرفع…';
+
+  @override
+  String get taxRates => 'نسب الضريبة';
+
+  @override
+  String get isDefault => 'افتراضية';
+
+  @override
+  String get isActive => 'فعّالة';
+
+  @override
+  String get linkedLedgerAccount => 'ربط بحساب محاسبي';
+
+  @override
+  String get accountType => 'نوع الحساب';
+
+  @override
+  String get cashAccount => 'نقدي';
+
+  @override
+  String get bankAccount => 'بنكي';
 }

@@ -646,82 +646,98 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                 if (c.billingSummary.isNotEmpty)
                   TotalsCard(
                     subtotal: '${c.billingSummary['invoiced_total'] ?? c.value}',
-                    tax: '0.00',
+                    tax: '${c.billingSummary['tax_total'] ?? '0.00'}',
                     total: '${c.billingSummary['invoiced_total'] ?? c.value}',
                     paid: '${c.billingSummary['paid_total'] ?? ''}',
                     due: '${c.billingSummary['outstanding'] ?? ''}',
                   ),
-                if (c.items.isNotEmpty) ...[
-                  Text(l.lines, style: Theme.of(context).textTheme.titleMedium),
-                  for (final item in c.items)
-                    ListTile(
-                      title: Text(item.title ?? item.description ?? ''),
-                      subtitle: Text('${l.quantity}: ${item.quantity} · ${l.price}: ${item.unitPrice}'),
-                      trailing: Text(item.total ?? ''),
-                    ),
-                ],
-                for (final s in c.scheduleRecords)
-                  ListTile(
-                    title: Text(s.title ?? l.billingSchedule),
-                    subtitle: Text('${s.frequency} · ${s.status} · ${l.nextRun}: ${s.nextRunOn ?? ''} · ${l.autoIssue}: ${s.autoIssue}'),
-                    trailing: Text(s.amount),
-                    isThreeLine: true,
-                    onTap: () {},
-                  ),
-                for (final s in c.scheduleRecords)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Wrap(
-                      spacing: 8,
-                      children: [
-                        TextButton(
-                          onPressed: () async {
-                            try {
-                              final invoice = await ref.read(financeApiProvider).generateScheduleInvoice(c.id, s.id);
-                              await _load();
-                              if (context.mounted) {
-                                showSnack(context, invoice?.invoiceNumber ?? AppLocalizations.of(context).success);
-                              }
-                            } catch (e) {
-                              if (context.mounted) showApiError(context, e);
-                            }
-                          },
-                          child: Text(l.generateInvoice),
+                FormSection(
+                  title: l.lines,
+                  child: c.items.isEmpty
+                      ? Text(l.empty, style: Theme.of(context).textTheme.bodySmall)
+                      : Column(
+                          children: [
+                            for (final item in c.items)
+                              ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(item.title ?? item.description ?? ''),
+                                subtitle: Text('${l.quantity}: ${item.quantity} · ${l.price}: ${item.unitPrice}'),
+                                trailing: Text(item.total ?? ''),
+                              ),
+                          ],
                         ),
-                        if (s.status != 'active')
-                          TextButton(
-                            onPressed: () async {
-                              try {
-                                await ref.read(financeApiProvider).scheduleAction(c.id, s.id, 'activate');
-                                await _load();
-                              } catch (e) {
-                                if (context.mounted) showApiError(context, e);
-                              }
-                            },
-                            child: Text(l.activateSchedule),
-                          ),
-                        if (s.status == 'active')
-                          TextButton(
-                            onPressed: () async {
-                              try {
-                                await ref.read(financeApiProvider).scheduleAction(c.id, s.id, 'pause');
-                                await _load();
-                              } catch (e) {
-                                if (context.mounted) showApiError(context, e);
-                              }
-                            },
-                            child: Text(l.pauseSchedule),
-                          ),
-                        TextButton(
-                          onPressed: () => confirmAndRun(context, () async {
-                            await ref.read(financeApiProvider).scheduleAction(c.id, s.id, 'cancel');
-                            await _load();
-                          }),
-                          child: Text(l.cancelSchedule),
+                ),
+                FormSection(
+                  title: l.billingSchedule,
+                  child: c.scheduleRecords.isEmpty
+                      ? Text(l.empty, style: Theme.of(context).textTheme.bodySmall)
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (final s in c.scheduleRecords) ...[
+                              ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                title: Text(s.title ?? l.billingSchedule),
+                                subtitle: Text('${s.frequency} · ${s.status} · ${l.nextRun}: ${s.nextRunOn ?? ''} · ${l.autoIssue}: ${s.autoIssue}'),
+                                trailing: Text(s.amount),
+                                isThreeLine: true,
+                              ),
+                              Wrap(
+                                spacing: 8,
+                                children: [
+                                  TextButton(
+                                    onPressed: () async {
+                                      try {
+                                        final invoice = await ref.read(financeApiProvider).generateScheduleInvoice(c.id, s.id);
+                                        await _load();
+                                        if (context.mounted) {
+                                          showSnack(context, invoice?.invoiceNumber ?? AppLocalizations.of(context).success);
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) showApiError(context, e);
+                                      }
+                                    },
+                                    child: Text(l.generateInvoice),
+                                  ),
+                                  if (s.status != 'active')
+                                    TextButton(
+                                      onPressed: () async {
+                                        try {
+                                          await ref.read(financeApiProvider).scheduleAction(c.id, s.id, 'activate');
+                                          await _load();
+                                        } catch (e) {
+                                          if (context.mounted) showApiError(context, e);
+                                        }
+                                      },
+                                      child: Text(l.activateSchedule),
+                                    ),
+                                  if (s.status == 'active')
+                                    TextButton(
+                                      onPressed: () async {
+                                        try {
+                                          await ref.read(financeApiProvider).scheduleAction(c.id, s.id, 'pause');
+                                          await _load();
+                                        } catch (e) {
+                                          if (context.mounted) showApiError(context, e);
+                                        }
+                                      },
+                                      child: Text(l.pauseSchedule),
+                                    ),
+                                  TextButton(
+                                    onPressed: () => confirmAndRun(context, () async {
+                                      await ref.read(financeApiProvider).scheduleAction(c.id, s.id, 'cancel');
+                                      await _load();
+                                    }),
+                                    child: Text(l.cancelSchedule),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
+                ),
                 if (c.generatedInvoices.isNotEmpty) ...[
                   Text(l.generatedInvoices, style: Theme.of(context).textTheme.titleMedium),
                   for (final invoice in c.generatedInvoices)
@@ -1810,20 +1826,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _taxCode = TextEditingController();
   final _taxPct = TextEditingController(text: '15');
   String _taxType = 'standard';
+  bool _taxDefault = false;
+  bool _taxActive = true;
   bool _allowManual = false;
   final _treasuryName = TextEditingController();
   final _iban = TextEditingController();
   final _bankName = TextEditingController();
   final _accountNumber = TextEditingController();
+  final _openingBal = TextEditingController();
+  final _currentBal = TextEditingController();
+  String _treasuryType = 'bank';
+  int? _linkedAccountId;
   Map<String, dynamic>? _settings;
   Uint8List? _logoBytes;
   bool _logoBusy = false;
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _host.text = ref.read(prefsStoreProvider).apiBaseOverride ?? '';
-    ref.read(financeApiProvider).settings().then(_applySettings).catchError((_) {});
+    _reloadSettings();
+  }
+
+  Future<void> _reloadSettings() async {
+    try {
+      final next = await ref.read(financeApiProvider).settings();
+      _applySettings(next);
+      if (mounted) setState(() { _loading = false; _error = null; });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = e is ApiException ? e.message : e.toString();
+        });
+      }
+    }
+  }
+
+  List<Map<String, dynamic>> _maps(String key) {
+    final raw = _settings?[key];
+    if (raw is! List) return const [];
+    return [
+      for (final row in raw)
+        if (row is Map) Map<String, dynamic>.from(row),
+    ];
   }
 
   void _applySettings(Map<String, dynamic> s) {
@@ -1895,6 +1943,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _iban.dispose();
     _bankName.dispose();
     _accountNumber.dispose();
+    _openingBal.dispose();
+    _currentBal.dispose();
     super.dispose();
   }
 
@@ -1904,10 +1954,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final auth = ref.watch(authControllerProvider);
     return Scaffold(
       appBar: AppBar(title: Text(l.settings)),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: FinancePage(
+        child: AsyncBody(
+          loading: _loading,
+          error: _error,
+          onRetry: _reloadSettings,
+          child: ListView(
+        padding: EdgeInsets.zero,
         children: [
-          ListTile(title: Text(l.workspace), subtitle: Text(auth.workspace?.name ?? '-')),
+          ListTile(contentPadding: EdgeInsets.zero, title: Text(l.workspace), subtitle: Text(auth.workspace?.name ?? '-')),
           if (auth.workspaces.length > 1)
             DropdownButtonFormField<int>(
               // ignore: deprecated_member_use
@@ -2082,74 +2137,157 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             if (auth.permissions.settings) ...[
               const SizedBox(height: 12),
               FormSection(
-                title: l.createTaxRate,
-                child: FormGrid(children: [
-                  TextField(controller: _taxName, decoration: InputDecoration(labelText: l.fieldName)),
-                  TextField(controller: _taxCode, decoration: InputDecoration(labelText: l.sku)),
-                  TextField(controller: _taxPct, decoration: InputDecoration(labelText: l.taxRate)),
-                  DropdownButtonFormField(
-                    // ignore: deprecated_member_use
-                    value: _taxType,
-                    decoration: InputDecoration(labelText: l.taxProfile),
-                    items: [
-                      DropdownMenuItem(value: 'standard', child: Text(l.standardTax)),
-                      DropdownMenuItem(value: 'zero_rated', child: Text(l.zeroRated)),
-                      DropdownMenuItem(value: 'exempt', child: Text(l.exempt)),
-                      DropdownMenuItem(value: 'out_of_scope', child: Text(l.outOfScope)),
-                    ],
-                    onChanged: (v) => setState(() => _taxType = v ?? 'standard'),
-                  ),
-                ]),
-              ),
-              FilledButton.tonal(
-                onPressed: () async {
-                  try {
-                    await ref.read(financeApiProvider).storeTaxRate({
-                      'name': _taxName.text.trim(),
-                      'code': _taxCode.text.trim(),
-                      'type': _taxType,
-                      'rate': _taxPct.text.trim(),
-                      'is_active': true,
-                    });
-                    if (context.mounted) showSnack(context, l.success);
-                  } catch (e) {
-                    if (context.mounted) showFormError(context, e);
-                  }
-                },
-                child: Text(l.createTaxRate),
+                title: l.taxRates,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_maps('tax_rates').isEmpty)
+                      Text(l.empty, style: Theme.of(context).textTheme.bodySmall),
+                    for (final rate in _maps('tax_rates'))
+                      ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('${rate['name'] ?? ''}'),
+                        subtitle: Text('${rate['code'] ?? ''} · ${rate['type'] ?? ''} · ${rate['rate'] ?? ''}%'),
+                        trailing: Text([
+                          if (rate['is_default'] == true) l.isDefault,
+                          if (rate['is_active'] == true) l.isActive,
+                        ].join(' · ')),
+                      ),
+                    const SizedBox(height: 8),
+                    FormGrid(children: [
+                      TextField(controller: _taxName, decoration: InputDecoration(labelText: l.fieldName)),
+                      TextField(controller: _taxCode, decoration: InputDecoration(labelText: l.sku)),
+                      TextField(controller: _taxPct, decoration: InputDecoration(labelText: l.taxRate)),
+                      DropdownButtonFormField(
+                        // ignore: deprecated_member_use
+                        value: _taxType,
+                        decoration: InputDecoration(labelText: l.taxProfile),
+                        items: [
+                          DropdownMenuItem(value: 'standard', child: Text(l.standardTax)),
+                          DropdownMenuItem(value: 'zero_rated', child: Text(l.zeroRated)),
+                          DropdownMenuItem(value: 'exempt', child: Text(l.exempt)),
+                          DropdownMenuItem(value: 'out_of_scope', child: Text(l.outOfScope)),
+                        ],
+                        onChanged: (v) => setState(() => _taxType = v ?? 'standard'),
+                      ),
+                    ]),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(l.isDefault),
+                      value: _taxDefault,
+                      onChanged: (v) => setState(() => _taxDefault = v),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(l.isActive),
+                      value: _taxActive,
+                      onChanged: (v) => setState(() => _taxActive = v),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: () async {
+                        try {
+                          await ref.read(financeApiProvider).storeTaxRate({
+                            'name': _taxName.text.trim(),
+                            'code': _taxCode.text.trim(),
+                            'type': _taxType,
+                            'rate': _taxPct.text.trim(),
+                            'is_default': _taxDefault,
+                            'is_active': _taxActive,
+                          });
+                          await _reloadSettings();
+                          if (context.mounted) showSnack(context, l.success);
+                        } catch (e) {
+                          if (context.mounted) showFormError(context, e);
+                        }
+                      },
+                      child: Text(l.createTaxRate),
+                    ),
+                  ],
+                ),
               ),
               FormSection(
                 title: l.createTreasuryAccount,
-                child: FormGrid(children: [
-                  TextField(controller: _treasuryName, decoration: InputDecoration(labelText: l.fieldName)),
-                  TextField(controller: _bankName, decoration: InputDecoration(labelText: l.bankName)),
-                  TextField(controller: _iban, decoration: InputDecoration(labelText: l.iban)),
-                  TextField(controller: _accountNumber, decoration: InputDecoration(labelText: l.accountNumber)),
-                ]),
-              ),
-              FilledButton.tonal(
-                onPressed: () async {
-                  try {
-                    await ref.read(financeApiProvider).storeTreasuryAccount({
-                      'name': _treasuryName.text.trim(),
-                      'type': 'bank',
-                      'currency': _currency.text.trim().isEmpty ? 'SAR' : _currency.text.trim(),
-                      'iban': _iban.text.trim(),
-                      'bank_name': _bankName.text.trim(),
-                      'account_number': _accountNumber.text.trim(),
-                    });
-                    if (context.mounted) showSnack(context, l.success);
-                  } catch (e) {
-                    if (context.mounted) showFormError(context, e);
-                  }
-                },
-                child: Text(l.createTreasuryAccount),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_maps('treasury_accounts').isEmpty)
+                      Text(l.empty, style: Theme.of(context).textTheme.bodySmall),
+                    for (final account in _maps('treasury_accounts'))
+                      ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('${account['name'] ?? ''}'),
+                        subtitle: Text([
+                          account['type'] == 'cash' ? l.cashAccount : l.bankAccount,
+                          '${account['current_balance'] ?? '0.00'} ${account['currency'] ?? ''}',
+                          if ((account['linked_account_code'] ?? '').toString().isNotEmpty)
+                            '${account['linked_account_code']} ${account['linked_account_name'] ?? ''}',
+                        ].join(' · ')),
+                      ),
+                    const SizedBox(height: 8),
+                    FormGrid(children: [
+                      TextField(controller: _treasuryName, decoration: InputDecoration(labelText: l.fieldName)),
+                      DropdownButtonFormField<String>(
+                        // ignore: deprecated_member_use
+                        value: _treasuryType,
+                        decoration: InputDecoration(labelText: l.accountType),
+                        items: [
+                          DropdownMenuItem(value: 'cash', child: Text(l.cashAccount)),
+                          DropdownMenuItem(value: 'bank', child: Text(l.bankAccount)),
+                        ],
+                        onChanged: (v) => setState(() => _treasuryType = v ?? 'bank'),
+                      ),
+                      TextField(controller: _openingBal, decoration: InputDecoration(labelText: l.openingBalance)),
+                      TextField(controller: _currentBal, decoration: InputDecoration(labelText: l.currentBalance)),
+                      TextField(controller: _bankName, decoration: InputDecoration(labelText: l.bankName)),
+                      TextField(controller: _iban, decoration: InputDecoration(labelText: l.iban)),
+                      TextField(controller: _accountNumber, decoration: InputDecoration(labelText: l.accountNumber)),
+                      OptionPicker(
+                        label: l.linkedLedgerAccount,
+                        options: [
+                          for (final account in _maps('finance_accounts'))
+                            NamedOption(
+                              id: int.parse('${account['id']}'),
+                              name: '${account['code'] ?? ''} ${account['name'] ?? ''}'.trim(),
+                            ),
+                        ],
+                        value: _linkedAccountId,
+                        onChanged: (id) => setState(() => _linkedAccountId = id),
+                      ),
+                    ]),
+                    FilledButton.tonal(
+                      onPressed: () async {
+                        try {
+                          await ref.read(financeApiProvider).storeTreasuryAccount({
+                            'name': _treasuryName.text.trim(),
+                            'type': _treasuryType,
+                            'currency': _currency.text.trim().isEmpty ? 'SAR' : _currency.text.trim(),
+                            if (_openingBal.text.trim().isNotEmpty) 'opening_balance': _openingBal.text.trim(),
+                            if (_currentBal.text.trim().isNotEmpty) 'current_balance': _currentBal.text.trim(),
+                            'iban': _iban.text.trim(),
+                            'bank_name': _bankName.text.trim(),
+                            'account_number': _accountNumber.text.trim(),
+                            if (_linkedAccountId != null) 'linked_finance_account_id': _linkedAccountId,
+                          });
+                          await _reloadSettings();
+                          if (context.mounted) showSnack(context, l.success);
+                        } catch (e) {
+                          if (context.mounted) showFormError(context, e);
+                        }
+                      },
+                      child: Text(l.createTreasuryAccount),
+                    ),
+                  ],
+                ),
               ),
             ],
           ],
           const Divider(),
           FilledButton(onPressed: () => ref.read(authControllerProvider.notifier).logout(), child: Text(l.logout)),
         ],
+          ),
+        ),
       ),
     );
   }

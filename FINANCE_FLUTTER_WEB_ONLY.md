@@ -30,6 +30,7 @@ These are **not** Web-only:
 - Company logo upload/replace/remove via `/settings/logo`, reusing Web snapshot-safe delete rules.
 - Dashboard product / project / lifecycle / payment-method filters (existing GET `/dashboard` query params).
 - Bank statement create / lines / suggest / match / ignore / complete via `BankReconciliationService`.
+- Settings tax-rate list/create (`is_default`, `is_active`) and treasury cash/bank create with opening/current balance and linked ledger account. GET `/settings` now returns `tax_rates`, `treasury_accounts`, and `finance_accounts`.
 
 ## Quote attachments — not listed as Web-only
 

@@ -2233,6 +2233,48 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'جاري الرفع…'**
   String get uploading;
+
+  /// No description provided for @taxRates.
+  ///
+  /// In ar, this message translates to:
+  /// **'نسب الضريبة'**
+  String get taxRates;
+
+  /// No description provided for @isDefault.
+  ///
+  /// In ar, this message translates to:
+  /// **'افتراضية'**
+  String get isDefault;
+
+  /// No description provided for @isActive.
+  ///
+  /// In ar, this message translates to:
+  /// **'فعّالة'**
+  String get isActive;
+
+  /// No description provided for @linkedLedgerAccount.
+  ///
+  /// In ar, this message translates to:
+  /// **'ربط بحساب محاسبي'**
+  String get linkedLedgerAccount;
+
+  /// No description provided for @accountType.
+  ///
+  /// In ar, this message translates to:
+  /// **'نوع الحساب'**
+  String get accountType;
+
+  /// No description provided for @cashAccount.
+  ///
+  /// In ar, this message translates to:
+  /// **'نقدي'**
+  String get cashAccount;
+
+  /// No description provided for @bankAccount.
+  ///
+  /// In ar, this message translates to:
+  /// **'بنكي'**
+  String get bankAccount;
 }
 
 class _AppLocalizationsDelegate

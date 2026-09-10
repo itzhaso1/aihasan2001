@@ -153,5 +153,9 @@ void main() {
     await pumpScreen(tester, const SettingsScreen());
     expect(find.text('شعار المنشأة'), findsOneWidget);
     expect(find.text('اختيار الشعار'), findsOneWidget);
+    expect(find.text('VAT 15'), findsOneWidget);
+    expect(find.text('صندوق المكتب'), findsOneWidget);
+    expect(find.text('نسب الضريبة'), findsOneWidget);
+    expect(find.textContaining('نقدي'), findsWidgets);
   });
 }

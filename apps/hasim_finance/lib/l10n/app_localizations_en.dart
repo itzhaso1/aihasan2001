@@ -1083,4 +1083,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get uploading => 'Uploading…';
+
+  @override
+  String get taxRates => 'Tax rates';
+
+  @override
+  String get isDefault => 'Default';
+
+  @override
+  String get isActive => 'Active';
+
+  @override
+  String get linkedLedgerAccount => 'Linked ledger account';
+
+  @override
+  String get accountType => 'Account type';
+
+  @override
+  String get cashAccount => 'Cash';
+
+  @override
+  String get bankAccount => 'Bank';
 }

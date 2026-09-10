@@ -738,6 +738,15 @@ class FakeFinanceApi extends FinanceApi {
     'zatca_integration_mode': 'disabled',
     'currency': 'SAR',
     'allow_manual_invoice_numbers': false,
+    'tax_rates': [
+      {'id': 1, 'name': 'VAT 15', 'code': 'VAT_STD_15', 'type': 'standard', 'rate': '15.00', 'is_default': true, 'is_active': true},
+    ],
+    'treasury_accounts': [
+      {'id': 2, 'name': 'صندوق المكتب', 'type': 'cash', 'currency': 'SAR', 'current_balance': '50.00'},
+    ],
+    'finance_accounts': [
+      {'id': 9, 'code': '1100', 'name': 'الصندوق', 'type': 'asset'},
+    ],
   };
 
   @override
@@ -753,6 +762,50 @@ class FakeFinanceApi extends FinanceApi {
   Future<Map<String, dynamic>> removeCompanyLogo() async {
     settingsPayload = {...settingsPayload, 'has_logo': false};
     return settingsPayload;
+  }
+
+  @override
+  Future<Map<String, dynamic>> storeTaxRate(Map<String, dynamic> body) async {
+    final rates = [
+      ..._maps('tax_rates'),
+      {
+        'id': _maps('tax_rates').length + 10,
+        'name': body['name'],
+        'code': body['code'],
+        'type': body['type'],
+        'rate': body['rate'],
+        'is_default': body['is_default'] == true,
+        'is_active': body['is_active'] != false,
+      },
+    ];
+    settingsPayload = {...settingsPayload, 'tax_rates': rates};
+    return rates.last;
+  }
+
+  @override
+  Future<Map<String, dynamic>> storeTreasuryAccount(Map<String, dynamic> body) async {
+    final accounts = [
+      ..._maps('treasury_accounts'),
+      {
+        'id': _maps('treasury_accounts').length + 20,
+        'name': body['name'],
+        'type': body['type'] ?? 'bank',
+        'currency': body['currency'] ?? 'SAR',
+        'current_balance': body['current_balance'] ?? body['opening_balance'] ?? '0.00',
+        'opening_balance': body['opening_balance'] ?? '0.00',
+      },
+    ];
+    settingsPayload = {...settingsPayload, 'treasury_accounts': accounts};
+    return accounts.last;
+  }
+
+  List<Map<String, dynamic>> _maps(String key) {
+    final raw = settingsPayload[key];
+    if (raw is! List) return const [];
+    return [
+      for (final row in raw)
+        if (row is Map) Map<String, dynamic>.from(row),
+    ];
   }
 
   @override
