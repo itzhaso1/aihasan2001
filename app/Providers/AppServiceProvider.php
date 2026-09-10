@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\EInvoicing\Security\CryptographicStampSigner;
 use App\Models\Appointment\AppointmentBooking;
 use App\Models\Appointment\AppointmentHoliday;
 use App\Models\Appointment\AppointmentReminder;
@@ -93,6 +94,7 @@ use App\Policies\WebsitePolicy;
 use App\Policies\WorkspacePolicy;
 use App\Services\Domain\Contracts\DomainRegistrarInterface;
 use App\Services\Domain\NamecheapRegistrar;
+use App\Services\EInvoicing\Security\DeferredCryptographicStampSigner;
 use App\Services\Payment\Contracts\MerchantSettlementProviderInterface;
 use App\Services\Payment\Providers\HyperPayMerchantSettlementProvider;
 use App\Services\Subscription\Contracts\SubscriptionBillingProviderInterface;
@@ -122,6 +124,7 @@ class AppServiceProvider extends ServiceProvider
             MerchantSettlementProviderInterface::class,
             HyperPayMerchantSettlementProvider::class
         );
+        $this->app->bind(CryptographicStampSigner::class, DeferredCryptographicStampSigner::class);
     }
 
     /**

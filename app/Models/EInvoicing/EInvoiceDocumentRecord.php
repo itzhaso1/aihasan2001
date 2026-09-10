@@ -11,13 +11,14 @@ use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Finance\IssuedDocumentSnapshot;
 use App\Models\WorkspaceScopedModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use RuntimeException;
 
 /**
  * Persisted electronic-invoice identity and compliance lifecycle.
  *
  * Document amounts live in {@see IssuedDocumentSnapshot}; this row does not
- * recalculate tax and does not store clearance/hash/signature data.
+ * recalculate tax. Hash/ICV/PIH live on {@see EInvoiceSecurityRecord}.
  */
 class EInvoiceDocumentRecord extends WorkspaceScopedModel
 {
@@ -82,6 +83,11 @@ class EInvoiceDocumentRecord extends WorkspaceScopedModel
     public function snapshot(): BelongsTo
     {
         return $this->belongsTo(IssuedDocumentSnapshot::class, 'issued_document_snapshot_id');
+    }
+
+    public function securityRecord(): HasOne
+    {
+        return $this->hasOne(EInvoiceSecurityRecord::class, 'e_invoice_document_id');
     }
 
     public function transitionCompliance(ComplianceStatus $to): void
