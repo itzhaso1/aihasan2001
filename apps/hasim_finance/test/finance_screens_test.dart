@@ -53,8 +53,8 @@ void main() {
     await pumpScreen(tester, const InvoicesScreen());
 
     expect(find.text('INV-11'), findsOneWidget);
-    expect(find.textContaining('issued'), findsOneWidget);
-    expect(find.textContaining('unpaid'), findsWidgets);
+    expect(find.text('صادرة'), findsOneWidget);
+    expect(find.text('غير مدفوعة'), findsWidgets);
     expect(find.text('115.00'), findsWidgets);
   });
 

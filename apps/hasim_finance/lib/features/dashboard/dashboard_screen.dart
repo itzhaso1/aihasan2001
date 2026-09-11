@@ -14,6 +14,7 @@ import 'package:hasim_finance/core/widgets/date_field.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
 import 'package:hasim_finance/features/shared/customer_select.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
+import 'package:intl/intl.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -470,12 +471,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   String _monthLabel(String month) {
-    if (month.length >= 7) {
-      const names = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-      final m = int.tryParse(month.substring(5, 7)) ?? 0;
-      if (m >= 1 && m <= 12) return names[m - 1];
-    }
-    return month;
+    final date = DateTime.tryParse(month.length == 7 ? '$month-01' : month);
+    if (date == null) return month;
+    return DateFormat.MMMM(Localizations.localeOf(context).toString()).format(date);
   }
 
   double _num(String raw) => double.tryParse(raw.replaceAll(',', '').replaceAll(' ', '')) ?? 0;

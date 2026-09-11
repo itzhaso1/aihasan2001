@@ -1569,7 +1569,7 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
                     }),
                     child: Text(l.delete),
                   ),
-                if (e.status != 'draft') Text('لا يمكن تعديل مصروف مرحّل من التطبيق.'),
+                if (e.status != 'draft') Text(l.expenseLockedHint),
               ],
             ),
     );

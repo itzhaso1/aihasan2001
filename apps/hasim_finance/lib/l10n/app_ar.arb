@@ -496,5 +496,6 @@
   "newInvoice": "فاتورة جديدة",
   "statusOpen": "مفتوح",
   "statusClosed": "مغلق",
-  "statusApproved": "معتمد"
+  "statusApproved": "معتمد",
+  "expenseLockedHint": "لا يمكن تعديل مصروف مرحّل من التطبيق."
 }

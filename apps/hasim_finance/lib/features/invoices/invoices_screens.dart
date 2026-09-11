@@ -336,21 +336,31 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(invoice.invoiceNumber ?? '#${invoice.id}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 2),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(invoice.invoiceNumber ?? '#${invoice.id}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                        StatusChip(label: documentStatusLabel(invoice.documentStatus, l), tone: toneFor(invoice.documentStatus)),
+                        StatusChip(label: paymentStatusLabel(invoice.paymentStatus, l), tone: toneFor(invoice.paymentStatus)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
                     Text(
                       [
                         invoice.customerName ?? '',
-                        invoice.documentStatus,
-                        invoice.paymentStatus,
-                        invoice.issueDate,
+                        invoice.issueDate ?? '',
                         invoice.currency,
-                      ].where((v) => v.toString().isNotEmpty).join(' · '),
+                      ].where((v) => v.isNotEmpty).join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: FinanceTokens.textMuted, fontSize: 12),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [

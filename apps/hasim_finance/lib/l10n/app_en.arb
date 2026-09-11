@@ -496,5 +496,6 @@
   "newInvoice": "New invoice",
   "statusOpen": "Open",
   "statusClosed": "Closed",
-  "statusApproved": "Approved"
+  "statusApproved": "Approved",
+  "expenseLockedHint": "Posted expenses cannot be edited from the app."
 }

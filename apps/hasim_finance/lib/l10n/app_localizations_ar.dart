@@ -1505,4 +1505,7 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get statusApproved => 'معتمد';
+
+  @override
+  String get expenseLockedHint => 'لا يمكن تعديل مصروف مرحّل من التطبيق.';
 }

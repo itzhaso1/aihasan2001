@@ -1506,4 +1506,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get statusApproved => 'Approved';
+
+  @override
+  String get expenseLockedHint =>
+      'Posted expenses cannot be edited from the app.';
 }

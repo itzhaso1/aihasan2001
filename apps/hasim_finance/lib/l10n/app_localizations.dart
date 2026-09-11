@@ -3067,6 +3067,12 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'معتمد'**
   String get statusApproved;
+
+  /// No description provided for @expenseLockedHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'لا يمكن تعديل مصروف مرحّل من التطبيق.'**
+  String get expenseLockedHint;
 }
 
 class _AppLocalizationsDelegate
