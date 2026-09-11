@@ -45,11 +45,14 @@ void main() {
                 body: Text('محتوى المحادثات'),
               ),
             ),
-            GoRoute(path: '/contact-groups', builder: (_, _) => const Scaffold(body: Text('شاشة المجموعات'))),
-            GoRoute(path: '/channels', builder: (_, _) => const Scaffold(body: Text('شاشة القنوات'))),
             GoRoute(path: '/contacts', builder: (_, _) => const Scaffold(body: Text('شاشة جهات الاتصال'))),
-            GoRoute(path: '/more/security', builder: (_, _) => const Scaffold(body: Text('شاشة الأجهزة'))),
+            GoRoute(path: '/channels', builder: (_, _) => const Scaffold(body: Text('شاشة القنوات'))),
+            GoRoute(path: '/plans', builder: (_, _) => const Scaffold(body: Text('شاشة الباقة'))),
             GoRoute(path: '/settings', builder: (_, _) => const Scaffold(body: Text('شاشة الإعدادات'))),
+            GoRoute(path: '/more/security', builder: (_, _) => const Scaffold(body: Text('شاشة الأمان'))),
+            GoRoute(path: '/notifications', builder: (_, _) => const Scaffold(body: Text('شاشة الإشعارات'))),
+            GoRoute(path: '/workspaces', builder: (_, _) => const Scaffold(body: Text('شاشة المساحات'))),
+            GoRoute(path: '/login', builder: (_, _) => const Scaffold(body: Text('شاشة الدخول'))),
             GoRoute(path: '/profile', builder: (_, _) => const Scaffold(body: Text('الملف'))),
           ],
         );
@@ -89,16 +92,21 @@ void main() {
     await tester.tap(find.byKey(const Key('hasim-more-btn')));
     await tester.pumpAndSettle();
 
-    expect(find.text('مجموعة جديدة'), findsOneWidget);
-    expect(find.text('مجتمعات'), findsOneWidget);
-    expect(find.text('الرسائل المميزة بنجمة'), findsOneWidget);
-    expect(find.text('الأجهزة المرتبطة'), findsOneWidget);
+    expect(find.text('جهات الاتصال'), findsOneWidget);
+    expect(find.text('القنوات'), findsOneWidget);
+    expect(find.text('الباقة والاستخدام'), findsOneWidget);
     expect(find.text('الإعدادات'), findsOneWidget);
-    expect(find.text('تسجيل الخروج'), findsNothing);
+    expect(find.text('الأمان والجلسات'), findsOneWidget);
+    expect(find.text('الإشعارات'), findsOneWidget);
+    expect(find.text('تبديل مساحة العمل'), findsOneWidget);
+    expect(find.text('تسجيل الخروج'), findsOneWidget);
+    expect(find.text('مجموعة جديدة'), findsNothing);
+    expect(find.text('مجتمعات'), findsNothing);
+    expect(find.text('الرسائل المميزة بنجمة'), findsNothing);
     expect(find.byType(BottomSheet), findsNothing);
 
     final button = tester.getRect(find.byKey(const Key('hasim-more-btn')));
-    final menu = tester.getRect(find.text('مجموعة جديدة'));
+    final menu = tester.getRect(find.text('جهات الاتصال'));
     expect(button.center.dx, lessThan(tester.view.physicalSize.width / 2));
     expect(menu.top, greaterThan(button.top));
     expect(menu.left, lessThan(tester.view.physicalSize.width / 2));
@@ -141,7 +149,7 @@ void main() {
     expect(find.text('شاشة الإعدادات'), findsOneWidget);
   });
 
-  testWidgets('new group item navigates to contact groups', (tester) async {
+  testWidgets('contacts item navigates to existing contacts route', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -153,18 +161,21 @@ void main() {
 
     await tester.tap(find.byKey(const Key('hasim-more-btn')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('مجموعة جديدة'));
+    await tester.tap(find.text('جهات الاتصال'));
     await tester.pumpAndSettle();
-    expect(find.text('شاشة المجموعات'), findsOneWidget);
+    expect(find.text('شاشة جهات الاتصال'), findsOneWidget);
   });
 
-  test('menu items stay mapped to existing HASIM destinations', () {
+  test('menu items stay mapped to original HASIM destinations', () {
     expect(hasimMoreMenuItems.map((e) => e.id).toList(), [
-      'new_group',
-      'communities',
-      'starred',
-      'devices',
+      'contacts',
+      'channels',
+      'plans',
       'settings',
+      'security',
+      'notifications',
+      'workspace',
+      'logout',
     ]);
   });
 }

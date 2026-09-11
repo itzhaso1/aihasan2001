@@ -81,7 +81,7 @@ class HasimShellHeader extends ConsumerWidget implements PreferredSizeWidget {
                   minimumSize: const Size(44, 44),
                   tapTargetSize: MaterialTapTargetSize.padded,
                 ),
-                onPressed: () => showHasimMoreMenu(buttonContext),
+                onPressed: () => showHasimMoreMenu(buttonContext, ref),
                 icon: const Icon(Icons.more_vert),
               );
             },
