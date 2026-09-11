@@ -224,33 +224,29 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   List<Widget> _iconCovers() {
     const covers = <_IconCover>[
-      _IconCover.circle(474, 361, 100),
-      _IconCover.circle(758, 519, 98),
-      _IconCover.circle(808, 754, 90),
-      _IconCover.box(670, 840, 200, 210),
-      _IconCover.box(55, 770, 220, 230),
-      _IconCover.circle(190, 518, 96),
+      _IconCover.circle(0, 474, 361, 100),
+      _IconCover.circle(1, 758, 519, 98),
+      _IconCover.circle(2, 808, 754, 90),
+      _IconCover.circle(3, 750, 930, 88),
+      _IconCover.circle(4, 148, 860, 88),
+      _IconCover.circle(4, 228, 918, 50),
+      _IconCover.circle(5, 190, 518, 96),
     ];
 
     return [
-      for (var i = 0; i < covers.length; i++)
+      for (final cover in covers)
         Positioned(
-          left: covers[i].left,
-          top: covers[i].top,
-          width: covers[i].width,
-          height: covers[i].height,
+          left: cover.left,
+          top: cover.top,
+          width: cover.width,
+          height: cover.height,
           child: IgnorePointer(
             child: Opacity(
-              opacity: (1 - _iconReveal[i].value).clamp(0.0, 1.0),
-              child: DecoratedBox(
+              opacity: (1 - _iconReveal[cover.reveal].value).clamp(0.0, 1.0),
+              child: const DecoratedBox(
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  shape: covers[i].circle
-                      ? BoxShape.circle
-                      : BoxShape.rectangle,
-                  borderRadius: covers[i].circle
-                      ? null
-                      : BorderRadius.circular(28),
+                  shape: BoxShape.circle,
                 ),
               ),
             ),
@@ -261,21 +257,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 }
 
 class _IconCover {
-  const _IconCover.circle(double cx, double cy, double r)
+  const _IconCover.circle(this.reveal, double cx, double cy, double r)
     : left = cx - r,
       top = cy - r,
       width = r * 2,
-      height = r * 2,
-      circle = true;
+      height = r * 2;
 
-  const _IconCover.box(this.left, this.top, this.width, this.height)
-    : circle = false;
-
+  final int reveal;
   final double left;
   final double top;
   final double width;
   final double height;
-  final bool circle;
 }
 
 class _LoadingBar extends StatelessWidget {
