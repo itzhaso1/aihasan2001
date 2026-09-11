@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:hasim/core/config/app_config.dart';
-import 'package:hasim/core/widgets/hasim_logo.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
+
+const hasimLoginArtAsset = 'assets/branding/hasim_login.png';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -28,10 +28,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    final ok = await ref.read(authControllerProvider.notifier).login(
-          _idController.text.trim(),
-          _passwordController.text,
-        );
+    final ok = await ref
+        .read(authControllerProvider.notifier)
+        .login(_idController.text.trim(), _passwordController.text);
     if (!mounted) return;
     if (ok) {
       final auth = ref.read(authControllerProvider);
@@ -60,16 +59,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final token = auth.accessToken ?? auth.idToken;
       if (token == null || token.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('يحتاج إعداد Google')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('يحتاج إعداد Google')));
         }
         return;
       }
-      final ok = await ref.read(authControllerProvider.notifier).socialLogin(
-            provider: 'google',
-            accessToken: token,
-          );
+      final ok = await ref
+          .read(authControllerProvider.notifier)
+          .socialLogin(provider: 'google', accessToken: token);
       if (!mounted) return;
       if (ok) {
         final state = ref.read(authControllerProvider);
@@ -78,7 +76,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       final msg = e.toString().toLowerCase();
-      final needsSetup = msg.contains('client') ||
+      final needsSetup =
+          msg.contains('client') ||
           msg.contains('platform') ||
           msg.contains('missing') ||
           msg.contains('not been configured') ||
@@ -87,7 +86,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           msg.contains('12500');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(needsSetup ? 'يحتاج إعداد Google' : 'تعذر تسجيل الدخول عبر Google.'),
+          content: Text(
+            needsSetup ? 'يحتاج إعداد Google' : 'تعذر تسجيل الدخول عبر Google.',
+          ),
         ),
       );
     } finally {
@@ -123,15 +124,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: 12),
-                      const HasimLogo(size: 88, showWordmark: true),
-                      const SizedBox(height: 8),
-                      Text(
-                        'إدارة المحادثات والحجوزات',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey.shade700),
+                      Image.asset(
+                        hasimLoginArtAsset,
+                        key: const Key('hasim-login-art'),
+                        height: 280,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 12),
                       TextFormField(
                         controller: _idController,
                         decoration: const InputDecoration(
@@ -140,7 +140,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         textDirection: TextDirection.ltr,
                         textAlign: TextAlign.left,
-                        validator: (v) => (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
@@ -150,11 +151,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           labelText: 'كلمة المرور',
                           prefixIcon: const Icon(Icons.lock_outline),
                           suffixIcon: IconButton(
-                            onPressed: () => setState(() => _obscure = !_obscure),
-                            icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                            onPressed: () =>
+                                setState(() => _obscure = !_obscure),
+                            icon: Icon(
+                              _obscure
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
                           ),
                         ),
-                        validator: (v) => (v == null || v.isEmpty) ? 'مطلوب' : null,
+                        validator: (v) =>
+                            (v == null || v.isEmpty) ? 'مطلوب' : null,
                       ),
                       Align(
                         alignment: AlignmentDirectional.centerStart,
@@ -166,7 +173,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       if (auth.error != null) ...[
                         Text(
                           auth.error!,
-                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
@@ -177,28 +186,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ? const SizedBox(
                                 height: 22,
                                 width: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                             : const Text('دخول'),
                       ),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
-                        onPressed: (auth.loading || _googleBusy) ? null : _google,
+                        onPressed: (auth.loading || _googleBusy)
+                            ? null
+                            : _google,
                         icon: _googleBusy
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.g_mobiledata_rounded, size: 28),
                         label: const Text('الدخول عبر Google'),
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        AppConfig.appName,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                      ),
+                      const SizedBox(height: 8),
                     ],
                   ),
                 ),

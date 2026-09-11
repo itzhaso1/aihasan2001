@@ -91,6 +91,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 2000));
     await tester.pumpAndSettle();
     expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.byKey(const Key('hasim-login-art')), findsOneWidget);
     expect(find.text('دخول'), findsOneWidget);
     expect(find.textContaining('نسيت كلمة المرور'), findsOneWidget);
     expect(find.textContaining('Google'), findsOneWidget);
