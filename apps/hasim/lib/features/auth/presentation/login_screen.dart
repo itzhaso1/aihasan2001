@@ -357,6 +357,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   : const Row(
                                       mainAxisAlignment:
                                           MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
                                         _GoogleMark(),
                                         SizedBox(width: 10),
@@ -373,6 +374,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             const SizedBox(height: 22),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 const Text(
                                   'ليس لديك حساب؟',
