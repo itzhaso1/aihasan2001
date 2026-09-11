@@ -58,6 +58,9 @@ Route::post('/quotes/{quote}/reject', [QuoteController::class, 'reject'])->middl
 Route::post('/quotes/{quote}/convert', [QuoteController::class, 'convert'])->middleware('throttle:mobile-write');
 Route::post('/quotes/{quote}/send', [QuoteController::class, 'send'])->middleware('throttle:mobile-write');
 Route::get('/quotes/{quote}/pdf', [QuoteController::class, 'pdf']);
+Route::post('/quotes/{quote}/attachments', [QuoteController::class, 'storeAttachment'])->middleware('throttle:mobile-write');
+Route::get('/quotes/{quote}/attachments/{attachment}', [QuoteController::class, 'downloadAttachment']);
+Route::delete('/quotes/{quote}/attachments/{attachment}', [QuoteController::class, 'destroyAttachment'])->middleware('throttle:mobile-write');
 
 Route::get('/sales-invoices', [SalesInvoiceController::class, 'index']);
 Route::post('/sales-invoices', [SalesInvoiceController::class, 'store'])->middleware('throttle:mobile-write');
@@ -76,6 +79,8 @@ Route::post('/sales-invoices/{invoice}/attachments', [SalesInvoiceController::cl
 Route::get('/sales-invoices/{invoice}/attachments/{attachment}', [SalesInvoiceController::class, 'downloadAttachment']);
 Route::delete('/sales-invoices/{invoice}/attachments/{attachment}', [SalesInvoiceController::class, 'destroyAttachment'])->middleware('throttle:mobile-write');
 Route::get('/sales-invoices/{invoice}/pdf', [SalesInvoiceController::class, 'pdf']);
+Route::get('/sales-invoices/{invoice}/xml', [SalesInvoiceController::class, 'xml']);
+Route::get('/sales-invoices/{invoice}/qr', [SalesInvoiceController::class, 'qr']);
 
 Route::get('/payments', [PaymentController::class, 'index']);
 Route::get('/payments/{payment}', [PaymentController::class, 'show']);

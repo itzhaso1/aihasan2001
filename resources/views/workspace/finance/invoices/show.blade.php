@@ -306,13 +306,37 @@
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 class="text-sm font-bold text-slate-900">الفوترة الإلكترونية</h3>
-                <p class="mt-2 text-xs leading-5 text-slate-500">الفاتورة هنا مستند أعمال. طبقة ZATCA غير مهيأة في هذه المرحلة ولا يتم توليد QR أو XML.</p>
+                @php
+                    $zatca = $zatcaArtifacts ?? [];
+                    $xmlAvailable = (bool) ($zatca['xml_available'] ?? false);
+                    $qrAvailable = (bool) ($zatca['qr_available'] ?? false);
+                    $zatcaReason = $zatca['reason'] ?? null;
+                    $zatcaCopy = match (true) {
+                        (bool) ($zatca['not_applicable'] ?? false) => 'فواتير الشراء ليست مستندات فوترة إلكترونية صادرة للعميل.',
+                        $zatcaReason === 'not_issued' => 'بعد إصدار فاتورة المبيعات يولّد النظام مستند XML وأساس رمز QR داخلياً. لا يوجد ربط FATOORA أو اعتماد إنتاج.',
+                        $xmlAvailable => 'تم توليد مستندات الأساس (XML'.($qrAvailable ? ' ورمز QR' : '').') من لقطة الإصدار. هذا أساس داخلي وليس اعتماد FATOORA أو إبلاغ الإنتاج.',
+                        default => 'فاتورة صادرة بدون لقطة إلكترونية مكتملة بعد. لا يوجد ربط FATOORA أو اعتماد إنتاج.',
+                    };
+                @endphp
+                <p class="mt-2 text-xs leading-5 text-slate-500">{{ $zatcaCopy }}</p>
                 <ul class="mt-3 space-y-1.5 text-sm">
-                    <li class="text-slate-700">الفوترة الإلكترونية ZATCA: غير مهيأة</li>
+                    <li class="text-slate-700">التكامل الحالي: أساس داخلي — بلا تخليص FATOORA وبلا إبلاغ إنتاج</li>
                     <li class="text-slate-600">متطلب داخلي: {{ $zatcaRequirementLabels[$zatcaRequirement] ?? $zatcaRequirement }}</li>
+                    <li class="{{ $xmlAvailable ? 'text-emerald-700' : 'text-slate-500' }}">XML: {{ $xmlAvailable ? 'متوفر للتحميل' : 'غير متوفر' }}</li>
+                    <li class="{{ $qrAvailable ? 'text-emerald-700' : 'text-slate-500' }}">رمز QR: {{ $qrAvailable ? 'متوفر' : 'غير متوفر' }}</li>
                     <li class="{{ $companyVat ? 'text-emerald-700' : 'text-slate-500' }}">الرقم الضريبي للشركة (لقطة): {{ $companyVat ?: 'غير محفوظ في اللقطة' }}</li>
                     <li class="{{ $recipientVat ? 'text-emerald-700' : 'text-slate-500' }}">الرقم الضريبي للعميل/المورد (لقطة): {{ $recipientVat ?: '—' }}</li>
                 </ul>
+                @if($xmlAvailable || $qrAvailable)
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        @if($xmlAvailable)
+                            <a href="{{ route('workspace.finance.invoices.xml', $invoice) }}" class="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800">تحميل XML</a>
+                        @endif
+                        @if($qrAvailable)
+                            <a href="{{ route('workspace.finance.invoices.qr', $invoice) }}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">عرض رمز QR</a>
+                        @endif
+                    </div>
+                @endif
                 <p class="mt-3 whitespace-pre-line text-sm text-slate-600">{{ $invoice->notes ?: '' }}</p>
             </div>
         </div>
@@ -523,6 +547,12 @@
                 <h3 class="text-sm font-bold">المستندات</h3>
                 <ul class="mt-3 space-y-2 text-sm">
                     <li><a class="font-semibold text-[#06C2A4] hover:underline" href="{{ route('workspace.finance.invoices.pdf', $invoice) }}">تحميل PDF</a></li>
+                    @if(($zatcaArtifacts['xml_available'] ?? false) && $invoice->type !== 'purchase')
+                        <li><a class="font-semibold text-[#06C2A4] hover:underline" href="{{ route('workspace.finance.invoices.xml', $invoice) }}">تحميل XML الإلكتروني</a></li>
+                    @endif
+                    @if(($zatcaArtifacts['qr_available'] ?? false) && $invoice->type !== 'purchase')
+                        <li><a class="font-semibold text-[#06C2A4] hover:underline" href="{{ route('workspace.finance.invoices.qr', $invoice) }}">عرض رمز QR</a></li>
+                    @endif
                     @foreach($invoice->attachments as $attachment)
                         <li class="flex items-center justify-between gap-2">
                             <a class="text-slate-700 hover:underline" href="{{ route('workspace.finance.invoices.attachments.download', [$invoice, $attachment]) }}">{{ $attachment->file_name ?: ('مرفق #'.$attachment->id) }}</a>

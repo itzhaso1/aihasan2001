@@ -10,8 +10,21 @@
             <a href="{{ route('workspace.finance.exports.download', 'payments') }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">تصدير الدفعات CSV</a>
         </div>
 
-        <form method="GET" class="flex gap-2">
-            <input name="search" value="{{ request('search') }}" class="rounded-lg border-slate-300 text-sm" placeholder="بحث برقم الإيصال أو المرجع">
+        <form method="GET" class="flex flex-wrap gap-2">
+            <input name="search" value="{{ request('search') }}" class="rounded-lg border-slate-300 text-sm" placeholder="بحث برقم الإيصال أو المرجع أو العميل">
+            <select name="status" class="rounded-lg border-slate-300 text-sm">
+                <option value="">كل الحالات</option>
+                <option value="posted" @selected(request('status') === 'posted')>معتمد</option>
+                <option value="voided" @selected(request('status') === 'voided')>ملغى</option>
+            </select>
+            <select name="method" class="rounded-lg border-slate-300 text-sm">
+                <option value="">كل الطرق</option>
+                @foreach(['cash' => 'نقد', 'bank_transfer' => 'تحويل', 'card' => 'بطاقة', 'online' => 'إلكتروني', 'other' => 'أخرى'] as $method => $label)
+                    <option value="{{ $method }}" @selected(request('method') === $method)>{{ $label }}</option>
+                @endforeach
+            </select>
+            <input type="date" name="from" value="{{ request('from') }}" class="rounded-lg border-slate-300 text-sm" aria-label="من تاريخ">
+            <input type="date" name="to" value="{{ request('to') }}" class="rounded-lg border-slate-300 text-sm" aria-label="إلى تاريخ">
             <button class="rounded-lg bg-slate-800 px-3 py-2 text-sm text-white">بحث</button>
         </form>
 

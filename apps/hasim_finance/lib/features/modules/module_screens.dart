@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim_finance/core/theme/theme_controllers.dart';
+import 'package:hasim_finance/core/theme/finance_tokens.dart';
 import 'package:hasim_finance/core/layout/finance_layout.dart';
 import 'package:hasim_finance/core/providers/catalog_provider.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
@@ -20,21 +21,94 @@ import 'package:hasim_finance/features/shared/supplier_select.dart';
 import 'package:hasim_finance/features/reports/report_view.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
-class PaymentsScreen extends ConsumerWidget {
+class PaymentsScreen extends ConsumerStatefulWidget {
   const PaymentsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PaymentsScreen> createState() => _PaymentsScreenState();
+}
+
+class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
+  String? _status;
+  String? _method;
+  final _from = TextEditingController();
+  final _to = TextEditingController();
+  final _reference = TextEditingController();
+  int? _customerId;
+  int? _treasuryId;
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    _reference.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
+    final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
     return PagedListScreen<PaymentRecord>(
+      key: ValueKey('$_status-$_method-${_customerId}-${_treasuryId}-${_from.text}-${_to.text}-${_reference.text}'),
       title: l.payments,
       allowed: auth.permissions.paymentsView,
-      loader: (api, search, page) => api.payments(search: search, page: page),
+      filterBar: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: FormGrid(children: [
+          CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
+          DropdownButtonFormField<String?>(
+            // ignore: deprecated_member_use
+            value: _status,
+            decoration: InputDecoration(labelText: l.status),
+            items: [
+              DropdownMenuItem(value: null, child: Text(l.filterAll)),
+              DropdownMenuItem(value: 'posted', child: Text(l.statusPosted)),
+              DropdownMenuItem(value: 'reversed', child: Text(l.statusReversed)),
+            ],
+            onChanged: (value) => setState(() => _status = value),
+          ),
+          DropdownButtonFormField<String?>(
+            // ignore: deprecated_member_use
+            value: _method,
+            decoration: InputDecoration(labelText: l.method),
+            items: [
+              DropdownMenuItem(value: null, child: Text(l.filterAll)),
+              DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),
+              DropdownMenuItem(value: 'bank_transfer', child: Text(l.methodBank)),
+              DropdownMenuItem(value: 'card', child: Text(l.methodCard)),
+              DropdownMenuItem(value: 'other', child: Text(l.methodOther)),
+            ],
+            onChanged: (value) => setState(() => _method = value),
+          ),
+          TextField(controller: _from, decoration: InputDecoration(labelText: l.from), onSubmitted: (_) => setState(() {})),
+          TextField(controller: _to, decoration: InputDecoration(labelText: l.to), onSubmitted: (_) => setState(() {})),
+          TextField(controller: _reference, decoration: InputDecoration(labelText: l.reference), onSubmitted: (_) => setState(() {})),
+          OptionPicker(
+            label: l.treasuryAccount,
+            options: [for (final row in catalog.treasuryAccounts) NamedOption(id: row.id, name: row.name)],
+            value: _treasuryId,
+            onChanged: (id) => setState(() => _treasuryId = id),
+          ),
+          FilledButton.tonal(onPressed: () => setState(() {}), child: Text(l.refresh)),
+        ]),
+      ),
+      loader: (api, search, page) => api.payments(
+        search: search,
+        page: page,
+        status: _status,
+        method: _method,
+        customerId: _customerId,
+        from: _from.text.trim(),
+        to: _to.text.trim(),
+        reference: _reference.text.trim(),
+        treasuryAccountId: _treasuryId,
+      ),
       itemBuilder: (context, payment) => Card(
         child: ListTile(
           title: Text('${payment.amount} · ${payment.method ?? ''}'),
-          subtitle: Text('${payment.invoiceNumber ?? ''} · ${payment.customerName ?? ''} · ${payment.status}'),
+          subtitle: Text('${payment.invoiceNumber ?? ''} · ${payment.customerName ?? ''} · ${payment.status} · ${payment.reference ?? ''}'),
           onTap: () => context.push('/payments/${payment.id}'),
         ),
       ),
@@ -115,21 +189,81 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen> {
   }
 }
 
-class ReceiptsScreen extends ConsumerWidget {
+class ReceiptsScreen extends ConsumerStatefulWidget {
   const ReceiptsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReceiptsScreen> createState() => _ReceiptsScreenState();
+}
+
+class _ReceiptsScreenState extends ConsumerState<ReceiptsScreen> {
+  String? _status;
+  String? _method;
+  final _from = TextEditingController();
+  final _to = TextEditingController();
+  int? _customerId;
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<ReceiptRecord>(
+      key: ValueKey('$_status-$_method-${_customerId}-${_from.text}-${_to.text}'),
       title: l.receipts,
       allowed: auth.permissions.receiptsView,
-      loader: (api, search, page) => api.receipts(search: search, page: page),
+      filterBar: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: FormGrid(children: [
+          CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
+          DropdownButtonFormField<String?>(
+            // ignore: deprecated_member_use
+            value: _status,
+            decoration: InputDecoration(labelText: l.status),
+            items: [
+              DropdownMenuItem(value: null, child: Text(l.filterAll)),
+              DropdownMenuItem(value: 'posted', child: Text(l.statusPosted)),
+              DropdownMenuItem(value: 'voided', child: Text(l.statusVoided)),
+            ],
+            onChanged: (value) => setState(() => _status = value),
+          ),
+          DropdownButtonFormField<String?>(
+            // ignore: deprecated_member_use
+            value: _method,
+            decoration: InputDecoration(labelText: l.method),
+            items: [
+              DropdownMenuItem(value: null, child: Text(l.filterAll)),
+              DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),
+              DropdownMenuItem(value: 'bank_transfer', child: Text(l.methodBank)),
+              DropdownMenuItem(value: 'card', child: Text(l.methodCard)),
+              DropdownMenuItem(value: 'other', child: Text(l.methodOther)),
+            ],
+            onChanged: (value) => setState(() => _method = value),
+          ),
+          TextField(controller: _from, decoration: InputDecoration(labelText: l.from), onSubmitted: (_) => setState(() {})),
+          TextField(controller: _to, decoration: InputDecoration(labelText: l.to), onSubmitted: (_) => setState(() {})),
+          FilledButton.tonal(onPressed: () => setState(() {}), child: Text(l.refresh)),
+        ]),
+      ),
+      loader: (api, search, page) => api.receipts(
+        search: search,
+        page: page,
+        status: _status,
+        method: _method,
+        customerId: _customerId,
+        from: _from.text.trim(),
+        to: _to.text.trim(),
+      ),
       itemBuilder: (context, receipt) => Card(
         child: ListTile(
           title: Text(receipt.receiptNumber ?? '#${receipt.id}'),
-          subtitle: Text('${receipt.customerName ?? ''} · ${receipt.status}'),
+          subtitle: Text('${receipt.customerName ?? ''} · ${receipt.status} · ${receipt.invoiceNumber ?? ''}'),
           trailing: Text(receipt.amount),
           onTap: () => context.push('/receipts/${receipt.id}'),
         ),
@@ -217,6 +351,24 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
 
 typedef StatementsScreen = StatementScreen;
 
+class _StatementMetric extends StatelessWidget {
+  const _StatementMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: FinanceTokens.textMuted, fontWeight: FontWeight.w700)),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+      ],
+    );
+  }
+}
+
 class StatementScreen extends ConsumerStatefulWidget {
   const StatementScreen({super.key, this.customerId});
   final int? customerId;
@@ -286,13 +438,30 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
             if (_error != null) Text(_error!),
             if (_data != null) ...[
               const SizedBox(height: 16),
-              Text('${l.customer}: ${_data!.customerName ?? ''}'),
-              Text('${l.openingBalance}: ${_data!.openingBalance}'),
-              Text('${l.closingBalance}: ${_data!.closingBalance}'),
-              Text('${l.invoicesTotal}: ${_data!.invoicesTotal}'),
-              Text('${l.paymentsTotal}: ${_data!.paymentsTotal}'),
-              Text('${l.creditsTotal}: ${_data!.creditsTotal}'),
-              Text('${l.debitsTotal}: ${_data!.debitsTotal}'),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: FinanceTokens.card(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('${l.customer}: ${_data!.customerName ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 18,
+                      runSpacing: 8,
+                      children: [
+                        _StatementMetric(label: l.openingBalance, value: _data!.openingBalance),
+                        _StatementMetric(label: l.closingBalance, value: _data!.closingBalance),
+                        _StatementMetric(label: l.invoicesTotal, value: _data!.invoicesTotal),
+                        _StatementMetric(label: l.paymentsTotal, value: _data!.paymentsTotal),
+                        _StatementMetric(label: l.creditsTotal, value: _data!.creditsTotal),
+                        _StatementMetric(label: l.debitsTotal, value: _data!.debitsTotal),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               Card(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -327,6 +496,7 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
               Wrap(spacing: 8, children: [
                 FilledButton.tonal(
                   onPressed: () async {
+                    try {
                     final bytes = await ref.read(financeApiProvider).pdf('statements', query: {
                       'customer_id': _customerId,
                       'from': _from.text.trim(),
@@ -334,11 +504,15 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
                       'format': 'pdf',
                     });
                     await saveAndOpenBytes(bytes, 'statement.pdf');
+                    } catch (e) {
+                      if (context.mounted) showApiError(context, e);
+                    }
                   },
                   child: Text(l.pdf),
                 ),
                 FilledButton.tonal(
                   onPressed: () async {
+                    try {
                     final bytes = await ref.read(financeApiProvider).pdf('statements', query: {
                       'customer_id': _customerId,
                       'from': _from.text.trim(),
@@ -346,6 +520,9 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
                       'format': 'csv',
                     });
                     await saveAndOpenBytes(bytes, 'statement.csv');
+                    } catch (e) {
+                      if (context.mounted) showApiError(context, e);
+                    }
                   },
                   child: Text(l.csv),
                 ),
@@ -1091,6 +1268,8 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
   int? _categoryId;
   int? _treasuryId;
   bool _recurring = false;
+  String? _frequency;
+  final _nextDue = TextEditingController();
   bool _busy = false;
   PlatformFile? _file;
 
@@ -1114,6 +1293,10 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
         _categoryId = expense.categoryId;
         _treasuryId = expense.treasuryAccountId;
         _recurring = expense.isRecurring;
+        _frequency = expense.recurringFrequency;
+        if (expense.nextDueDate != null && expense.nextDueDate!.length >= 10) {
+          _nextDue.text = expense.nextDueDate!.substring(0, 10);
+        }
         setState(() {});
       });
     }
@@ -1125,6 +1308,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
     _amount.dispose();
     _taxRate.dispose();
     _date.dispose();
+    _nextDue.dispose();
     super.dispose();
   }
 
@@ -1206,6 +1390,22 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
             value: _recurring,
             onChanged: (v) => setState(() => _recurring = v),
           ),
+          if (_recurring)
+            FormGrid(children: [
+              DropdownButtonFormField<String?>(
+                // ignore: deprecated_member_use
+                value: _frequency,
+                decoration: InputDecoration(labelText: l.recurringFrequency),
+                items: [
+                  DropdownMenuItem(value: 'weekly', child: Text(l.frequencyWeekly)),
+                  DropdownMenuItem(value: 'monthly', child: Text(l.frequencyMonthly)),
+                  DropdownMenuItem(value: 'quarterly', child: Text(l.frequencyQuarterly)),
+                  DropdownMenuItem(value: 'yearly', child: Text(l.frequencyYearly)),
+                ],
+                onChanged: (v) => setState(() => _frequency = v),
+              ),
+              TextField(controller: _nextDue, decoration: InputDecoration(labelText: l.nextDueDate)),
+            ]),
           OutlinedButton(
             onPressed: () async {
               final result = await FilePicker.platform.pickFiles(
@@ -1233,6 +1433,8 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                         'tax_rate': _taxRate.text.trim(),
                         'tax_profile_type': _taxProfile,
                         'is_recurring': _recurring,
+                        if (_frequency != null) 'recurring_frequency': _frequency,
+                        if (_nextDue.text.trim().isNotEmpty) 'next_due_date': _nextDue.text.trim(),
                         'payment_method': _method,
                         if (_supplierId != null) 'supplier_id': _supplierId,
                         if (_categoryId != null) 'category_id': _categoryId,
@@ -1364,39 +1566,102 @@ class PurchasesScreen extends ConsumerStatefulWidget {
 
 class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
   String? _lifecycle;
+  String? _invoiceStatus;
+  String? _paymentStatus;
+  int? _supplierId;
+  final _from = TextEditingController();
+  final _to = TextEditingController();
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<InvoiceRecord>(
-      key: ValueKey(_lifecycle),
+      key: ValueKey('$_lifecycle-$_invoiceStatus-$_paymentStatus-$_supplierId-${_from.text}-${_to.text}'),
       title: l.purchases,
       allowed: auth.permissions.purchasesView,
       onCreate: auth.permissions.purchasesCreate ? () => context.push('/purchases/new') : null,
       filterBar: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Wrap(
-          spacing: 8,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final option in <(String?, String)>[
-              (null, l.filterAll),
-              ('draft', l.lifecycleDraft),
-              ('sent', l.lifecycleSent),
-              ('partial', l.partial),
-              ('paid', l.paid),
-              ('overdue', l.overdue),
-              ('cancelled', l.cancelled),
-            ])
-              ChoiceChip(
-                label: Text(option.$2),
-                selected: _lifecycle == option.$1,
-                onSelected: (_) => setState(() => _lifecycle = option.$1),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final option in <(String?, String)>[
+                  (null, l.filterAll),
+                  ('draft', l.lifecycleDraft),
+                  ('sent', l.lifecycleSent),
+                  ('partial', l.partial),
+                  ('paid', l.paid),
+                  ('overdue', l.overdue),
+                  ('cancelled', l.cancelled),
+                ])
+                  ChoiceChip(
+                    label: Text(option.$2),
+                    selected: _lifecycle == option.$1,
+                    onSelected: (_) => setState(() => _lifecycle = option.$1),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            FormGrid(children: [
+              SupplierSelectField(selectedId: _supplierId, onSelected: (id) => setState(() => _supplierId = id)),
+              DropdownButtonFormField<String?>(
+                // ignore: deprecated_member_use
+                value: _invoiceStatus,
+                decoration: InputDecoration(labelText: l.invoiceStatusFilter),
+                items: [
+                  DropdownMenuItem(value: null, child: Text(l.filterAll)),
+                  DropdownMenuItem(value: 'draft', child: Text(l.draft)),
+                  DropdownMenuItem(value: 'issued', child: Text(l.issue)),
+                  DropdownMenuItem(value: 'cancelled', child: Text(l.cancelled)),
+                ],
+                onChanged: (value) => setState(() => _invoiceStatus = value),
               ),
+              DropdownButtonFormField<String?>(
+                // ignore: deprecated_member_use
+                value: _paymentStatus,
+                decoration: InputDecoration(labelText: l.paymentStatus),
+                items: [
+                  DropdownMenuItem(value: null, child: Text(l.filterAll)),
+                  DropdownMenuItem(value: 'unpaid', child: Text(l.unpaid)),
+                  DropdownMenuItem(value: 'partial', child: Text(l.partial)),
+                  DropdownMenuItem(value: 'paid', child: Text(l.paid)),
+                  DropdownMenuItem(value: 'overdue', child: Text(l.overdue)),
+                ],
+                onChanged: (value) => setState(() => _paymentStatus = value),
+              ),
+              TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
+              TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
+              FilledButton.tonal(onPressed: () => setState(() {}), child: Text(l.refresh)),
+            ]),
           ],
         ),
       ),
-      loader: (api, search, page) => api.purchases(search: search, page: page, lifecycle: _lifecycle),
+      loader: (api, search, page) => api.purchases(
+        search: search,
+        page: page,
+        lifecycle: _lifecycle,
+        invoiceStatus: _invoiceStatus,
+        paymentStatus: _paymentStatus,
+        supplierId: _supplierId,
+        from: _from.text.trim(),
+        to: _to.text.trim(),
+      ),
+      summaryBuilder: (context, meta) {
+        final totals = meta?['totals'];
+        if (totals is! Map) return const SizedBox.shrink();
+        return Text('${l.total}: ${totals['total'] ?? ''}  ·  ${l.due}: ${totals['due'] ?? ''}');
+      },
       itemBuilder: (context, invoice) => Card(
         child: ListTile(
           title: Text(invoice.invoiceNumber ?? '#${invoice.id}'),

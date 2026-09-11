@@ -275,6 +275,33 @@
             <div class="mt-2 flex justify-between border-t pt-2 font-bold"><span>الإجمالي</span><span>{{ number_format((float) $quote->total, 2) }} {{ $quote->currency }}</span></div>
         </div>
 
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 class="text-sm font-bold">المرفقات</h3>
+            <ul class="mt-3 space-y-2 text-sm">
+                @forelse($quote->attachments as $attachment)
+                    <li class="flex items-center justify-between gap-2">
+                        <a class="text-slate-700 hover:underline" href="{{ route('workspace.finance.quotes.attachments.download', [$quote, $attachment]) }}">{{ $attachment->file_name ?: ('مرفق #'.$attachment->id) }}</a>
+                        @if(! $isCancelled)
+                            <form method="POST" action="{{ route('workspace.finance.quotes.attachments.destroy', [$quote, $attachment]) }}" onsubmit="return confirm('حذف المرفق؟')">
+                                @csrf
+                                @method('DELETE')
+                                <button class="text-xs text-rose-600">حذف</button>
+                            </form>
+                        @endif
+                    </li>
+                @empty
+                    <li class="text-slate-500">لا توجد مرفقات.</li>
+                @endforelse
+            </ul>
+            @if(! $isCancelled)
+                <form method="POST" action="{{ route('workspace.finance.quotes.attachments.store', $quote) }}" enctype="multipart/form-data" class="mt-4 space-y-2">
+                    @csrf
+                    <input type="file" name="attachments[]" multiple class="text-sm">
+                    <button class="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white">رفع</button>
+                </form>
+            @endif
+        </div>
+
         @if($quote->terms)
             <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 class="text-sm font-bold">الشروط</h3>

@@ -382,6 +382,8 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::put('invoices/{invoice}', [FinanceInvoiceController::class, 'update'])->name('invoices.update');
             Route::delete('invoices/{invoice}', [FinanceInvoiceController::class, 'destroy'])->name('invoices.destroy');
             Route::get('invoices/{invoice}/pdf', [FinanceInvoiceController::class, 'downloadPdf'])->name('invoices.pdf');
+            Route::get('invoices/{invoice}/xml', [FinanceInvoiceController::class, 'downloadXml'])->name('invoices.xml');
+            Route::get('invoices/{invoice}/qr', [FinanceInvoiceController::class, 'showQr'])->name('invoices.qr');
             Route::post('invoices/{invoice}/issue', [FinanceInvoiceController::class, 'issue'])->name('invoices.issue');
             Route::post('invoices/{invoice}/send', [FinanceInvoiceController::class, 'send'])->name('invoices.send');
             Route::post('invoices/{invoice}/remind', [FinanceInvoiceController::class, 'remind'])->name('invoices.remind');
@@ -420,6 +422,9 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::post('quotes/{quote}/accept', [FinanceQuoteController::class, 'accept'])->name('quotes.accept');
             Route::post('quotes/{quote}/reject', [FinanceQuoteController::class, 'reject'])->name('quotes.reject');
             Route::post('quotes/{quote}/convert', [FinanceQuoteController::class, 'convert'])->name('quotes.convert');
+            Route::post('quotes/{quote}/attachments', [FinanceQuoteController::class, 'storeAttachment'])->name('quotes.attachments.store');
+            Route::get('quotes/{quote}/attachments/{attachment}', [FinanceQuoteController::class, 'downloadAttachment'])->name('quotes.attachments.download');
+            Route::delete('quotes/{quote}/attachments/{attachment}', [FinanceQuoteController::class, 'destroyAttachment'])->name('quotes.attachments.destroy');
 
             Route::post('contracts/{contract}/billing-schedules', [FinanceBillingScheduleController::class, 'store'])->name('contracts.billing-schedules.store');
             Route::post('contracts/{contract}/billing-schedules/{schedule}/activate', [FinanceBillingScheduleController::class, 'activate'])->name('contracts.billing-schedules.activate');

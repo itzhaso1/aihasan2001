@@ -389,6 +389,8 @@ class InvoiceHeader extends StatelessWidget {
           children: [
             _DateMeta(icon: Icons.event_outlined, label: l.issueDate, value: invoice.issueDate),
             _DateMeta(icon: Icons.event_available_outlined, label: l.dueDate, value: invoice.dueDate),
+            _DateMeta(icon: Icons.local_shipping_outlined, label: l.supplyDate, value: invoice.supplyDate),
+            _DateMeta(icon: Icons.schedule_outlined, label: l.issuedAt, value: invoice.issuedAt),
           ],
         ),
       ],
@@ -500,6 +502,8 @@ class CustomerInfoCard extends StatelessWidget {
           InvoiceMetaRow(label: l.telephone, value: snapshotText(snap, const ['phone', 'mobile', 'whatsapp'])),
           InvoiceMetaRow(label: l.email, value: snapshotText(snap, const ['email'])),
           InvoiceMetaRow(label: l.address, value: snapshotAddress(snap)),
+          InvoiceMetaRow(label: l.contract, value: firstNonEmpty([invoice.contractNumber, invoice.contractTitle])),
+          InvoiceMetaRow(label: l.project, value: invoice.projectName),
           if (onOpenCustomer != null && invoice.customerId != null)
             Align(
               alignment: AlignmentDirectional.centerStart,
@@ -541,14 +545,24 @@ class InvoiceSummaryCard extends StatelessWidget {
             emphasis: true,
             highlight: true,
           ),
-          if ((invoice.zatcaRequirement ?? '').isNotEmpty || invoice.hasZatcaQr || (invoice.zatcaSubtype ?? '').isNotEmpty) ...[
+          if ((invoice.zatcaRequirement ?? '').isNotEmpty ||
+              invoice.hasZatcaQr ||
+              invoice.zatcaXmlAvailable ||
+              (invoice.zatcaSubtype ?? '').isNotEmpty) ...[
             const SizedBox(height: 8),
             const Divider(height: 1),
             const SizedBox(height: 8),
             InvoiceMetaRow(label: l.zatcaInfo, value: invoice.zatcaRequirement),
             InvoiceMetaRow(label: l.taxDocumentSubtype, value: invoice.zatcaSubtype),
-            if (invoice.hasZatcaQr) InvoiceMetaRow(label: l.zatcaQr, value: l.zatcaQr),
+            InvoiceMetaRow(label: l.xmlAvailable, value: invoice.zatcaXmlAvailable ? l.xmlAvailable : l.xmlUnavailable),
+            InvoiceMetaRow(label: l.qrAvailable, value: invoice.zatcaQrAvailable ? l.qrAvailable : l.qrUnavailable),
+            InvoiceMetaRow(label: l.zatcaFoundation, value: invoice.zatcaIntegration ?? 'foundation'),
             InvoiceMetaRow(label: l.taxProfile, value: invoice.taxProfileType),
+            for (final bucket in invoice.taxBreakdown)
+              InvoiceMetaRow(
+                label: '${bucket['code'] ?? bucket['type'] ?? l.tax}',
+                value: '${bucket['tax_amount'] ?? bucket['amount'] ?? ''}',
+              ),
           ],
         ],
       ),

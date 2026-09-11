@@ -137,28 +137,28 @@ class ExpenseController extends FinanceApiController
             'currency' => ['nullable', 'string', 'size:3'],
             'payment_method' => ['nullable', 'in:cash,bank_transfer,card,other,credit'],
             'is_recurring' => ['nullable', 'boolean'],
+            'recurring_frequency' => ['nullable', 'in:weekly,monthly,quarterly,yearly'],
+            'next_due_date' => ['nullable', 'date'],
             'attachment_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:4096'],
+            'supplier_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('finance_suppliers', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+            ],
+            'category_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('finance_expense_categories', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+            ],
+            'treasury_account_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('finance_treasury_accounts', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+            ],
         ];
 
         if ($creating) {
-            $rules = array_merge($rules, [
-                'supplier_id' => [
-                    'nullable',
-                    'integer',
-                    Rule::exists('finance_suppliers', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
-                ],
-                'category_id' => [
-                    'nullable',
-                    'integer',
-                    Rule::exists('finance_expense_categories', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
-                ],
-                'treasury_account_id' => [
-                    'nullable',
-                    'integer',
-                    Rule::exists('finance_treasury_accounts', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
-                ],
-                'status' => ['nullable', 'in:draft,approved,paid,cancelled'],
-            ]);
+            $rules['status'] = ['nullable', 'in:draft,approved,paid,cancelled'];
         }
 
         return $request->validate($rules);

@@ -17,6 +17,12 @@ void main() {
     expect(invoice.notes, 'ملاحظة عربية');
     expect(invoice.hasZatcaQr, isTrue);
     expect(invoice.zatcaRequirement, 'simplified');
+    expect(invoice.zatcaXmlAvailable, isTrue);
+    expect(invoice.supplyDate, '2026-09-10');
+    expect(invoice.issuedAt, isNotNull);
+    expect(invoice.contractNumber, 'C-9');
+    expect(invoice.projectName, 'مشروع');
+    expect(invoice.taxBreakdown, isNotEmpty);
     expect(invoice.lines, hasLength(2));
     expect(invoice.lines.first.unit, 'ساعة');
     expect(invoice.lines.first.discount, '10.00');
@@ -54,6 +60,9 @@ void main() {
       'terms': 'صالح 30 يوماً',
       'rejection_reason': null,
       'notes': 'عرض تجريبي',
+      'attachments': [
+        {'id': 2, 'file_name': 'quote-scan.pdf'},
+      ],
       'document_status': 'issued',
       'outcome': 'pending',
       'lines': [
@@ -72,6 +81,7 @@ void main() {
     expect(quote.discount, '5.00');
     expect(quote.taxableAmount, '95.00');
     expect(quote.terms, 'صالح 30 يوماً');
+    expect(quote.attachments.single['file_name'], 'quote-scan.pdf');
     expect(quote.lines.single.unit, 'ساعة');
   });
 
@@ -227,11 +237,14 @@ void main() {
       'payment_method': 'bank_transfer',
       'treasury_account_name': 'البنك',
       'is_recurring': true,
+      'recurring_frequency': 'monthly',
+      'next_due_date': '2026-10-01',
     });
     expect(expense.supplierName, 'مورد');
     expect(expense.paymentMethod, 'bank_transfer');
     expect(expense.treasuryAccountName, 'البنك');
     expect(expense.isRecurring, isTrue);
+    expect(expense.recurringFrequency, 'monthly');
 
     final payment = PaymentRecord.fromJson({
       'id': 9,
@@ -313,6 +326,8 @@ const _richInvoice = {
   'customer_name': 'PARITY CUSTOMER 001',
   'issue_date': '2026-09-10',
   'due_date': '2026-09-24',
+  'supply_date': '2026-09-10',
+  'issued_at': '2026-09-10T10:00:00+03:00',
   'currency': 'SAR',
   'subtotal': '200.00',
   'discount': '10.00',
@@ -327,7 +342,12 @@ const _richInvoice = {
   'payment_status': 'partial',
   'notes': 'ملاحظة عربية',
   'payment_terms': '14 يوم',
-  'zatca': {'requirement': 'simplified', 'has_qr': true},
+  'contract_number': 'C-9',
+  'project_name': 'مشروع',
+  'tax_breakdown': [
+    {'code': 'S', 'tax_amount': '28.50'},
+  ],
+  'zatca': {'requirement': 'simplified', 'has_qr': true, 'xml_available': true, 'qr_available': true, 'clearance': false, 'integration': 'foundation'},
   'company_snapshot': {'name': 'شركة حاسم', 'vat_number': '300000000000003'},
   'lines': [
     {

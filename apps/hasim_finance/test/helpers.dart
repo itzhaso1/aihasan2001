@@ -379,6 +379,15 @@ class FakeFinanceApi extends FinanceApi {
     String? paymentStatus,
     String? invoiceStatus,
     String? lifecycle,
+    int? customerId,
+    String? from,
+    String? to,
+    String? currency,
+    int? projectId,
+    int? contractId,
+    String? paymentMethod,
+    String? sort,
+    String? direction,
     int page = 1,
   }) async {
     return PagedResult(items: [invoiceRecord], page: 1, lastPage: 1, total: 1);
@@ -422,7 +431,7 @@ class FakeFinanceApi extends FinanceApi {
   Map<String, dynamic>? lastQuotePayload;
 
   @override
-  Future<QuoteRecord> saveQuote(Map<String, dynamic> body, {int? id}) async {
+  Future<QuoteRecord> saveQuote(Map<String, dynamic> body, {int? id, FormData? form}) async {
     lastQuotePayload = body;
     return QuoteRecord(
       id: id ?? 99,
@@ -451,7 +460,16 @@ class FakeFinanceApi extends FinanceApi {
   }
 
   @override
-  Future<PagedResult<ReceiptRecord>> receipts({String? search, int page = 1}) async {
+  Future<PagedResult<ReceiptRecord>> receipts({
+    String? search,
+    String? status,
+    int? customerId,
+    int? invoiceId,
+    String? from,
+    String? to,
+    String? method,
+    int page = 1,
+  }) async {
     return PagedResult(items: [receiptRecord], page: 1, lastPage: 1, total: 1);
   }
 
@@ -459,7 +477,18 @@ class FakeFinanceApi extends FinanceApi {
   Future<ReceiptRecord> receipt(int id) async => receiptRecord;
 
   @override
-  Future<PagedResult<PaymentRecord>> payments({String? search, int page = 1}) async {
+  Future<PagedResult<PaymentRecord>> payments({
+    String? search,
+    String? status,
+    int? customerId,
+    int? invoiceId,
+    String? from,
+    String? to,
+    String? method,
+    int? treasuryAccountId,
+    String? reference,
+    int page = 1,
+  }) async {
     return PagedResult(items: [paymentRecord], page: 1, lastPage: 1, total: 1);
   }
 
@@ -535,9 +564,42 @@ class FakeFinanceApi extends FinanceApi {
   Map<String, dynamic>? lastPurchasePayload;
 
   @override
-  Future<InvoiceRecord> saveInvoice(Map<String, dynamic> body, {int? id}) async {
+  Future<InvoiceRecord> saveInvoice(Map<String, dynamic> body, {int? id, FormData? form}) async {
     lastInvoicePayload = body;
     return InvoiceRecord(id: id ?? 99, invoiceNumber: 'INV-99', documentStatus: 'draft');
+  }
+
+  @override
+  Future<Map<String, dynamic>> invoiceXml(int invoiceId) async {
+    return {'xml': '<Invoice/>', 'root_local_name': 'Invoice', 'schema_valid': true};
+  }
+
+  @override
+  Future<Map<String, dynamic>> invoiceQr(int invoiceId) async {
+    return {'payload': 'A', 'tags': <Map<String, dynamic>>[]};
+  }
+
+  @override
+  Future<QuoteRecord> uploadQuoteAttachments(int quoteId, FormData form) async => quoteRecord;
+
+  @override
+  Future<QuoteRecord> deleteQuoteAttachment(int quoteId, int attachmentId) async => quoteRecord;
+
+  @override
+  Future<Uint8List> downloadQuoteAttachment(int quoteId, int attachmentId) async => Uint8List.fromList(const [1, 2, 3]);
+
+  @override
+  Future<PagedResult<InvoiceRecord>> purchases({
+    String? search,
+    String? paymentStatus,
+    String? invoiceStatus,
+    String? lifecycle,
+    int? supplierId,
+    String? from,
+    String? to,
+    int page = 1,
+  }) async {
+    return PagedResult(items: [invoiceRecord], page: 1, lastPage: 1, total: 1);
   }
 
   @override

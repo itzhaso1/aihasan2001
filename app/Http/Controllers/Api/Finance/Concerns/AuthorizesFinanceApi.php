@@ -52,6 +52,13 @@ trait AuthorizesFinanceApi
         return $user;
     }
 
+    /**
+     * Matches Web FinanceBaseController::authorizeFinance.
+     *
+     * Do not tighten this to Spatie keys only: workspace owners/admins/managers
+     * operate Finance without every permission row assigned. Removing elevation
+     * would lock legitimate owners out of billing. Cashiers are not elevated.
+     */
     protected function isElevatedFinanceMember(Workspace $workspace, User $user): bool
     {
         return $workspace->users()

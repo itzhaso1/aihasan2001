@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -161,6 +163,64 @@ class _QuoteDetailScreenState extends ConsumerState<QuoteDetailScreen> {
                 const SizedBox(height: 12),
                 LineTable(lines: q.lines),
                 DeliveryTimeline(deliveries: q.deliveries),
+                const SizedBox(height: 12),
+                Text(l.attachmentsTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
+                if (q.attachments.isEmpty) Text(l.noAttachments),
+                for (final row in q.attachments)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('${row['file_name'] ?? row['id']}'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.download_outlined),
+                          onPressed: () async {
+                            try {
+                              final id = int.parse('${row['id']}');
+                              final bytes = await ref.read(financeApiProvider).downloadQuoteAttachment(q.id, id);
+                              await saveAndOpenBytes(bytes, '${row['file_name'] ?? 'quote-$id'}');
+                            } catch (e) {
+                              if (context.mounted) showApiError(context, e);
+                            }
+                          },
+                        ),
+                        if (q.documentStatus != 'cancelled' && p.can('quotes.edit'))
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () => confirmAndRun(context, () async {
+                              await ref.read(financeApiProvider).deleteQuoteAttachment(q.id, int.parse('${row['id']}'));
+                              await _load();
+                            }),
+                          ),
+                      ],
+                    ),
+                  ),
+                if (q.documentStatus != 'cancelled' && p.can('quotes.edit'))
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final result = await FilePicker.platform.pickFiles(
+                        allowMultiple: true,
+                        type: FileType.custom,
+                        allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+                      );
+                      if (result == null || result.files.isEmpty) return;
+                      try {
+                        final form = FormData();
+                        for (final file in result.files) {
+                          final part = await multipartFromPicked(file);
+                          if (part != null) form.files.add(MapEntry('attachments[]', part));
+                        }
+                        if (form.files.isEmpty) return;
+                        await ref.read(financeApiProvider).uploadQuoteAttachments(q.id, form);
+                        await _load();
+                      } catch (e) {
+                        if (context.mounted) showApiError(context, e);
+                      }
+                    },
+                    icon: const Icon(Icons.upload_file_outlined),
+                    label: Text(l.pickAttachments),
+                  ),
                 const SizedBox(height: 16),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   if (q.documentStatus == 'draft' && p.can('quotes.edit'))
@@ -224,6 +284,7 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
   final _notes = TextEditingController();
   final _terms = TextEditingController();
   final List<LineDraft> _lines = [LineDraft(description: 'خدمة', unitPrice: '100')];
+  final List<PlatformFile> _files = [];
   bool _busy = false;
 
   @override
@@ -283,6 +344,16 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
         'tax_price_mode': _taxMode,
         'items': _lines.map((line) => line.toPayload()).toList(),
       }, id: widget.id);
+      if (_files.isNotEmpty) {
+        final form = FormData();
+        for (final file in _files) {
+          final part = await multipartFromPicked(file);
+          if (part != null) form.files.add(MapEntry('attachments[]', part));
+        }
+        if (form.files.isNotEmpty) {
+          await ref.read(financeApiProvider).uploadQuoteAttachments(saved.id, form);
+        }
+      }
       if (!mounted) return;
       context.go('/quotes/${saved.id}');
     } catch (e) {
@@ -354,6 +425,23 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
                 TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 3),
                 const SizedBox(height: 8),
                 TextField(controller: _terms, decoration: InputDecoration(labelText: l.terms), maxLines: 3),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final result = await FilePicker.platform.pickFiles(
+                      allowMultiple: true,
+                      type: FileType.custom,
+                      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+                    );
+                    if (result != null && result.files.isNotEmpty) {
+                      setState(() => _files
+                        ..clear()
+                        ..addAll(result.files));
+                    }
+                  },
+                  icon: const Icon(Icons.attach_file),
+                  label: Text(_files.isEmpty ? l.pickAttachments : '${l.attachmentsTitle} (${_files.length})'),
+                ),
               ],
             ),
           ),

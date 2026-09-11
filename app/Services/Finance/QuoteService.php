@@ -7,6 +7,7 @@ use App\Enums\Finance\QuoteStatus;
 use App\Enums\Finance\TaxPriceMode;
 use App\Models\Customer;
 use App\Models\Finance\FinanceQuote;
+use App\Models\Finance\FinanceQuoteAttachment;
 use App\Models\Finance\FinanceQuoteItem;
 use App\Models\Finance\FinanceSetting;
 use App\Models\Product;
@@ -15,7 +16,9 @@ use App\Models\Workspace;
 use App\Services\Audit\AuditLogService;
 use App\Services\Finance\Tax\TaxCalculationService;
 use App\Support\Money\Money;
+use App\Support\Uploads\SecureUpload;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -86,11 +89,13 @@ class QuoteService
                 $this->createQuoteItem((int) $workspace->id, (int) $quote->id, $item);
             }
 
+            $this->storeUploadedAttachments($quote, $payload['attachments'] ?? [], $actorUserId);
+
             if ($requested === QuoteStatus::Issued) {
-                return $this->issue($quote->fresh(['items', 'customer']), $actorUserId);
+                return $this->issue($quote->fresh(['items', 'customer', 'attachments']), $actorUserId);
             }
 
-            return $quote->load(['items', 'customer']);
+            return $quote->load(['items', 'customer', 'attachments']);
         });
     }
 
@@ -103,7 +108,7 @@ class QuoteService
             throw new RuntimeException('يمكن تعديل مسودات عروض الأسعار فقط.');
         }
 
-        return DB::transaction(function () use ($quote, $payload): FinanceQuote {
+        return DB::transaction(function () use ($quote, $payload, $actorUserId): FinanceQuote {
             $locked = FinanceQuote::withoutGlobalScopes()->whereKey($quote->id)->lockForUpdate()->firstOrFail();
             if (! $locked->isDraft()) {
                 throw new RuntimeException('يمكن تعديل مسودات عروض الأسعار فقط.');
@@ -158,7 +163,9 @@ class QuoteService
                 $this->createQuoteItem((int) $workspace->id, (int) $locked->id, $item);
             }
 
-            return $locked->fresh(['items', 'customer']);
+            $this->storeUploadedAttachments($locked, $payload['attachments'] ?? [], $actorUserId);
+
+            return $locked->fresh(['items', 'customer', 'attachments']);
         });
     }
 
@@ -758,6 +765,63 @@ class QuoteService
                 'company' => $company,
             ],
         ];
+    }
+
+    /**
+     * @param  array<int, mixed>  $uploadedFiles
+     */
+    public function storeAttachments(FinanceQuote $quote, array $uploadedFiles, int $actorUserId): void
+    {
+        if ($quote->isCancelled()) {
+            throw new RuntimeException('لا يمكن إضافة مرفقات إلى عرض سعر ملغى.');
+        }
+
+        $this->storeUploadedAttachments($quote, $uploadedFiles, $actorUserId);
+    }
+
+    public function deleteAttachment(FinanceQuote $quote, FinanceQuoteAttachment $attachment): void
+    {
+        if ((int) $attachment->quote_id !== (int) $quote->id) {
+            throw new RuntimeException('المرفق غير تابع لعرض السعر.');
+        }
+        if ($quote->isCancelled()) {
+            throw new RuntimeException('لا يمكن حذف مرفقات عرض سعر ملغى.');
+        }
+
+        $attachment->deleteFile();
+        $attachment->delete();
+    }
+
+    /**
+     * @param  array<int, mixed>  $uploadedFiles
+     */
+    private function storeUploadedAttachments(FinanceQuote $quote, array $uploadedFiles, int $actorUserId): void
+    {
+        if ($quote->isCancelled()) {
+            throw new RuntimeException('لا يمكن تعديل مرفقات عرض سعر ملغى.');
+        }
+
+        foreach ($uploadedFiles as $file) {
+            if (! $file instanceof UploadedFile) {
+                continue;
+            }
+
+            $storedPath = app(SecureUpload::class)->store(
+                $file,
+                'workspaces/'.$quote->workspace_id.'/finance/quotes/'.$quote->id,
+                'public',
+                10240
+            );
+            FinanceQuoteAttachment::withoutGlobalScopes()->create([
+                'workspace_id' => $quote->workspace_id,
+                'quote_id' => $quote->id,
+                'file_path' => $storedPath,
+                'file_name' => $file->getClientOriginalName(),
+                'file_type' => $file->getClientMimeType(),
+                'file_size' => $file->getSize(),
+                'uploaded_by' => $actorUserId,
+            ]);
+        }
     }
 
     private function settingsForWorkspace(int $workspaceId): ?FinanceSetting

@@ -31,12 +31,40 @@ trait HandlesFinanceClient
         try {
             return $callback();
         } catch (RuntimeException $exception) {
+            [$code, $status] = $this->financeDomainFailure($exception);
             throw new HttpResponseException($this->fail(
                 $exception->getMessage(),
-                ApiErrorCode::ValidationFailed,
-                422,
+                $code,
+                $status,
             ));
         }
+    }
+
+    /**
+     * @return array{0: ApiErrorCode, 1: int}
+     */
+    protected function financeDomainFailure(RuntimeException $exception): array
+    {
+        $message = $exception->getMessage();
+        $conflicts = [
+            'يمكن تحويل العروض الصادرة المقبولة فقط، ولمرة واحدة.',
+            'لا يمكن إلغاء عرض تم تحويله إلى فاتورة.',
+            'Invoice is already paid.',
+            'رقم الفاتورة مستخدم مسبقاً في هذه المنشأة.',
+            'رقم عرض السعر مستخدم مسبقاً في هذه المنشأة.',
+            'تعذر توليد فاتورة الجدول بسبب تكرار عملية متزامنة.',
+            'تعذر توليد رقم فاتورة فريد لهذه المنشأة.',
+            'تعذر توليد رقم عرض سعر فريد لهذه المنشأة.',
+            'تعذر توليد رقم إيصال فريد لهذه المنشأة.',
+        ];
+
+        foreach ($conflicts as $needle) {
+            if ($message === $needle || str_contains($message, $needle)) {
+                return [ApiErrorCode::IdempotencyConflict, 409];
+            }
+        }
+
+        return [ApiErrorCode::ValidationFailed, 422];
     }
 
     /**

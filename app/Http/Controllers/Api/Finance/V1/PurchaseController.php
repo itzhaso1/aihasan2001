@@ -46,11 +46,16 @@ class PurchaseController extends FinanceApiController
             $request
         )->where('type', 'purchase');
 
+        $pipeline = $this->invoiceInboxService->pipelineCounts((int) $workspace->id, 'purchase');
+        $totals = $this->invoiceInboxService->filteredTotals($query);
         $page = $query->latest('id')->paginate((int) ($validated['per_page'] ?? 25));
 
         return $this->ok(
             $page->getCollection()->map(fn (FinanceInvoice $invoice) => $this->presenter->invoiceSummary($invoice))->values()->all(),
-            meta: $this->pageMeta($page),
+            meta: $this->pageMeta($page) + [
+                'pipeline' => $pipeline,
+                'totals' => $totals,
+            ],
         );
     }
 

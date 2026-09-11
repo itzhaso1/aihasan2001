@@ -40,14 +40,20 @@ use App\Models\Product;
 use App\Models\Projects\FinanceProject;
 use App\Models\User;
 use App\Models\Workspace;
+use App\Services\Finance\EInvoiceArtifactService;
 use App\Services\Payment\Contracts\BillableCheckoutResult;
 use App\Support\Money\Money;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 
 class FinanceClientPresenter
 {
+    public function __construct(
+        private readonly EInvoiceArtifactService $eInvoiceArtifactService,
+    ) {}
+
     public function money(mixed $value): string
     {
         return Money::of($value ?? 0);
@@ -103,7 +109,16 @@ class FinanceClientPresenter
             'supplier_name' => $invoice->supplier?->name,
             'issue_date' => $this->date($invoice->issue_date),
             'due_date' => $this->date($invoice->due_date),
+            'supply_date' => Schema::hasColumn('finance_invoices', 'supply_date')
+                ? $this->date($invoice->supply_date)
+                : null,
+            'issued_at' => $invoice->issued_at?->timezone(config('app.timezone'))->toIso8601String(),
             'currency' => $invoice->currency ?: 'SAR',
+            'contract_id' => $invoice->contract_id ? (int) $invoice->contract_id : null,
+            'contract_number' => $invoice->contract?->contract_number,
+            'contract_title' => $invoice->contract?->title,
+            'project_id' => $invoice->project_id ? (int) $invoice->project_id : null,
+            'project_name' => $invoice->project?->name,
             'subtotal' => $this->money($invoice->subtotal),
             'discount' => $this->money($invoice->discount),
             'taxable_amount' => $this->money($invoice->taxable_amount),
@@ -130,8 +145,7 @@ class FinanceClientPresenter
         $payload['tax_profile_type'] = $invoice->tax_profile_type;
         $payload['tax_rate'] = $this->money($invoice->tax_rate ?? 0);
         $payload['tax_price_mode'] = $invoice->tax_price_mode;
-        $payload['contract_id'] = $invoice->contract_id ? (int) $invoice->contract_id : null;
-        $payload['project_id'] = $invoice->project_id ? (int) $invoice->project_id : null;
+        $payload['tax_breakdown'] = is_array($invoice->tax_breakdown) ? $invoice->tax_breakdown : [];
         $payload['company_snapshot'] = is_array($invoice->company_snapshot) ? $invoice->company_snapshot : null;
         $payload['recipient_snapshot'] = is_array($invoice->recipient_snapshot) ? $invoice->recipient_snapshot : null;
         $payload['lines'] = $invoice->items?->map(fn ($item) => $this->invoiceItem($item))->values()->all() ?? [];
@@ -146,11 +160,7 @@ class FinanceClientPresenter
             'file_type' => $attachment->file_type,
             'file_size' => $attachment->file_size,
         ])->values()->all() ?? [];
-        $payload['zatca'] = [
-            'requirement' => $invoice->zatca_requirement,
-            'tax_document_subtype' => $invoice->tax_document_subtype,
-            'has_qr' => filled($invoice->zatca_qr_code),
-        ];
+        $payload['zatca'] = $this->eInvoiceArtifactService->availabilityForInvoice($invoice);
 
         return $payload;
     }
@@ -219,6 +229,12 @@ class FinanceClientPresenter
         $payload['converted_invoice_number'] = $quote->convertedInvoice?->invoice_number;
         $payload['lines'] = $quote->items?->map(fn ($item) => $this->invoiceItem($item))->values()->all() ?? [];
         $payload['deliveries'] = $quote->deliveries?->map(fn ($delivery) => $this->delivery($delivery))->values()->all() ?? [];
+        $payload['attachments'] = $quote->attachments?->map(fn ($attachment) => [
+            'id' => (int) $attachment->id,
+            'file_name' => $attachment->file_name,
+            'file_type' => $attachment->file_type,
+            'file_size' => $attachment->file_size,
+        ])->values()->all() ?? [];
 
         return $payload;
     }
@@ -361,6 +377,8 @@ class FinanceClientPresenter
             'treasury_account_id' => $expense->treasury_account_id ? (int) $expense->treasury_account_id : null,
             'treasury_account_name' => $expense->treasuryAccount?->name,
             'is_recurring' => (bool) $expense->is_recurring,
+            'recurring_frequency' => $expense->recurring_frequency,
+            'next_due_date' => $this->date($expense->next_due_date),
             'tax_profile_type' => $expense->tax_profile_type,
         ];
     }

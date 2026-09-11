@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Workspace\Finance;
 use App\Enums\Finance\QuoteStatus;
 use App\Models\Customer;
 use App\Models\Finance\FinanceQuote;
+use App\Models\Finance\FinanceQuoteAttachment;
 use App\Models\Finance\FinanceSetting;
 use App\Models\Finance\FinanceTaxRate;
 use App\Models\Product;
@@ -17,6 +18,7 @@ use App\Services\Finance\Tax\TaxCalculationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -89,6 +91,7 @@ class QuoteController extends FinanceBaseController
         $workspace = $this->currentWorkspace();
         $this->financeBootstrapService->ensureWorkspaceFinanceSetup($workspace);
         $validated = $this->validatedQuotePayload($request, (int) $workspace->id);
+        $validated['attachments'] = $request->file('attachments', []) ?: [];
         if (((string) ($validated['status'] ?? 'draft')) === QuoteStatus::Issued->value) {
             $this->authorizeFinance($request, 'quotes.issue');
         }
@@ -118,6 +121,7 @@ class QuoteController extends FinanceBaseController
                 'acceptedByUser',
                 'rejectedByUser',
                 'convertedByUser',
+                'attachments',
             ]),
         ]);
     }
@@ -145,6 +149,7 @@ class QuoteController extends FinanceBaseController
         $this->assertSameWorkspace($quote->workspace_id);
         $workspace = $this->currentWorkspace();
         $validated = $this->validatedQuotePayload($request, (int) $workspace->id);
+        $validated['attachments'] = $request->file('attachments', []) ?: [];
 
         try {
             $updated = $this->quoteService->updateDraft($quote, $validated, (int) $request->user()?->id);
@@ -307,6 +312,51 @@ class QuoteController extends FinanceBaseController
         }
     }
 
+    public function storeAttachment(Request $request, FinanceQuote $quote): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.edit');
+        $this->assertSameWorkspace($quote->workspace_id);
+        $request->validate([
+            'attachments' => ['required', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,webp'],
+        ]);
+
+        try {
+            $this->quoteService->storeAttachments($quote, $request->file('attachments', []) ?: [], (int) $request->user()?->id);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('workspace.finance.quotes.show', $quote)->with('success', 'تم رفع المرفق.');
+    }
+
+    public function downloadAttachment(Request $request, FinanceQuote $quote, FinanceQuoteAttachment $attachment)
+    {
+        $this->authorizeFinance($request, 'quotes.view');
+        $this->assertSameWorkspace($quote->workspace_id);
+        abort_unless((int) $attachment->quote_id === (int) $quote->id, 404);
+
+        return Storage::disk('public')->download(
+            $attachment->file_path,
+            $attachment->file_name ?: ('quote-attachment-'.$attachment->id)
+        );
+    }
+
+    public function destroyAttachment(Request $request, FinanceQuote $quote, FinanceQuoteAttachment $attachment): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'quotes.edit');
+        $this->assertSameWorkspace($quote->workspace_id);
+        abort_unless((int) $attachment->quote_id === (int) $quote->id, 404);
+
+        try {
+            $this->quoteService->deleteAttachment($quote, $attachment);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('workspace.finance.quotes.show', $quote)->with('success', 'تم حذف المرفق.');
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -347,6 +397,8 @@ class QuoteController extends FinanceBaseController
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'tax_price_mode' => ['nullable', 'in:exclusive,inclusive'],
             'items_json' => ['required', 'string'],
+            'attachments' => ['nullable', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,webp'],
         ]);
 
         $items = json_decode($validated['items_json'], true);
@@ -369,7 +421,7 @@ class QuoteController extends FinanceBaseController
             return $item;
         }, $items);
 
-        $payload = Arr::except($validated, ['items_json']);
+        $payload = Arr::except($validated, ['items_json', 'attachments']);
         $payload['items'] = $items;
 
         return $payload;
