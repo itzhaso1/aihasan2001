@@ -224,12 +224,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   List<Widget> _iconCovers() {
     const covers = <_IconCover>[
-      _IconCover.circle(474, 361, 88),
-      _IconCover.circle(758, 519, 82),
-      _IconCover.circle(808, 754, 74),
-      _IconCover.box(698, 868, 154, 162),
-      _IconCover.box(78, 798, 158, 170),
-      _IconCover.circle(190, 518, 84),
+      _IconCover.circle(474, 361, 100),
+      _IconCover.circle(758, 519, 98),
+      _IconCover.circle(808, 754, 90),
+      _IconCover.box(670, 840, 200, 210),
+      _IconCover.box(55, 770, 220, 230),
+      _IconCover.circle(190, 518, 96),
     ];
 
     return [
