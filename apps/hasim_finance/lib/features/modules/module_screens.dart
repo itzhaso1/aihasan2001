@@ -138,12 +138,14 @@ class _PaymentDetailScreenState extends ConsumerState<PaymentDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).payment(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
         _error = null;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -298,11 +300,13 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).receipt(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -422,6 +426,7 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -585,11 +590,13 @@ class _NoteDetailScreenState extends ConsumerState<NoteDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).note(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -796,11 +803,13 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).contract(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -1506,11 +1515,13 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).expense(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -1709,11 +1720,13 @@ class _PurchaseDetailScreenState extends ConsumerState<PurchaseDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).purchase(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -2152,12 +2165,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     setState(() => _loading = true);
     try {
       final data = await ref.read(financeApiProvider).report(_key, from: _from.text.trim(), to: _to.text.trim());
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
         _error = null;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;

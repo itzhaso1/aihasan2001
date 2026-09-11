@@ -49,11 +49,13 @@ class _ProductDetailScreenState extends ConsumerState<ProductDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).product(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -156,11 +158,13 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).project(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -376,11 +380,13 @@ class _PriceListDetailScreenState extends ConsumerState<PriceListDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).priceList(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -514,11 +520,13 @@ class _PurchaseOrderDetailScreenState extends ConsumerState<PurchaseOrderDetailS
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).purchaseOrder(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -694,11 +702,13 @@ class _LeadDetailScreenState extends ConsumerState<LeadDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).lead(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -875,11 +885,13 @@ class _SupplierDetailScreenState extends ConsumerState<SupplierDetailScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).supplier(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;

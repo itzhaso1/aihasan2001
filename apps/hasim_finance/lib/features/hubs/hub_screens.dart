@@ -53,6 +53,7 @@ class _SalesHubScreenState extends ConsumerState<SalesHubScreen> {
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -146,11 +147,13 @@ class _VatHubScreenState extends ConsumerState<VatHubScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).vatHub();
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -211,11 +214,13 @@ class _MapHubState extends ConsumerState<BillingHubScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).billingHub();
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -285,11 +290,13 @@ class _AccountingHubScreenState extends ConsumerState<AccountingHubScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).accountingHub();
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -385,11 +392,13 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
   Future<void> _load() async {
     try {
       final items = await ref.read(financeApiProvider).alerts();
+      if (!mounted) return;
       setState(() {
         _items = items;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -455,6 +464,7 @@ class _CopilotScreenState extends ConsumerState<CopilotScreen> {
     setState(() => _busy = true);
     try {
       final answer = await ref.read(financeApiProvider).askCopilot(_question.text.trim());
+      if (!mounted) return;
       setState(() => _answer = answer);
     } catch (e) {
       if (mounted) showApiError(context, e);
@@ -549,11 +559,13 @@ class _TreasuryScreenState extends ConsumerState<TreasuryScreen> {
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).treasury();
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -684,11 +696,13 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
   Future<void> _load() async {
     try {
       final items = await ref.read(financeApiProvider).exportIndex();
+      if (!mounted) return;
       setState(() {
         _items = items;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
@@ -817,11 +831,13 @@ class _FiscalYearDetailScreenState extends ConsumerState<FiscalYearDetailScreen>
   Future<void> _load() async {
     try {
       final data = await ref.read(financeApiProvider).fiscalYear(widget.id);
+      if (!mounted) return;
       setState(() {
         _data = data;
         _loading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.message;
         _loading = false;
