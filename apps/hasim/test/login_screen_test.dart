@@ -39,12 +39,15 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('hasim-login-art')), findsOneWidget);
-    final image = tester.widget<Image>(
-      find.byKey(const Key('hasim-login-art')),
-    );
-    expect(image.fit, BoxFit.contain);
-    expect((image.image as AssetImage).assetName, hasimLoginArtAsset);
+    expect(find.text('مرحباً بك مجدداً'), findsOneWidget);
+    expect(find.text('سجّل دخولك إلى حسابك لمتابعة أعمالك'), findsOneWidget);
+    expect(find.text('البريد الإلكتروني أو الجوال'), findsOneWidget);
+    expect(find.text('كلمة المرور'), findsOneWidget);
+    expect(find.text('نسيت كلمة المرور؟'), findsOneWidget);
+    expect(find.text('أو'), findsOneWidget);
     expect(find.text('دخول'), findsOneWidget);
+    expect(find.text('الدخول عبر Google'), findsOneWidget);
+    expect(find.text('إنشاء حساب'), findsNothing);
     expect(find.text('إدارة المحادثات والحجوزات'), findsNothing);
   });
 }
