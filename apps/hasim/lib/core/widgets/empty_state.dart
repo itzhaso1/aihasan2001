@@ -69,28 +69,37 @@ class EmptyState extends StatelessWidget {
   }
 
   Widget _pillButton(BuildContext context) {
-    // في RTL: النص يمين والحقل التالي يسار — يطابق المرجع (+ يسار النص).
-    return FilledButton(
-      onPressed: onAction,
-      style: FilledButton.styleFrom(
-        backgroundColor: AppTheme.brand,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        shadowColor: Colors.transparent,
-        minimumSize: Size.zero,
-        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
-        shape: const StadiumBorder(),
-        textStyle: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(actionLabel!),
-          if (actionIcon != null) ...[
-            const SizedBox(width: 8),
-            Icon(actionIcon, size: 20),
-          ],
-        ],
+    // Material/InkWell يحافظ على عرض المحتوى ويتجنب minimumSize الممتد لـ FilledButton.
+    return Material(
+      color: AppTheme.brand,
+      elevation: 0,
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onAction,
+        customBorder: const StadiumBorder(),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  actionLabel!,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                ),
+                if (actionIcon != null) ...[
+                  const SizedBox(width: 8),
+                  Icon(actionIcon, size: 20, color: Colors.white),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

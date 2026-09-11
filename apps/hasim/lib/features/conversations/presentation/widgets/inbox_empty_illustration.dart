@@ -39,36 +39,41 @@ class _InboxEmptyPainter extends CustomPainter {
     canvas.drawOval(Rect.fromCenter(center: Offset(size.width * 0.28, size.height * 0.46), width: size.width * 0.42, height: size.height * 0.22), blob);
     canvas.drawOval(Rect.fromCenter(center: Offset(size.width * 0.72, size.height * 0.42), width: size.width * 0.38, height: size.height * 0.20), blob);
 
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(size.width * 0.50, size.height * 0.82), width: size.width * 0.52, height: size.height * 0.06),
+      Paint()..color = color.withValues(alpha: 0.10),
+    );
+
+    final box = RRect.fromRectAndRadius(
+      Rect.fromLTWH(size.width * 0.29, size.height * 0.58, size.width * 0.42, size.height * 0.22),
+      Radius.circular(size.width * 0.04),
+    );
+    canvas.drawRRect(box, Paint()..color = tray);
+
+    final inner = RRect.fromRectAndRadius(
+      Rect.fromLTWH(size.width * 0.325, size.height * 0.605, size.width * 0.35, size.height * 0.10),
+      Radius.circular(size.width * 0.025),
+    );
+    canvas.drawRRect(inner, Paint()..color = trayDeep);
+
+    final front = Path()
+      ..moveTo(size.width * 0.29, size.height * 0.68)
+      ..lineTo(size.width * 0.71, size.height * 0.68)
+      ..lineTo(size.width * 0.71, size.height * 0.78)
+      ..arcToPoint(Offset(size.width * 0.67, size.height * 0.80), radius: Radius.circular(size.width * 0.04))
+      ..lineTo(size.width * 0.33, size.height * 0.80)
+      ..arcToPoint(Offset(size.width * 0.29, size.height * 0.78), radius: Radius.circular(size.width * 0.04))
+      ..close();
+    canvas.drawPath(front, Paint()..color = Color.lerp(tray, Colors.white, 0.08)!);
+
     _drawLeaf(canvas, Offset(size.width * 0.22, size.height * 0.62), size.width * 0.13, -0.7, leaf, leafDark);
     _drawLeaf(canvas, Offset(size.width * 0.16, size.height * 0.70), size.width * 0.11, -0.15, leafDark, leaf);
     _drawLeaf(canvas, Offset(size.width * 0.78, size.height * 0.64), size.width * 0.12, 0.85, leaf, leafDark);
     _drawLeaf(canvas, Offset(size.width * 0.84, size.height * 0.72), size.width * 0.10, 0.25, leafDark, leaf);
 
-    final trayRect = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: Offset(size.width * 0.50, size.height * 0.70), width: size.width * 0.46, height: size.height * 0.22),
-      Radius.circular(size.width * 0.045),
-    );
-    canvas.drawRRect(trayRect, Paint()..color = tray);
-
-    final opening = Path()
-      ..moveTo(size.width * 0.32, size.height * 0.62)
-      ..lineTo(size.width * 0.42, size.height * 0.70)
-      ..lineTo(size.width * 0.58, size.height * 0.70)
-      ..lineTo(size.width * 0.68, size.height * 0.62)
-      ..close();
-    canvas.drawPath(opening, Paint()..color = trayDeep);
-
-    final lip = Path()
-      ..moveTo(size.width * 0.30, size.height * 0.61)
-      ..lineTo(size.width * 0.70, size.height * 0.61)
-      ..lineTo(size.width * 0.64, size.height * 0.68)
-      ..lineTo(size.width * 0.36, size.height * 0.68)
-      ..close();
-    canvas.drawPath(lip, Paint()..color = Color.lerp(tray, Colors.white, 0.18)!);
-
     // ورقة مائلة داخل الصندوق
     canvas.save();
-    canvas.translate(size.width * 0.52, size.height * 0.46);
+    canvas.translate(size.width * 0.52, size.height * 0.48);
     canvas.rotate(-0.28);
     final paper = RRect.fromRectAndRadius(
       Rect.fromCenter(center: Offset.zero, width: size.width * 0.22, height: size.height * 0.30),
