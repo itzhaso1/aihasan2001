@@ -12,10 +12,12 @@ class HasimShellHeader extends ConsumerWidget implements PreferredSizeWidget {
     super.key,
     this.showBrand = true,
     this.extraActions = const [],
+    this.backgroundColor,
   });
 
   final bool showBrand;
   final List<Widget> extraActions;
+  final Color? backgroundColor;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -29,6 +31,9 @@ class HasimShellHeader extends ConsumerWidget implements PreferredSizeWidget {
       automaticallyImplyLeading: false,
       centerTitle: false,
       titleSpacing: 16,
+      backgroundColor: backgroundColor,
+      surfaceTintColor: Colors.transparent,
+      scrolledUnderElevation: backgroundColor != null ? 0 : null,
       title: showBrand
           ? InkWell(
               onTap: () => context.push('/profile'),
@@ -60,16 +65,26 @@ class HasimShellHeader extends ConsumerWidget implements PreferredSizeWidget {
               ),
             )
           : null,
-      // في RTL: actions تظهر يسار الشاشة → ⋯
+      // في RTL: actions تظهر يسار الشاشة → ⋮
       actions: [
         ...extraActions,
         Semantics(
           button: true,
           label: 'المزيد',
-          child: IconButton(
-            tooltip: 'المزيد',
-            onPressed: () => showHasimMoreMenu(context, ref),
-            icon: const Icon(Icons.more_horiz),
+          child: Builder(
+            builder: (buttonContext) {
+              return IconButton(
+                key: const Key('hasim-more-btn'),
+                tooltip: 'المزيد',
+                visualDensity: VisualDensity.standard,
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(44, 44),
+                  tapTargetSize: MaterialTapTargetSize.padded,
+                ),
+                onPressed: () => showHasimMoreMenu(buttonContext, ref),
+                icon: const Icon(Icons.more_vert),
+              );
+            },
           ),
         ),
       ],
