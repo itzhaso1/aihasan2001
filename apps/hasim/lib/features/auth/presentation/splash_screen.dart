@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
 
-/// ملصق بداية حاسم شات — أبيض + تيل الهوية بدون تعتيم فوق الألوان.
+/// ملصق البداية المرجعي — أبيض سادة كما في الصورة، بدون تدرج نعناعي.
 const hasimSplashAsset = 'assets/branding/hasim_splash.png';
+const hasimSplashMarkAsset = 'assets/branding/splash/mark.png';
+
+const _artW = 950.0;
+const _artH = 1656.0;
+const _barFill = Color(0xFF01BDA6);
+const _barTrack = Color(0xFFE0E0E0);
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -15,36 +20,85 @@ class SplashScreen extends ConsumerStatefulWidget {
   ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends ConsumerState<SplashScreen> {
+class _SplashScreenState extends ConsumerState<SplashScreen>
+    with SingleTickerProviderStateMixin {
   bool _navigated = false;
-  late final DateTime _started = DateTime.now();
+  late final AnimationController _intro;
+  late final Animation<double> _markFade;
+  late final Animation<double> _markScale;
+  late final Animation<double> _markTurns;
+  late final Animation<double> _posterFade;
+  late final Animation<double> _progress;
+  late final List<Animation<double>> _iconReveal;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _intro = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    );
+    _markFade = CurvedAnimation(
+      parent: _intro,
+      curve: const Interval(0.00, 0.16, curve: Curves.easeOut),
+    );
+    _markScale = Tween<double>(begin: 0.86, end: 1).animate(
+      CurvedAnimation(
+        parent: _intro,
+        curve: const Interval(0.00, 0.18, curve: Curves.easeOut),
+      ),
+    );
+    _markTurns = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _intro,
+        curve: const Interval(0.18, 0.42, curve: Curves.easeInOut),
+      ),
+    );
+    _posterFade = CurvedAnimation(
+      parent: _intro,
+      curve: const Interval(0.10, 0.30, curve: Curves.easeOut),
+    );
+    _progress = CurvedAnimation(
+      parent: _intro,
+      curve: const Interval(0.22, 0.92, curve: Curves.easeInOut),
+    );
+    _iconReveal = List<Animation<double>>.generate(6, (i) {
+      final start = 0.36 + i * 0.055;
+      return CurvedAnimation(
+        parent: _intro,
+        curve: Interval(
+          start,
+          (start + 0.12).clamp(0.0, 1.0),
+          curve: Curves.easeOut,
+        ),
+      );
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       precacheImage(const AssetImage(hasimSplashAsset), context);
+      precacheImage(const AssetImage(hasimSplashMarkAsset), context);
+      await _intro.forward();
       _maybeNavigate();
     });
   }
 
+  @override
+  void dispose() {
+    _intro.dispose();
+    super.dispose();
+  }
+
   Future<void> _maybeNavigate() async {
     if (_navigated || !mounted) return;
+    if (_intro.status != AnimationStatus.completed) return;
     final auth = ref.read(authControllerProvider);
     if (auth.bootstrapping) return;
-
-    final elapsed = DateTime.now().difference(_started);
-    const min = Duration(milliseconds: 1800);
-    if (elapsed < min) {
-      await Future<void>.delayed(min - elapsed);
-    }
-    if (!mounted || _navigated) return;
     _navigated = true;
 
-    final next = ref.read(authControllerProvider);
-    if (!next.isAuthenticated) {
+    if (!auth.isAuthenticated) {
       context.go('/login');
-    } else if (next.workspace == null) {
+    } else if (auth.workspace == null) {
       context.go('/workspaces');
     } else {
       context.go('/conversations');
@@ -69,65 +123,179 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       ),
       child: Scaffold(
         backgroundColor: Colors.white,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment.center,
-                  radius: 0.92,
-                  colors: [Color(0x4D06C2A4), Color(0x1A06C2A4), Colors.white],
-                  stops: [0.0, 0.42, 1.0],
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  child: Image.asset(
-                    hasimSplashAsset,
-                    key: const Key('hasim-splash-art'),
+        body: AnimatedBuilder(
+          animation: _intro,
+          builder: (context, _) {
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                const ColoredBox(color: Colors.white),
+                Center(
+                  child: FittedBox(
                     fit: BoxFit.contain,
-                    width: double.infinity,
-                    height: double.infinity,
-                    alignment: Alignment.center,
-                    filterQuality: FilterQuality.high,
-                    gaplessPlayback: true,
-                    errorBuilder: (_, _, _) => const _SplashColorFallback(),
+                    child: SizedBox(
+                      width: _artW,
+                      height: _artH,
+                      child: Stack(
+                        children: [
+                          FadeTransition(
+                            opacity: _posterFade,
+                            child: Image.asset(
+                              hasimSplashAsset,
+                              key: const Key('hasim-splash-art'),
+                              width: _artW,
+                              height: _artH,
+                              fit: BoxFit.fill,
+                              filterQuality: FilterQuality.high,
+                              gaplessPlayback: true,
+                            ),
+                          ),
+                          Positioned.fill(
+                            child: FadeTransition(
+                              opacity: _posterFade,
+                              child: Stack(
+                                children: [
+                                  const Positioned(
+                                    left: 330,
+                                    top: 1442,
+                                    width: 292,
+                                    height: 28,
+                                    child: ColoredBox(color: Colors.white),
+                                  ),
+                                  Positioned(
+                                    left: 337,
+                                    top: 1447,
+                                    width: 278,
+                                    height: 18,
+                                    child: _LoadingBar(
+                                      progress: _progress.value,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (_intro.value < 1) ...[
+                            const Positioned(
+                              left: 358,
+                              top: 478,
+                              width: 234,
+                              height: 270,
+                              child: ColoredBox(color: Colors.white),
+                            ),
+                            Positioned(
+                              left: 358,
+                              top: 478,
+                              width: 234,
+                              height: 270,
+                              child: FadeTransition(
+                                opacity: _markFade,
+                                child: ScaleTransition(
+                                  scale: _markScale,
+                                  child: ClipRect(
+                                    child: RotationTransition(
+                                      turns: _markTurns,
+                                      child: Image.asset(
+                                        hasimSplashMarkAsset,
+                                        width: 234,
+                                        height: 270,
+                                        fit: BoxFit.fill,
+                                        filterQuality: FilterQuality.high,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            ..._iconCovers(),
+                          ],
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
   }
+
+  List<Widget> _iconCovers() {
+    const covers = <_IconCover>[
+      _IconCover.circle(474, 361, 88),
+      _IconCover.circle(758, 519, 82),
+      _IconCover.circle(808, 754, 74),
+      _IconCover.box(698, 868, 154, 162),
+      _IconCover.box(78, 798, 158, 170),
+      _IconCover.circle(190, 518, 84),
+    ];
+
+    return [
+      for (var i = 0; i < covers.length; i++)
+        Positioned(
+          left: covers[i].left,
+          top: covers[i].top,
+          width: covers[i].width,
+          height: covers[i].height,
+          child: IgnorePointer(
+            child: Opacity(
+              opacity: (1 - _iconReveal[i].value).clamp(0.0, 1.0),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: covers[i].circle
+                      ? BoxShape.circle
+                      : BoxShape.rectangle,
+                  borderRadius: covers[i].circle
+                      ? null
+                      : BorderRadius.circular(28),
+                ),
+              ),
+            ),
+          ),
+        ),
+    ];
+  }
 }
 
-class _SplashColorFallback extends StatelessWidget {
-  const _SplashColorFallback();
+class _IconCover {
+  const _IconCover.circle(double cx, double cy, double r)
+    : left = cx - r,
+      top = cy - r,
+      width = r * 2,
+      height = r * 2,
+      circle = true;
+
+  const _IconCover.box(this.left, this.top, this.width, this.height)
+    : circle = false;
+
+  final double left;
+  final double top;
+  final double width;
+  final double height;
+  final bool circle;
+}
+
+class _LoadingBar extends StatelessWidget {
+  const _LoadingBar({required this.progress});
+
+  final double progress;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      alignment: Alignment.center,
-      decoration: const BoxDecoration(
-        gradient: RadialGradient(
-          colors: [Color(0xFF06C2A4), Color(0xFF067E6B), Colors.white],
-          radius: 1.05,
-        ),
-      ),
-      child: Text(
-        'حاسم شات',
-        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-          fontWeight: FontWeight.w800,
-          color: AppTheme.brandDark,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(9),
+      child: ColoredBox(
+        color: _barTrack,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: FractionallySizedBox(
+            widthFactor: progress.clamp(0.0, 1.0),
+            heightFactor: 1,
+            child: const ColoredBox(color: _barFill),
+          ),
         ),
       ),
     );

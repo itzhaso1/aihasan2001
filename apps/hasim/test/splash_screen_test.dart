@@ -21,7 +21,7 @@ class _MemorySecureStore extends SecureStore {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('splash shows the HASIM poster without a dark overlay', (
+  testWidgets('splash shows the white HASIM poster without a mint overlay', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -48,15 +48,23 @@ void main() {
     final image = tester.widget<Image>(
       find.byKey(const Key('hasim-splash-art')),
     );
-    expect(image.fit, BoxFit.contain);
     expect(image.image, isA<AssetImage>());
     expect((image.image as AssetImage).assetName, hasimSplashAsset);
 
-    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
     expect(scaffold.backgroundColor, Colors.white);
     expect(AppTheme.brand, const Color(0xFF06C2A4));
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is DecoratedBox &&
+            widget.decoration is BoxDecoration &&
+            (widget.decoration as BoxDecoration).gradient is RadialGradient,
+      ),
+      findsNothing,
+    );
 
-    await tester.pump(const Duration(milliseconds: 2000));
+    await tester.pump(const Duration(milliseconds: 2800));
     await tester.pumpAndSettle();
   });
 }

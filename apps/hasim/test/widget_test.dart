@@ -88,7 +88,7 @@ void main() {
     await tester.pump();
     expect(find.byType(SplashScreen), findsOneWidget);
     expect(find.byKey(const Key('hasim-splash-art')), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 2000));
+    await tester.pump(const Duration(milliseconds: 2800));
     await tester.pumpAndSettle();
     expect(find.byType(LoginScreen), findsOneWidget);
     expect(find.byKey(const Key('hasim-login-art')), findsOneWidget);
