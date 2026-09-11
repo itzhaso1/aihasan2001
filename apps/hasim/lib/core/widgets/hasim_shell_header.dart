@@ -65,16 +65,26 @@ class HasimShellHeader extends ConsumerWidget implements PreferredSizeWidget {
               ),
             )
           : null,
-      // في RTL: actions تظهر يسار الشاشة → ⋯
+      // في RTL: actions تظهر يسار الشاشة → ⋮
       actions: [
         ...extraActions,
         Semantics(
           button: true,
           label: 'المزيد',
-          child: IconButton(
-            tooltip: 'المزيد',
-            onPressed: () => showHasimMoreMenu(context, ref),
-            icon: const Icon(Icons.more_horiz),
+          child: Builder(
+            builder: (buttonContext) {
+              return IconButton(
+                key: const Key('hasim-more-btn'),
+                tooltip: 'المزيد',
+                visualDensity: VisualDensity.standard,
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(44, 44),
+                  tapTargetSize: MaterialTapTargetSize.padded,
+                ),
+                onPressed: () => showHasimMoreMenu(buttonContext),
+                icon: const Icon(Icons.more_vert),
+              );
+            },
           ),
         ),
       ],

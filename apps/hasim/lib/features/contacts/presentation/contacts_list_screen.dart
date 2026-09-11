@@ -23,10 +23,19 @@ class _ContactsListScreenState extends ConsumerState<ContactsListScreen> {
   bool _loadingMore = false;
   bool _favoritesOnly = false;
   String? _error;
+  bool _didStart = false;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didStart) return;
+    _didStart = true;
+    if (GoRouter.maybeOf(context) != null) {
+      final extra = GoRouterState.of(context).extra;
+      if (extra is Map && extra['favorites'] == true) {
+        _favoritesOnly = true;
+      }
+    }
     _scroll.addListener(_onScroll);
     _load(reset: true);
   }
