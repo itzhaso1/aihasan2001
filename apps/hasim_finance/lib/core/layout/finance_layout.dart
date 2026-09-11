@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hasim_finance/core/layout/finance_chrome.dart';
 import 'package:hasim_finance/core/layout/kpi_card.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/core/theme/finance_tokens.dart';
@@ -144,12 +145,14 @@ class OptionPicker extends StatelessWidget {
     required this.options,
     required this.value,
     required this.onChanged,
+    this.floatingLabel = true,
   });
 
   final String label;
   final List<NamedOption> options;
   final int? value;
   final ValueChanged<int?> onChanged;
+  final bool floatingLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -157,7 +160,8 @@ class OptionPicker extends StatelessWidget {
       // ignore: deprecated_member_use
       value: value != null && options.any((row) => row.id == value) ? value : null,
       isExpanded: true,
-      decoration: InputDecoration(labelText: label),
+      isDense: true,
+      decoration: floatingLabel ? InputDecoration(labelText: label) : FinanceFilterField.decoration(),
       items: [
         const DropdownMenuItem<int?>(value: null, child: Text('—')),
         for (final option in options) DropdownMenuItem<int?>(value: option.id, child: Text(option.name)),

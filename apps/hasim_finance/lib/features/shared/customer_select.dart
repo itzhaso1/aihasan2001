@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
+import 'package:hasim_finance/core/layout/finance_chrome.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
@@ -14,6 +15,7 @@ class CustomerSelectField extends ConsumerStatefulWidget {
     this.compact = false,
     this.allowClear = false,
     this.label,
+    this.floatingLabel = true,
   });
 
   final int? selectedId;
@@ -21,6 +23,7 @@ class CustomerSelectField extends ConsumerStatefulWidget {
   final bool compact;
   final bool allowClear;
   final String? label;
+  final bool floatingLabel;
 
   @override
   ConsumerState<CustomerSelectField> createState() => _CustomerSelectFieldState();
@@ -97,7 +100,10 @@ class _CustomerSelectFieldState extends ConsumerState<CustomerSelectField> {
             ? widget.selectedId
             : null,
         isExpanded: true,
-        decoration: InputDecoration(labelText: widget.label ?? l.selectCustomer),
+        isDense: true,
+        decoration: widget.floatingLabel
+            ? InputDecoration(labelText: widget.label ?? l.selectCustomer)
+            : FinanceFilterField.decoration(),
         items: [
           if (widget.allowClear) DropdownMenuItem<int?>(value: null, child: Text(l.filterAll)),
           for (final customer in _customers)
