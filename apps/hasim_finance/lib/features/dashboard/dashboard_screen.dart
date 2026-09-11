@@ -143,28 +143,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           ],
                         ),
                         children: [
-                          SizedBox(
-                            width: 140,
-                            child: TextField(controller: _from, decoration: InputDecoration(labelText: l.from, prefixIcon: const Icon(Icons.event, size: 16))),
+                          FinanceFilterField(
+                            label: l.from,
+                            width: 160,
+                            child: TextField(
+                              controller: _from,
+                              textAlignVertical: TextAlignVertical.center,
+                              decoration: FinanceFilterField.decoration(prefixIcon: const Icon(Icons.event, size: 18)),
+                            ),
                           ),
-                          SizedBox(
-                            width: 140,
-                            child: TextField(controller: _to, decoration: InputDecoration(labelText: l.to, prefixIcon: const Icon(Icons.event, size: 16))),
+                          FinanceFilterField(
+                            label: l.to,
+                            width: 160,
+                            child: TextField(
+                              controller: _to,
+                              textAlignVertical: TextAlignVertical.center,
+                              decoration: FinanceFilterField.decoration(prefixIcon: const Icon(Icons.event, size: 18)),
+                            ),
                           ),
-                          SizedBox(
+                          FinanceFilterField(
+                            label: l.selectCustomer,
                             width: 220,
                             child: CustomerSelectField(
                               selectedId: _customerId,
                               onSelected: (id) => setState(() => _customerId = id),
                               compact: true,
                               allowClear: true,
-                              label: l.selectCustomer,
+                              floatingLabel: false,
                             ),
                           ),
-                          SizedBox(
+                          FinanceFilterField(
+                            label: l.products,
                             width: 180,
                             child: OptionPicker(
                               label: l.products,
+                              floatingLabel: false,
                               options: [
                                 for (final product in ref.watch(financeCatalogProvider).valueOrNull?.products ?? const <CatalogOption>[])
                                   NamedOption(id: product.id, name: product.name),
@@ -173,10 +186,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               onChanged: (id) => setState(() => _productId = id),
                             ),
                           ),
-                          SizedBox(
+                          FinanceFilterField(
+                            label: l.projects,
                             width: 180,
                             child: OptionPicker(
                               label: l.projects,
+                              floatingLabel: false,
                               options: [
                                 for (final project in ref.watch(financeCatalogProvider).valueOrNull?.projects ?? const <CatalogOption>[])
                                   NamedOption(id: project.id, name: project.name),
@@ -185,13 +200,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               onChanged: (id) => setState(() => _projectId = id),
                             ),
                           ),
-                          SizedBox(
+                          FinanceFilterField(
+                            label: l.status,
                             width: 180,
                             child: DropdownButtonFormField<String?>(
                               // ignore: deprecated_member_use
                               value: _lifecycle,
                               isExpanded: true,
-                              decoration: InputDecoration(labelText: l.status),
+                              isDense: true,
+                              decoration: FinanceFilterField.decoration(),
                               items: [
                                 DropdownMenuItem<String?>(value: null, child: Text(l.filterAll)),
                                 DropdownMenuItem(value: 'draft', child: Text(l.lifecycleDraft)),
@@ -200,13 +217,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                               onChanged: (value) => setState(() => _lifecycle = value),
                             ),
                           ),
-                          SizedBox(
-                            width: 180,
+                          FinanceFilterField(
+                            label: l.paymentMethod,
+                            width: 200,
                             child: DropdownButtonFormField<String?>(
                               // ignore: deprecated_member_use
                               value: _paymentMethod,
                               isExpanded: true,
-                              decoration: InputDecoration(labelText: l.paymentMethod),
+                              isDense: true,
+                              decoration: FinanceFilterField.decoration(),
                               items: [
                                 DropdownMenuItem<String?>(value: null, child: Text(l.filterAll)),
                                 DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),

@@ -32,6 +32,13 @@ class PaymentController extends FinanceApiController
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'in:posted,reversed'],
+            'customer_id' => ['nullable', 'integer'],
+            'invoice_id' => ['nullable', 'integer'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'method' => ['nullable', 'string', 'max:32'],
+            'treasury_account_id' => ['nullable', 'integer'],
+            'reference' => ['nullable', 'string', 'max:255'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
 
@@ -40,10 +47,20 @@ class PaymentController extends FinanceApiController
             ->when($validated['search'] ?? null, function ($query, $search): void {
                 $query->where(function ($inner) use ($search): void {
                     $inner->where('reference', 'like', '%'.$search.'%')
-                        ->orWhereHas('invoice', fn ($invoice) => $invoice->where('invoice_number', 'like', '%'.$search.'%'));
+                        ->orWhereHas('invoice', fn ($invoice) => $invoice->where('invoice_number', 'like', '%'.$search.'%'))
+                        ->orWhereHas('invoice.customer', fn ($customer) => $customer->where('name', 'like', '%'.$search.'%'));
                 });
             })
             ->when($validated['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
+            ->when($validated['customer_id'] ?? null, function ($query, $customerId): void {
+                $query->whereHas('invoice', fn ($invoice) => $invoice->where('customer_id', $customerId));
+            })
+            ->when($validated['invoice_id'] ?? null, fn ($query, $invoiceId) => $query->where('invoice_id', $invoiceId))
+            ->when($validated['from'] ?? null, fn ($query, $from) => $query->whereDate('payment_date', '>=', $from))
+            ->when($validated['to'] ?? null, fn ($query, $to) => $query->whereDate('payment_date', '<=', $to))
+            ->when($validated['method'] ?? null, fn ($query, $method) => $query->where('method', $method))
+            ->when($validated['treasury_account_id'] ?? null, fn ($query, $treasuryId) => $query->where('treasury_account_id', $treasuryId))
+            ->when($validated['reference'] ?? null, fn ($query, $reference) => $query->where('reference', 'like', '%'.$reference.'%'))
             ->latest('id')
             ->paginate((int) ($validated['per_page'] ?? 25));
 

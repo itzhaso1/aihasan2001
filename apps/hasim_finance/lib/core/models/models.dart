@@ -338,6 +338,8 @@ class InvoiceRecord {
     this.supplierName,
     this.issueDate,
     this.dueDate,
+    this.supplyDate,
+    this.issuedAt,
     this.currency = 'SAR',
     this.subtotal = '0.00',
     this.discount = '0.00',
@@ -357,12 +359,21 @@ class InvoiceRecord {
     this.notes,
     this.paymentTerms,
     this.contractId,
+    this.contractNumber,
+    this.contractTitle,
     this.projectId,
+    this.projectName,
     this.type,
     this.supplierId,
     this.zatcaRequirement,
     this.zatcaSubtype,
     this.hasZatcaQr = false,
+    this.zatcaXmlAvailable = false,
+    this.zatcaQrAvailable = false,
+    this.zatcaClearance = false,
+    this.zatcaIntegration,
+    this.zatcaReason,
+    this.taxBreakdown = const [],
     this.companySnapshot,
     this.recipientSnapshot,
     this.lines = const [],
@@ -373,6 +384,7 @@ class InvoiceRecord {
     this.checkout,
     this.audit = const [],
     this.attachments = const [],
+    this.journalEntries = const [],
   });
 
   final int id;
@@ -382,6 +394,8 @@ class InvoiceRecord {
   final String? supplierName;
   final String? issueDate;
   final String? dueDate;
+  final String? supplyDate;
+  final String? issuedAt;
   final String currency;
   final String subtotal;
   final String discount;
@@ -401,12 +415,21 @@ class InvoiceRecord {
   final String? notes;
   final String? paymentTerms;
   final int? contractId;
+  final String? contractNumber;
+  final String? contractTitle;
   final int? projectId;
+  final String? projectName;
   final String? type;
   final int? supplierId;
   final String? zatcaRequirement;
   final String? zatcaSubtype;
   final bool hasZatcaQr;
+  final bool zatcaXmlAvailable;
+  final bool zatcaQrAvailable;
+  final bool zatcaClearance;
+  final String? zatcaIntegration;
+  final String? zatcaReason;
+  final List<Map<String, dynamic>> taxBreakdown;
   final Map<String, dynamic>? companySnapshot;
   final Map<String, dynamic>? recipientSnapshot;
   final List<LineItem> lines;
@@ -417,6 +440,7 @@ class InvoiceRecord {
   final CheckoutInfo? checkout;
   final List<Map<String, dynamic>> audit;
   final List<Map<String, dynamic>> attachments;
+  final List<Map<String, dynamic>> journalEntries;
 
   factory InvoiceRecord.fromJson(Map<String, dynamic> json) {
     final zatca = json['zatca'] is Map ? Map<String, dynamic>.from(json['zatca'] as Map) : null;
@@ -428,6 +452,8 @@ class InvoiceRecord {
       supplierName: json['supplier_name']?.toString(),
       issueDate: json['issue_date']?.toString(),
       dueDate: json['due_date']?.toString(),
+      supplyDate: json['supply_date']?.toString(),
+      issuedAt: json['issued_at']?.toString(),
       currency: json['currency']?.toString() ?? 'SAR',
       subtotal: MoneyFields.asMoney(json['subtotal']),
       discount: MoneyFields.asMoney(json['discount']),
@@ -447,12 +473,24 @@ class InvoiceRecord {
       notes: json['notes']?.toString(),
       paymentTerms: json['payment_terms']?.toString(),
       contractId: json['contract_id'] == null ? null : int.tryParse('${json['contract_id']}'),
+      contractNumber: json['contract_number']?.toString(),
+      contractTitle: json['contract_title']?.toString(),
       projectId: json['project_id'] == null ? null : int.tryParse('${json['project_id']}'),
+      projectName: json['project_name']?.toString(),
       type: json['type']?.toString(),
       supplierId: json['supplier_id'] == null ? null : int.tryParse('${json['supplier_id']}'),
       zatcaRequirement: zatca?['requirement']?.toString(),
       zatcaSubtype: zatca?['tax_document_subtype']?.toString(),
-      hasZatcaQr: zatca?['has_qr'] == true,
+      hasZatcaQr: zatca?['qr_available'] == true || zatca?['has_qr'] == true,
+      zatcaXmlAvailable: zatca?['xml_available'] == true || zatca?['has_xml'] == true,
+      zatcaQrAvailable: zatca?['qr_available'] == true || zatca?['has_qr'] == true,
+      zatcaClearance: zatca?['clearance'] == true,
+      zatcaIntegration: zatca?['integration']?.toString(),
+      zatcaReason: zatca?['reason']?.toString(),
+      taxBreakdown: (json['tax_breakdown'] as List? ?? [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(),
       companySnapshot: json['company_snapshot'] is Map
           ? Map<String, dynamic>.from(json['company_snapshot'] as Map)
           : null,
@@ -472,6 +510,10 @@ class InvoiceRecord {
           .map((row) => Map<String, dynamic>.from(row))
           .toList(),
       attachments: (json['attachments'] as List? ?? [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(),
+      journalEntries: (json['journal_entries'] as List? ?? [])
           .whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row))
           .toList(),
@@ -504,6 +546,7 @@ class QuoteRecord {
     this.rejectionReason,
     this.lines = const [],
     this.deliveries = const [],
+    this.attachments = const [],
     this.currency = 'SAR',
   });
 
@@ -530,6 +573,7 @@ class QuoteRecord {
   final String? rejectionReason;
   final List<LineItem> lines;
   final List<DeliveryRecord> deliveries;
+  final List<Map<String, dynamic>> attachments;
   final String currency;
 
   factory QuoteRecord.fromJson(Map<String, dynamic> json) {
@@ -558,6 +602,10 @@ class QuoteRecord {
       rejectionReason: json['rejection_reason']?.toString(),
       lines: _mapList(json['lines'], LineItem.fromJson),
       deliveries: _mapList(json['deliveries'], DeliveryRecord.fromJson),
+      attachments: (json['attachments'] as List? ?? [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(),
       currency: json['currency']?.toString() ?? 'SAR',
     );
   }
@@ -764,6 +812,8 @@ class ExpenseRecord {
     this.treasuryAccountId,
     this.treasuryAccountName,
     this.isRecurring = false,
+    this.recurringFrequency,
+    this.nextDueDate,
     this.taxProfileType,
   });
 
@@ -786,6 +836,8 @@ class ExpenseRecord {
   final int? treasuryAccountId;
   final String? treasuryAccountName;
   final bool isRecurring;
+  final String? recurringFrequency;
+  final String? nextDueDate;
   final String? taxProfileType;
 
   factory ExpenseRecord.fromJson(Map<String, dynamic> json) {
@@ -809,6 +861,8 @@ class ExpenseRecord {
       treasuryAccountId: json['treasury_account_id'] == null ? null : int.tryParse('${json['treasury_account_id']}'),
       treasuryAccountName: json['treasury_account_name']?.toString(),
       isRecurring: json['is_recurring'] == true,
+      recurringFrequency: json['recurring_frequency']?.toString(),
+      nextDueDate: json['next_due_date']?.toString(),
       taxProfileType: json['tax_profile_type']?.toString(),
     );
   }
@@ -1105,12 +1159,19 @@ class SupplierRecord {
 }
 
 class PagedResult<T> {
-  const PagedResult({required this.items, required this.page, required this.lastPage, required this.total});
+  const PagedResult({
+    required this.items,
+    required this.page,
+    required this.lastPage,
+    required this.total,
+    this.meta,
+  });
 
   final List<T> items;
   final int page;
   final int lastPage;
   final int total;
+  final Map<String, dynamic>? meta;
 }
 
 class ProductRecord {

@@ -237,7 +237,7 @@ class ApiClient {
       final message = map['message']?.toString();
       if (message != null && message.isNotEmpty) {
         return ApiException(
-          message,
+          _arabicMessage(message),
           statusCode: status,
           code: map['code']?.toString(),
           errors: map['errors'] is Map ? Map<String, dynamic>.from(map['errors'] as Map) : null,
@@ -262,5 +262,15 @@ class ApiClient {
       500 => 'حدث خطأ في الخادم.',
       _ => 'حدث خطأ غير متوقع.',
     }, statusCode: status);
+  }
+
+  String _arabicMessage(String message) {
+    return switch (message) {
+      'Unauthenticated.' => 'انتهت جلسة تسجيل الدخول.',
+      'Workspace context is required.' => 'يلزم اختيار منشأة مالية.',
+      'You are not allowed to access this financial resource.' => 'لا تملك صلاحية تنفيذ هذا الإجراء.',
+      'Invoice is already paid.' => 'الفاتورة مسددة بالكامل.',
+      _ => message,
+    };
   }
 }

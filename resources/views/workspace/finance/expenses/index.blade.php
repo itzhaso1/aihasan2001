@@ -45,6 +45,16 @@
                     <option value="{{ $account->id }}">{{ $account->name }} ({{ $account->type }})</option>
                 @endforeach
             </select>
+            <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" name="is_recurring" value="1"> متكرر
+            </label>
+            <select name="recurring_frequency" class="rounded-lg border-slate-300 text-sm">
+                <option value="">دورية التكرار</option>
+                <option value="weekly">أسبوعي</option>
+                <option value="monthly">شهري</option>
+                <option value="quarterly">ربع سنوي</option>
+                <option value="yearly">سنوي</option>
+            </select>
             <div class="lg:col-span-2">
                 <label class="mb-1 block text-xs font-semibold text-slate-600">مرفق المصروف</label>
                 <input

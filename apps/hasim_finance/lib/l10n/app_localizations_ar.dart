@@ -836,6 +836,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get exemptionReason => 'سبب الإعفاء';
 
   @override
+  String get exemptionCode => 'رمز الإعفاء';
+
+  @override
   String get project => 'المشروع';
 
   @override
@@ -1300,4 +1303,179 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get peopleCount => 'عدد الموظفين';
+
+  @override
+  String get taxInvoice => 'فاتورة ضريبية';
+
+  @override
+  String get invoiceItems => 'بنود الفاتورة';
+
+  @override
+  String get customerInfo => 'معلومات العميل';
+
+  @override
+  String get invoiceSummary => 'ملخص الفاتورة';
+
+  @override
+  String get notesAndTerms => 'الملاحظات والشروط';
+
+  @override
+  String get attachmentsTitle => 'المرفقات';
+
+  @override
+  String get downloadPdf => 'تحميل PDF';
+
+  @override
+  String get printDocument => 'طباعة';
+
+  @override
+  String get goBack => 'رجوع';
+
+  @override
+  String get invoiceGrandTotal => 'الإجمالي النهائي';
+
+  @override
+  String get invoiceTotalAmount => 'إجمالي الفاتورة';
+
+  @override
+  String get noAttachments => 'لا توجد مرفقات';
+
+  @override
+  String get uploadInvoiceAttachmentsHint =>
+      'يمكن رفع المرفقات المتعلقة بالفاتورة هنا.';
+
+  @override
+  String get noNotes => 'لا توجد ملاحظات.';
+
+  @override
+  String get noTerms => 'لم تُعلَم الفاتورة بشروط.';
+
+  @override
+  String get termsAndConditions => 'الشروط والأحكام';
+
+  @override
+  String get auditEvent => 'الحدث';
+
+  @override
+  String get auditDescription => 'الوصف';
+
+  @override
+  String get auditUser => 'المستخدم';
+
+  @override
+  String get auditDate => 'التاريخ';
+
+  @override
+  String get invoiceCreatedEvent => 'تم إنشاء الفاتورة';
+
+  @override
+  String get invoiceIssuedEvent => 'تم إصدار الفاتورة';
+
+  @override
+  String get invoiceCancelledEvent => 'تم إلغاء الفاتورة';
+
+  @override
+  String get invoiceSentEvent => 'تم إرسال الفاتورة';
+
+  @override
+  String get invoiceUpdatedEvent => 'تم تحديث الفاتورة';
+
+  @override
+  String get invoiceReminderSentEvent => 'تم إرسال تذكير بالفاتورة';
+
+  @override
+  String get tableTotal => 'المجموع';
+
+  @override
+  String get relatedDocuments => 'المستندات المرتبطة';
+
+  @override
+  String get zatcaInfo => 'الفوترة الإلكترونية';
+
+  @override
+  String get telephone => 'الهاتف';
+
+  @override
+  String get lineNumber => '#';
+
+  @override
+  String get paidInFull => 'مدفوعة';
+
+  @override
+  String get draftStatus => 'مسودة';
+
+  @override
+  String get supplyDate => 'تاريخ التوريد';
+
+  @override
+  String get issueImmediately => 'إصدار الفاتورة مباشرة عند الحفظ';
+
+  @override
+  String get downloadXml => 'تحميل XML';
+
+  @override
+  String get viewQr => 'عرض رمز QR';
+
+  @override
+  String get zatcaFoundation => 'أساس داخلي للفوترة الإلكترونية. لا يوجد تخليص FATOORA ولا إبلاغ إنتاج.';
+
+  @override
+  String get xmlAvailable => 'XML متوفر';
+
+  @override
+  String get qrAvailable => 'رمز QR متوفر';
+
+  @override
+  String get xmlUnavailable => 'XML غير متوفر';
+
+  @override
+  String get qrUnavailable => 'رمز QR غير متوفر';
+
+  @override
+  String get sortBy => 'الترتيب';
+
+  @override
+  String get invoiceStatusFilter => 'حالة الفاتورة';
+
+  @override
+  String get recurringFrequency => 'دورية التكرار';
+
+  @override
+  String get nextDueDate => 'تاريخ الاستحقاق التالي';
+
+  @override
+  String get pickAttachments => 'اختيار مرفقات';
+
+  @override
+  String get frequencyMonthly => 'شهري';
+
+  @override
+  String get frequencyWeekly => 'أسبوعي';
+
+  @override
+  String get frequencyQuarterly => 'ربع سنوي';
+
+  @override
+  String get frequencyYearly => 'سنوي';
+
+  @override
+  String get sortNewest => 'الأحدث';
+
+  @override
+  String get sortDirection => 'اتجاه الترتيب';
+
+  @override
+  String get sortAscending => 'تصاعدي';
+
+  @override
+  String get sortDescending => 'تنازلي';
+
+  @override
+  String get statusPosted => 'مرحّل';
+
+  @override
+  String get statusReversed => 'معكوس';
+
+  @override
+  String get statusVoided => 'ملغى';
 }

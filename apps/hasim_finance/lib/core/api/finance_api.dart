@@ -158,7 +158,15 @@ class FinanceApi {
     return res.data!;
   }
 
-  Future<QuoteRecord> saveQuote(Map<String, dynamic> body, {int? id}) async {
+  Future<QuoteRecord> saveQuote(Map<String, dynamic> body, {int? id, FormData? form}) async {
+    if (form != null && id == null) {
+      final res = await _client.upload(
+        'quotes',
+        formData: form,
+        mapData: (raw) => QuoteRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+      );
+      return res.data!;
+    }
     final res = id == null
         ? await _client.post('quotes', body: body, mapData: (raw) => QuoteRecord.fromJson(Map<String, dynamic>.from(raw as Map)))
         : await _client.put('quotes/$id', body: body, mapData: (raw) => QuoteRecord.fromJson(Map<String, dynamic>.from(raw as Map)));
@@ -180,17 +188,56 @@ class FinanceApi {
     return res.data!;
   }
 
+  Future<QuoteRecord> uploadQuoteAttachments(int quoteId, FormData form) async {
+    final res = await _client.upload(
+      'quotes/$quoteId/attachments',
+      formData: form,
+      mapData: (raw) => QuoteRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<Uint8List> downloadQuoteAttachment(int quoteId, int attachmentId) {
+    return _client.downloadBytes('quotes/$quoteId/attachments/$attachmentId');
+  }
+
+  Future<QuoteRecord> deleteQuoteAttachment(int quoteId, int attachmentId) async {
+    final res = await _client.delete(
+      'quotes/$quoteId/attachments/$attachmentId',
+      mapData: (raw) => QuoteRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
   Future<PagedResult<InvoiceRecord>> invoices({
     String? search,
     String? paymentStatus,
     String? invoiceStatus,
     String? lifecycle,
+    int? customerId,
+    String? from,
+    String? to,
+    String? currency,
+    int? projectId,
+    int? contractId,
+    String? paymentMethod,
+    String? sort,
+    String? direction,
     int page = 1,
   }) {
     return _paged('sales-invoices', (raw) => InvoiceRecord.fromJson(raw), search: search, page: page, extra: {
       if (paymentStatus != null && paymentStatus.isNotEmpty) 'payment_status': paymentStatus,
       if (invoiceStatus != null && invoiceStatus.isNotEmpty) 'invoice_status': invoiceStatus,
       if (lifecycle != null && lifecycle.isNotEmpty) 'lifecycle': lifecycle,
+      'customer_id': ?customerId,
+      if (from != null && from.isNotEmpty) 'from': from,
+      if (to != null && to.isNotEmpty) 'to': to,
+      if (currency != null && currency.isNotEmpty) 'currency': currency,
+      'project_id': ?projectId,
+      'contract_id': ?contractId,
+      if (paymentMethod != null && paymentMethod.isNotEmpty) 'payment_method': paymentMethod,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (direction != null && direction.isNotEmpty) 'direction': direction,
     });
   }
 
@@ -199,7 +246,15 @@ class FinanceApi {
     return res.data!;
   }
 
-  Future<InvoiceRecord> saveInvoice(Map<String, dynamic> body, {int? id}) async {
+  Future<InvoiceRecord> saveInvoice(Map<String, dynamic> body, {int? id, FormData? form}) async {
+    if (form != null && id == null) {
+      final res = await _client.upload(
+        'sales-invoices',
+        formData: form,
+        mapData: (raw) => InvoiceRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+      );
+      return res.data!;
+    }
     final res = id == null
         ? await _client.post('sales-invoices', body: body, mapData: (raw) => InvoiceRecord.fromJson(Map<String, dynamic>.from(raw as Map)))
         : await _client.put('sales-invoices/$id', body: body, mapData: (raw) => InvoiceRecord.fromJson(Map<String, dynamic>.from(raw as Map)));
@@ -231,6 +286,16 @@ class FinanceApi {
       mapData: (raw) => InvoiceRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
     );
     return res.data!;
+  }
+
+  Future<Map<String, dynamic>> invoiceXml(int invoiceId) async {
+    final res = await _client.get('sales-invoices/$invoiceId/xml');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> invoiceQr(int invoiceId) async {
+    final res = await _client.get('sales-invoices/$invoiceId/qr');
+    return Map<String, dynamic>.from(res.data as Map);
   }
 
   Future<InvoiceRecord> invoiceAction(int id, String action, {Map<String, dynamic>? body}) async {
@@ -281,8 +346,28 @@ class FinanceApi {
     return res.data!;
   }
 
-  Future<PagedResult<PaymentRecord>> payments({String? search, int page = 1}) {
-    return _paged('payments', (raw) => PaymentRecord.fromJson(raw), search: search, page: page);
+  Future<PagedResult<PaymentRecord>> payments({
+    String? search,
+    String? status,
+    int? customerId,
+    int? invoiceId,
+    String? from,
+    String? to,
+    String? method,
+    int? treasuryAccountId,
+    String? reference,
+    int page = 1,
+  }) {
+    return _paged('payments', (raw) => PaymentRecord.fromJson(raw), search: search, page: page, extra: {
+      if (status != null && status.isNotEmpty) 'status': status,
+      'customer_id': ?customerId,
+      'invoice_id': ?invoiceId,
+      if (from != null && from.isNotEmpty) 'from': from,
+      if (to != null && to.isNotEmpty) 'to': to,
+      if (method != null && method.isNotEmpty) 'method': method,
+      'treasury_account_id': ?treasuryAccountId,
+      if (reference != null && reference.isNotEmpty) 'reference': reference,
+    });
   }
 
   Future<PaymentRecord> payment(int id) async {
@@ -290,8 +375,24 @@ class FinanceApi {
     return res.data!;
   }
 
-  Future<PagedResult<ReceiptRecord>> receipts({String? search, int page = 1}) {
-    return _paged('receipts', (raw) => ReceiptRecord.fromJson(raw), search: search, page: page);
+  Future<PagedResult<ReceiptRecord>> receipts({
+    String? search,
+    String? status,
+    int? customerId,
+    int? invoiceId,
+    String? from,
+    String? to,
+    String? method,
+    int page = 1,
+  }) {
+    return _paged('receipts', (raw) => ReceiptRecord.fromJson(raw), search: search, page: page, extra: {
+      if (status != null && status.isNotEmpty) 'status': status,
+      'customer_id': ?customerId,
+      'invoice_id': ?invoiceId,
+      if (from != null && from.isNotEmpty) 'from': from,
+      if (to != null && to.isNotEmpty) 'to': to,
+      if (method != null && method.isNotEmpty) 'method': method,
+    });
   }
 
   Future<ReceiptRecord> receipt(int id) async {
@@ -400,10 +501,44 @@ class FinanceApi {
     return Map<String, dynamic>.from(res.data as Map? ?? {});
   }
 
-  Future<InvoiceRecord> savePurchase(Map<String, dynamic> body, {int? id}) async {
+  Future<InvoiceRecord> savePurchase(Map<String, dynamic> body, {int? id, FormData? form}) async {
+    if (form != null && id == null) {
+      final res = await _client.upload(
+        'purchases',
+        formData: form,
+        mapData: (raw) => InvoiceRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+      );
+      return res.data!;
+    }
     final res = id == null
         ? await _client.post('purchases', body: body, mapData: (raw) => InvoiceRecord.fromJson(Map<String, dynamic>.from(raw as Map)))
         : await _client.put('purchases/$id', body: body, mapData: (raw) => InvoiceRecord.fromJson(Map<String, dynamic>.from(raw as Map)));
+    return res.data!;
+  }
+
+  Future<Map<String, dynamic>> recordPurchasePayment(int invoiceId, Map<String, dynamic> body) async {
+    final res = await _client.post('purchases/$invoiceId/payments', body: body);
+    return Map<String, dynamic>.from(res.data as Map? ?? {});
+  }
+
+  Future<InvoiceRecord> uploadPurchaseAttachments(int invoiceId, FormData form) async {
+    final res = await _client.upload(
+      'purchases/$invoiceId/attachments',
+      formData: form,
+      mapData: (raw) => InvoiceRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
+    return res.data!;
+  }
+
+  Future<Uint8List> downloadPurchaseAttachment(int invoiceId, int attachmentId) {
+    return _client.downloadBytes('purchases/$invoiceId/attachments/$attachmentId');
+  }
+
+  Future<InvoiceRecord> deletePurchaseAttachment(int invoiceId, int attachmentId) async {
+    final res = await _client.delete(
+      'purchases/$invoiceId/attachments/$attachmentId',
+      mapData: (raw) => InvoiceRecord.fromJson(Map<String, dynamic>.from(raw as Map)),
+    );
     return res.data!;
   }
 
@@ -448,6 +583,8 @@ class FinanceApi {
     String? invoiceStatus,
     String? lifecycle,
     int? supplierId,
+    String? from,
+    String? to,
     int page = 1,
   }) {
     return _paged('purchases', (raw) => InvoiceRecord.fromJson(raw), search: search, page: page, extra: {
@@ -455,6 +592,8 @@ class FinanceApi {
       if (invoiceStatus != null && invoiceStatus.isNotEmpty) 'invoice_status': invoiceStatus,
       if (lifecycle != null && lifecycle.isNotEmpty) 'lifecycle': lifecycle,
       'supplier_id': ?supplierId,
+      if (from != null && from.isNotEmpty) 'from': from,
+      if (to != null && to.isNotEmpty) 'to': to,
     });
   }
 
@@ -880,7 +1019,13 @@ class FinanceApi {
         .whereType<Map>()
         .map((row) => map(Map<String, dynamic>.from(row)))
         .toList();
-    return PagedResult(items: items, page: res.currentPage, lastPage: res.lastPage, total: res.total);
+    return PagedResult(
+      items: items,
+      page: res.currentPage,
+      lastPage: res.lastPage,
+      total: res.total,
+      meta: res.meta,
+    );
   }
 }
 

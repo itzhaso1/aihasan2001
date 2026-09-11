@@ -52,6 +52,13 @@ trait AuthorizesFinanceApi
         return $user;
     }
 
+    /**
+     * Matches Web FinanceBaseController::authorizeFinance.
+     *
+     * Do not tighten this to Spatie keys only: workspace owners/admins/managers
+     * operate Finance without every permission row assigned. Removing elevation
+     * would lock legitimate owners out of billing. Cashiers are not elevated.
+     */
     protected function isElevatedFinanceMember(Workspace $workspace, User $user): bool
     {
         return $workspace->users()
@@ -59,6 +66,22 @@ trait AuthorizesFinanceApi
             ->wherePivot('status', 'active')
             ->wherePivotIn('membership_role', ['owner', 'admin', 'manager'])
             ->exists();
+    }
+
+    /**
+     * Matches financePermissionMap['accounting.view'] so invoice journals
+     * are not hidden from workspace owners who operate Finance without a
+     * dedicated accounting.view Spatie row.
+     */
+    protected function mayViewAccounting(?User $user, Workspace $workspace): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $user->can('accounting.view')
+            || $user->can('workspace.manage')
+            || $this->isElevatedFinanceMember($workspace, $user);
     }
 
     /**

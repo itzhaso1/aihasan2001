@@ -3,13 +3,14 @@
 namespace App\Http\Controllers\Api\Finance\V1;
 
 use App\Exceptions\Api\ApiErrorCode;
+use App\Exceptions\Api\ApiApplicationException;
 use App\Http\Controllers\Api\Finance\Concerns\HandlesFinanceClient;
 use App\Http\Controllers\Api\Finance\FinanceApiController;
-use App\Models\AuditLog;
 use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\FinanceInvoiceAttachment;
 use App\Models\Finance\FinanceInvoicePayment;
 use App\Services\Finance\Api\FinanceClientPresenter;
+use App\Services\Finance\Api\InvoiceDocumentReadService;
 use App\Services\Finance\FinanceBootstrapService;
 use App\Services\Finance\InvoiceCheckoutService;
 use App\Services\Finance\InvoiceEmailService;
@@ -41,6 +42,7 @@ class SalesInvoiceController extends FinanceApiController
         private readonly PdfInvoiceService $pdfInvoiceService,
         private readonly FinanceBootstrapService $financeBootstrapService,
         private readonly FinanceClientPresenter $presenter,
+        private readonly InvoiceDocumentReadService $invoiceDocumentReadService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -53,18 +55,40 @@ class SalesInvoiceController extends FinanceApiController
         $validated = $request->validate([
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
             'type' => ['nullable', 'in:sales'],
+            'sort' => ['nullable', 'in:invoice_number,issue_date,due_date,total,amount_due,id'],
+            'direction' => ['nullable', 'in:asc,desc'],
         ]);
 
+        $sort = (string) ($validated['sort'] ?? 'id');
+        $direction = ($validated['direction'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
+        $sortable = [
+            'invoice_number' => 'invoice_number',
+            'issue_date' => 'issue_date',
+            'due_date' => 'due_date',
+            'total' => 'total',
+            'amount_due' => 'amount_due',
+            'id' => 'id',
+        ];
+        $sortColumn = $sortable[$sort] ?? 'id';
+
         $query = $this->invoiceInboxService->applyRequestFilters(
-            FinanceInvoice::query()->with(['customer', 'deliveries']),
+            FinanceInvoice::query()->with(['customer', 'deliveries', 'contract', 'project']),
             $request
         )->where('type', 'sales');
 
-        $page = $query->latest('id')->paginate((int) ($validated['per_page'] ?? 25));
+        $pipeline = $this->invoiceInboxService->pipelineCounts((int) $workspace->id, 'sales');
+        $totals = $this->invoiceInboxService->filteredTotals($query);
+
+        $page = (clone $query)->orderBy($sortColumn, $direction)->paginate((int) ($validated['per_page'] ?? 25));
 
         return $this->ok(
             $page->getCollection()->map(fn (FinanceInvoice $invoice) => $this->presenter->invoiceSummary($invoice))->values()->all(),
-            meta: $this->pageMeta($page),
+            meta: $this->pageMeta($page) + [
+                'pipeline' => $pipeline,
+                'totals' => $totals,
+                'sort' => $sortColumn,
+                'direction' => $direction,
+            ],
         );
     }
 
@@ -77,6 +101,8 @@ class SalesInvoiceController extends FinanceApiController
         $invoice = $this->invoiceService->syncPaymentStatus($invoice);
         $invoice->load([
             'customer',
+            'contract',
+            'project',
             'items',
             'payments.receipt',
             'payments.invoice.customer',
@@ -91,17 +117,10 @@ class SalesInvoiceController extends FinanceApiController
         $checkout = $this->invoiceCheckoutService->availability($invoice);
 
         $payload = $this->presenter->invoiceDetail($invoice, $checkout);
-        $payload['audit'] = AuditLog::query()
-            ->with('user')
-            ->where('workspace_id', $invoice->workspace_id)
-            ->where('entity_type', FinanceInvoice::class)
-            ->where('entity_id', $invoice->id)
-            ->latest('id')
-            ->limit(30)
-            ->get()
-            ->map(fn (AuditLog $log) => $this->presenter->audit($log))
-            ->values()
-            ->all();
+        $payload['audit'] = $this->presenter->relatedAuditLogs($invoice);
+        if ($this->mayViewAccounting($request->user(), $workspace)) {
+            $payload['journal_entries'] = $this->presenter->relatedJournalEntries($invoice);
+        }
 
         return $this->ok($payload);
     }
@@ -112,6 +131,7 @@ class SalesInvoiceController extends FinanceApiController
         $this->clientActor($request, $workspace, 'invoices.create');
         $this->financeBootstrapService->ensureWorkspaceFinanceSetup($workspace);
         $payload = $this->invoicePayload($request, (int) $workspace->id, 'sales');
+        $payload['attachments'] = $request->file('attachments', []) ?: [];
         if (((string) ($payload['invoice_status'] ?? 'draft')) === 'issued') {
             $this->clientActor($request, $workspace, 'invoices.issue');
         }
@@ -133,6 +153,7 @@ class SalesInvoiceController extends FinanceApiController
         $this->clientActor($request, $workspace, 'invoices.edit');
         abort_unless((string) $invoice->type === 'sales', 404);
         $payload = $this->invoicePayload($request, (int) $workspace->id, 'sales');
+        $payload['attachments'] = $request->file('attachments', []) ?: [];
 
         $updated = $this->runFinanceDomain(
             fn () => $this->invoiceService->updateDraft($invoice, $payload, (int) $request->user()?->id)
@@ -351,6 +372,36 @@ class SalesInvoiceController extends FinanceApiController
         return $this->runFinanceDomain(fn () => $this->pdfInvoiceService->download($invoice));
     }
 
+    public function xml(Request $request, FinanceInvoice $invoice): JsonResponse
+    {
+        $workspace = $this->clientWorkspace($this->workspaceContext);
+        $this->clientActor($request, $workspace, 'invoices.view');
+        abort_unless((string) $invoice->type === 'sales', 404);
+
+        try {
+            $dto = $this->invoiceDocumentReadService->xmlForFinance($invoice);
+        } catch (ApiApplicationException $exception) {
+            return $this->fail($exception->getMessage(), $exception->errorCode, $exception->status);
+        }
+
+        return $this->ok($dto->toArray());
+    }
+
+    public function qr(Request $request, FinanceInvoice $invoice): JsonResponse
+    {
+        $workspace = $this->clientWorkspace($this->workspaceContext);
+        $this->clientActor($request, $workspace, 'invoices.view');
+        abort_unless((string) $invoice->type === 'sales', 404);
+
+        try {
+            $dto = $this->invoiceDocumentReadService->qrForFinance($invoice);
+        } catch (ApiApplicationException $exception) {
+            return $this->fail($exception->getMessage(), $exception->errorCode, $exception->status);
+        }
+
+        return $this->ok($dto->toArray());
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -359,6 +410,8 @@ class SalesInvoiceController extends FinanceApiController
         $invoice = $this->invoiceService->syncPaymentStatus($invoice->fresh() ?? $invoice);
         $invoice->load([
             'customer',
+            'contract',
+            'project',
             'items',
             'payments.receipt',
             'payments.invoice.customer',
@@ -393,6 +446,7 @@ class SalesInvoiceController extends FinanceApiController
             ],
             'issue_date' => ['required', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:issue_date'],
+            'supply_date' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'size:3'],
             'invoice_status' => ['nullable', 'in:draft,issued'],
             'payment_terms' => ['nullable', 'string', 'max:255'],

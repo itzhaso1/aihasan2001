@@ -1742,6 +1742,12 @@ abstract class AppLocalizations {
   /// **'سبب الإعفاء'**
   String get exemptionReason;
 
+  /// No description provided for @exemptionCode.
+  ///
+  /// In ar, this message translates to:
+  /// **'رمز الإعفاء'**
+  String get exemptionCode;
+
   /// No description provided for @project.
   ///
   /// In ar, this message translates to:
@@ -2665,6 +2671,230 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'عدد الموظفين'**
   String get peopleCount;
+
+  /// No description provided for @taxInvoice.
+  ///
+  /// In ar, this message translates to:
+  /// **'فاتورة ضريبية'**
+  String get taxInvoice;
+
+  /// No description provided for @invoiceItems.
+  ///
+  /// In ar, this message translates to:
+  /// **'بنود الفاتورة'**
+  String get invoiceItems;
+
+  /// No description provided for @customerInfo.
+  ///
+  /// In ar, this message translates to:
+  /// **'معلومات العميل'**
+  String get customerInfo;
+
+  /// No description provided for @invoiceSummary.
+  ///
+  /// In ar, this message translates to:
+  /// **'ملخص الفاتورة'**
+  String get invoiceSummary;
+
+  /// No description provided for @notesAndTerms.
+  ///
+  /// In ar, this message translates to:
+  /// **'الملاحظات والشروط'**
+  String get notesAndTerms;
+
+  /// No description provided for @attachmentsTitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'المرفقات'**
+  String get attachmentsTitle;
+
+  /// No description provided for @downloadPdf.
+  ///
+  /// In ar, this message translates to:
+  /// **'تحميل PDF'**
+  String get downloadPdf;
+
+  /// No description provided for @printDocument.
+  ///
+  /// In ar, this message translates to:
+  /// **'طباعة'**
+  String get printDocument;
+
+  /// No description provided for @goBack.
+  ///
+  /// In ar, this message translates to:
+  /// **'رجوع'**
+  String get goBack;
+
+  /// No description provided for @invoiceGrandTotal.
+  ///
+  /// In ar, this message translates to:
+  /// **'الإجمالي النهائي'**
+  String get invoiceGrandTotal;
+
+  /// No description provided for @invoiceTotalAmount.
+  ///
+  /// In ar, this message translates to:
+  /// **'إجمالي الفاتورة'**
+  String get invoiceTotalAmount;
+
+  /// No description provided for @noAttachments.
+  ///
+  /// In ar, this message translates to:
+  /// **'لا توجد مرفقات'**
+  String get noAttachments;
+
+  /// No description provided for @uploadInvoiceAttachmentsHint.
+  ///
+  /// In ar, this message translates to:
+  /// **'يمكن رفع المرفقات المتعلقة بالفاتورة هنا.'**
+  String get uploadInvoiceAttachmentsHint;
+
+  /// No description provided for @noNotes.
+  ///
+  /// In ar, this message translates to:
+  /// **'لا توجد ملاحظات.'**
+  String get noNotes;
+
+  /// No description provided for @noTerms.
+  ///
+  /// In ar, this message translates to:
+  /// **'لم تُعلَم الفاتورة بشروط.'**
+  String get noTerms;
+
+  /// No description provided for @termsAndConditions.
+  ///
+  /// In ar, this message translates to:
+  /// **'الشروط والأحكام'**
+  String get termsAndConditions;
+
+  /// No description provided for @auditEvent.
+  ///
+  /// In ar, this message translates to:
+  /// **'الحدث'**
+  String get auditEvent;
+
+  /// No description provided for @auditDescription.
+  ///
+  /// In ar, this message translates to:
+  /// **'الوصف'**
+  String get auditDescription;
+
+  /// No description provided for @auditUser.
+  ///
+  /// In ar, this message translates to:
+  /// **'المستخدم'**
+  String get auditUser;
+
+  /// No description provided for @auditDate.
+  ///
+  /// In ar, this message translates to:
+  /// **'التاريخ'**
+  String get auditDate;
+
+  /// No description provided for @invoiceCreatedEvent.
+  ///
+  /// In ar, this message translates to:
+  /// **'تم إنشاء الفاتورة'**
+  String get invoiceCreatedEvent;
+
+  /// No description provided for @invoiceIssuedEvent.
+  ///
+  /// In ar, this message translates to:
+  /// **'تم إصدار الفاتورة'**
+  String get invoiceIssuedEvent;
+
+  /// No description provided for @invoiceCancelledEvent.
+  ///
+  /// In ar, this message translates to:
+  /// **'تم إلغاء الفاتورة'**
+  String get invoiceCancelledEvent;
+
+  /// No description provided for @invoiceSentEvent.
+  ///
+  /// In ar, this message translates to:
+  /// **'تم إرسال الفاتورة'**
+  String get invoiceSentEvent;
+
+  /// No description provided for @invoiceUpdatedEvent.
+  ///
+  /// In ar, this message translates to:
+  /// **'تم تحديث الفاتورة'**
+  String get invoiceUpdatedEvent;
+
+  /// No description provided for @invoiceReminderSentEvent.
+  ///
+  /// In ar, this message translates to:
+  /// **'تم إرسال تذكير بالفاتورة'**
+  String get invoiceReminderSentEvent;
+
+  /// No description provided for @tableTotal.
+  ///
+  /// In ar, this message translates to:
+  /// **'المجموع'**
+  String get tableTotal;
+
+  /// No description provided for @relatedDocuments.
+  ///
+  /// In ar, this message translates to:
+  /// **'المستندات المرتبطة'**
+  String get relatedDocuments;
+
+  /// No description provided for @zatcaInfo.
+  ///
+  /// In ar, this message translates to:
+  /// **'الفوترة الإلكترونية'**
+  String get zatcaInfo;
+
+  /// No description provided for @telephone.
+  ///
+  /// In ar, this message translates to:
+  /// **'الهاتف'**
+  String get telephone;
+
+  /// No description provided for @lineNumber.
+  ///
+  /// In ar, this message translates to:
+  /// **'#'**
+  String get lineNumber;
+
+  /// No description provided for @paidInFull.
+  ///
+  /// In ar, this message translates to:
+  /// **'مدفوعة'**
+  String get paidInFull;
+
+  /// No description provided for @draftStatus.
+  ///
+  /// In ar, this message translates to:
+  /// **'مسودة'**
+  String get draftStatus;
+
+  String get supplyDate;
+  String get issueImmediately;
+  String get downloadXml;
+  String get viewQr;
+  String get zatcaFoundation;
+  String get xmlAvailable;
+  String get qrAvailable;
+  String get xmlUnavailable;
+  String get qrUnavailable;
+  String get sortBy;
+  String get invoiceStatusFilter;
+  String get recurringFrequency;
+  String get nextDueDate;
+  String get pickAttachments;
+  String get frequencyMonthly;
+  String get frequencyWeekly;
+  String get frequencyQuarterly;
+  String get frequencyYearly;
+  String get sortNewest;
+  String get sortDirection;
+  String get sortAscending;
+  String get sortDescending;
+  String get statusPosted;
+  String get statusReversed;
+  String get statusVoided;
 }
 
 class _AppLocalizationsDelegate

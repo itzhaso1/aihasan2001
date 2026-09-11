@@ -146,6 +146,11 @@ class FinanceQuote extends WorkspaceScopedModel
         return $this->belongsTo(FinanceInvoice::class, 'converted_invoice_id');
     }
 
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(FinanceQuoteAttachment::class, 'quote_id')->latest('id');
+    }
+
     protected static function booted(): void
     {
         parent::booted();

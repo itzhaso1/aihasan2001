@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Finance\V1;
 use App\Http\Controllers\Api\Finance\Concerns\HandlesFinanceClient;
 use App\Http\Controllers\Api\Finance\FinanceApiController;
 use App\Models\Finance\FinanceQuote;
+use App\Models\Finance\FinanceQuoteAttachment;
 use App\Services\Finance\Api\FinanceClientPresenter;
 use App\Services\Finance\FinanceBootstrapService;
 use App\Services\Finance\PdfQuoteService;
@@ -14,6 +15,7 @@ use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class QuoteController extends FinanceApiController
@@ -66,7 +68,7 @@ class QuoteController extends FinanceApiController
         $workspace = $this->clientWorkspace($this->workspaceContext);
         $this->clientActor($request, $workspace, 'quotes.view');
 
-        $quote->load(['customer', 'items', 'deliveries.sender', 'convertedInvoice']);
+        $quote->load(['customer', 'items', 'deliveries.sender', 'convertedInvoice', 'attachments']);
 
         return $this->ok($this->presenter->quoteDetail($quote));
     }
@@ -77,6 +79,7 @@ class QuoteController extends FinanceApiController
         $this->clientActor($request, $workspace, 'quotes.create');
         $this->financeBootstrapService->ensureWorkspaceFinanceSetup($workspace);
         $payload = $this->quotePayload($request, (int) $workspace->id);
+        $payload['attachments'] = $request->file('attachments', []) ?: [];
         if (((string) ($payload['status'] ?? 'draft')) === 'issued') {
             $this->clientActor($request, $workspace, 'quotes.issue');
         }
@@ -85,7 +88,7 @@ class QuoteController extends FinanceApiController
             fn () => $this->quoteService->create($workspace, $payload, (int) $request->user()?->id)
         );
 
-        return $this->ok($this->presenter->quoteDetail($quote->load(['customer', 'items', 'deliveries'])), message: 'تم حفظ عرض السعر.', status: 201);
+        return $this->ok($this->presenter->quoteDetail($quote->load(['customer', 'items', 'deliveries', 'attachments'])), message: 'تم حفظ عرض السعر.', status: 201);
     }
 
     public function update(Request $request, FinanceQuote $quote): JsonResponse
@@ -93,12 +96,13 @@ class QuoteController extends FinanceApiController
         $workspace = $this->clientWorkspace($this->workspaceContext);
         $this->clientActor($request, $workspace, 'quotes.edit');
         $payload = $this->quotePayload($request, (int) $workspace->id);
+        $payload['attachments'] = $request->file('attachments', []) ?: [];
 
         $updated = $this->runFinanceDomain(
             fn () => $this->quoteService->updateDraft($quote, $payload, (int) $request->user()?->id)
         );
 
-        return $this->ok($this->presenter->quoteDetail($updated->load(['customer', 'items', 'deliveries'])), message: 'تم تحديث مسودة عرض السعر.');
+        return $this->ok($this->presenter->quoteDetail($updated->load(['customer', 'items', 'deliveries', 'attachments'])), message: 'تم تحديث مسودة عرض السعر.');
     }
 
     public function destroy(Request $request, FinanceQuote $quote): JsonResponse
@@ -116,7 +120,7 @@ class QuoteController extends FinanceApiController
         $user = $this->clientActor($request, $workspace, 'quotes.issue');
         $issued = $this->runFinanceDomain(fn () => $this->quoteService->issue($quote, (int) $user->id));
 
-        return $this->ok($this->presenter->quoteDetail($issued->load(['customer', 'items', 'deliveries'])), message: 'تم إصدار عرض السعر.');
+        return $this->ok($this->presenter->quoteDetail($issued->load(['customer', 'items', 'deliveries', 'attachments'])), message: 'تم إصدار عرض السعر.');
     }
 
     public function cancel(Request $request, FinanceQuote $quote): JsonResponse
@@ -125,7 +129,7 @@ class QuoteController extends FinanceApiController
         $this->clientActor($request, $workspace, 'quotes.cancel');
         $cancelled = $this->runFinanceDomain(fn () => $this->quoteService->cancel($quote));
 
-        return $this->ok($this->presenter->quoteDetail($cancelled->load(['customer', 'items', 'deliveries'])), message: 'تم إلغاء عرض السعر.');
+        return $this->ok($this->presenter->quoteDetail($cancelled->load(['customer', 'items', 'deliveries', 'attachments'])), message: 'تم إلغاء عرض السعر.');
     }
 
     public function accept(Request $request, FinanceQuote $quote): JsonResponse
@@ -134,7 +138,7 @@ class QuoteController extends FinanceApiController
         $user = $this->clientActor($request, $workspace, 'quotes.accept');
         $accepted = $this->runFinanceDomain(fn () => $this->quoteService->accept($quote, (int) $user->id));
 
-        return $this->ok($this->presenter->quoteDetail($accepted->load(['customer', 'items', 'deliveries', 'convertedInvoice'])), message: 'تم قبول عرض السعر.');
+        return $this->ok($this->presenter->quoteDetail($accepted->load(['customer', 'items', 'deliveries', 'convertedInvoice', 'attachments'])), message: 'تم قبول عرض السعر.');
     }
 
     public function reject(Request $request, FinanceQuote $quote): JsonResponse
@@ -146,7 +150,7 @@ class QuoteController extends FinanceApiController
             fn () => $this->quoteService->reject($quote, (int) $user->id, $validated['rejection_reason'] ?? null)
         );
 
-        return $this->ok($this->presenter->quoteDetail($rejected->load(['customer', 'items', 'deliveries'])), message: 'تم رفض عرض السعر.');
+        return $this->ok($this->presenter->quoteDetail($rejected->load(['customer', 'items', 'deliveries', 'attachments'])), message: 'تم رفض عرض السعر.');
     }
 
     public function convert(Request $request, FinanceQuote $quote): JsonResponse
@@ -154,7 +158,7 @@ class QuoteController extends FinanceApiController
         $workspace = $this->clientWorkspace($this->workspaceContext);
         $user = $this->clientActor($request, $workspace, 'quotes.convert');
         $converted = $this->runFinanceDomain(fn () => $this->quoteService->convert($quote, (int) $user->id));
-        $converted->load(['customer', 'items', 'deliveries', 'convertedInvoice']);
+        $converted->load(['customer', 'items', 'deliveries', 'convertedInvoice', 'attachments']);
 
         return $this->ok($this->presenter->quoteDetail($converted), message: 'تم تحويل عرض السعر إلى فاتورة مسودة.');
     }
@@ -165,12 +169,53 @@ class QuoteController extends FinanceApiController
         $user = $this->clientActor($request, $workspace, 'quotes.send');
         $fields = $this->emailFields($request);
         $delivery = $this->runFinanceDomain(fn () => $this->quoteEmailService->send($quote, $fields, (int) $user->id));
-        $quote->load(['customer', 'items', 'deliveries.sender', 'convertedInvoice']);
+        $quote->load(['customer', 'items', 'deliveries.sender', 'convertedInvoice', 'attachments']);
 
         return $this->ok([
             'quote' => $this->presenter->quoteDetail($quote),
             'delivery' => $this->presenter->delivery($delivery),
         ], message: 'تم إرسال عرض السعر إلى '.$delivery->recipient);
+    }
+
+    public function storeAttachment(Request $request, FinanceQuote $quote): JsonResponse
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'quotes.edit');
+        $request->validate([
+            'attachments' => ['required', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,webp'],
+        ]);
+
+        $this->runFinanceDomain(
+            fn () => $this->quoteService->storeAttachments($quote, $request->file('attachments', []) ?: [], (int) $request->user()?->id)
+        );
+
+        return $this->ok(
+            $this->presenter->quoteDetail($quote->fresh()->load(['customer', 'items', 'deliveries', 'convertedInvoice', 'attachments'])),
+            message: 'تم رفع المرفق.',
+        );
+    }
+
+    public function downloadAttachment(Request $request, FinanceQuote $quote, FinanceQuoteAttachment $attachment): mixed
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'quotes.view');
+        abort_unless((int) $attachment->quote_id === (int) $quote->id, 404);
+
+        return Storage::disk('public')->download(
+            $attachment->file_path,
+            $attachment->file_name ?: ('quote-attachment-'.$attachment->id)
+        );
+    }
+
+    public function destroyAttachment(Request $request, FinanceQuote $quote, FinanceQuoteAttachment $attachment): JsonResponse
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'quotes.edit');
+        abort_unless((int) $attachment->quote_id === (int) $quote->id, 404);
+        $this->runFinanceDomain(fn () => $this->quoteService->deleteAttachment($quote, $attachment));
+
+        return $this->ok(
+            $this->presenter->quoteDetail($quote->fresh()->load(['customer', 'items', 'deliveries', 'convertedInvoice', 'attachments'])),
+            message: 'تم حذف المرفق.',
+        );
     }
 
     public function pdf(Request $request, FinanceQuote $quote): mixed
@@ -203,9 +248,11 @@ class QuoteController extends FinanceApiController
             'tax_price_mode' => ['nullable', 'in:exclusive,inclusive'],
             'items' => ['nullable', 'array'],
             'items_json' => ['nullable', 'string'],
+            'attachments' => ['nullable', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,webp'],
         ]);
 
-        $payload = Arr::except($validated, ['items', 'items_json']);
+        $payload = Arr::except($validated, ['items', 'items_json', 'attachments']);
         $payload['items'] = $this->documentItemsFromRequest($request);
 
         return $payload;
