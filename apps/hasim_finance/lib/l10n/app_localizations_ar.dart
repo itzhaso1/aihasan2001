@@ -836,6 +836,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get exemptionReason => 'سبب الإعفاء';
 
   @override
+  String get exemptionCode => 'رمز الإعفاء';
+
+  @override
   String get project => 'المشروع';
 
   @override
@@ -1400,4 +1403,79 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get draftStatus => 'مسودة';
+
+  @override
+  String get supplyDate => 'تاريخ التوريد';
+
+  @override
+  String get issueImmediately => 'إصدار الفاتورة مباشرة عند الحفظ';
+
+  @override
+  String get downloadXml => 'تحميل XML';
+
+  @override
+  String get viewQr => 'عرض رمز QR';
+
+  @override
+  String get zatcaFoundation => 'أساس داخلي للفوترة الإلكترونية. لا يوجد تخليص FATOORA ولا إبلاغ إنتاج.';
+
+  @override
+  String get xmlAvailable => 'XML متوفر';
+
+  @override
+  String get qrAvailable => 'رمز QR متوفر';
+
+  @override
+  String get xmlUnavailable => 'XML غير متوفر';
+
+  @override
+  String get qrUnavailable => 'رمز QR غير متوفر';
+
+  @override
+  String get sortBy => 'الترتيب';
+
+  @override
+  String get invoiceStatusFilter => 'حالة الفاتورة';
+
+  @override
+  String get recurringFrequency => 'دورية التكرار';
+
+  @override
+  String get nextDueDate => 'تاريخ الاستحقاق التالي';
+
+  @override
+  String get pickAttachments => 'اختيار مرفقات';
+
+  @override
+  String get frequencyMonthly => 'شهري';
+
+  @override
+  String get frequencyWeekly => 'أسبوعي';
+
+  @override
+  String get frequencyQuarterly => 'ربع سنوي';
+
+  @override
+  String get frequencyYearly => 'سنوي';
+
+  @override
+  String get sortNewest => 'الأحدث';
+
+  @override
+  String get sortDirection => 'اتجاه الترتيب';
+
+  @override
+  String get sortAscending => 'تصاعدي';
+
+  @override
+  String get sortDescending => 'تنازلي';
+
+  @override
+  String get statusPosted => 'مرحّل';
+
+  @override
+  String get statusReversed => 'معكوس';
+
+  @override
+  String get statusVoided => 'ملغى';
 }

@@ -254,6 +254,10 @@
                     <p class="text-sm text-slate-500">
                         سيتم إعادة حساب جميع القيم في الخادم. عرض السعر ليس فاتورة ولا ينشئ قيدًا محاسبيًا.
                     </p>
+                    <div class="mt-3">
+                        <label class="mb-1 block text-xs font-semibold text-slate-600">مرفقات (اختياري)</label>
+                        <input type="file" name="attachments[]" multiple class="w-full rounded-lg border-slate-300 text-sm">
+                    </div>
                     <button type="submit" class="mt-4 rounded-lg bg-[#06C2A4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">
                         {{ $quote->exists ? 'حفظ التعديلات' : 'حفظ عرض السعر' }}
                     </button>

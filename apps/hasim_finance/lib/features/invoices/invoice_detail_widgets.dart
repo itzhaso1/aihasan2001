@@ -138,13 +138,13 @@ class InvoiceStatusBadges extends StatelessWidget {
       children: [
         if ((invoice.documentStatus ?? '').isNotEmpty)
           _InvoicePill(
-            label: documentStatusLabel(invoice.documentStatus, l),
+            label: '${l.documentStatus}: ${documentStatusLabel(invoice.documentStatus, l)}',
             foreground: _badgeForeground(invoice.documentStatus),
             background: _badgeBackground(invoice.documentStatus),
           ),
         if ((invoice.paymentStatus ?? '').isNotEmpty)
           _InvoicePill(
-            label: paymentStatusLabel(invoice.paymentStatus, l),
+            label: '${paymentStatusLabel(invoice.paymentStatus, l)} (${invoice.paymentStatus})',
             foreground: _badgeForeground(invoice.paymentStatus),
             background: _badgeBackground(invoice.paymentStatus),
             icon: invoice.paymentStatus == 'unpaid' || invoice.paymentStatus == 'overdue'
@@ -173,18 +173,17 @@ class _InvoicePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(999)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14, color: foreground),
-            const SizedBox(width: 4),
-          ],
-          Text(label, style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 12)),
-        ],
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 280),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(999)),
+        child: Text(
+          icon == null ? label : '● $label',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: foreground, fontWeight: FontWeight.w800, fontSize: 12),
+        ),
       ),
     );
   }
@@ -389,6 +388,8 @@ class InvoiceHeader extends StatelessWidget {
           children: [
             _DateMeta(icon: Icons.event_outlined, label: l.issueDate, value: invoice.issueDate),
             _DateMeta(icon: Icons.event_available_outlined, label: l.dueDate, value: invoice.dueDate),
+            _DateMeta(icon: Icons.local_shipping_outlined, label: l.supplyDate, value: invoice.supplyDate),
+            _DateMeta(icon: Icons.schedule_outlined, label: l.issuedAt, value: invoice.issuedAt),
           ],
         ),
       ],
@@ -500,6 +501,8 @@ class CustomerInfoCard extends StatelessWidget {
           InvoiceMetaRow(label: l.telephone, value: snapshotText(snap, const ['phone', 'mobile', 'whatsapp'])),
           InvoiceMetaRow(label: l.email, value: snapshotText(snap, const ['email'])),
           InvoiceMetaRow(label: l.address, value: snapshotAddress(snap)),
+          InvoiceMetaRow(label: l.contract, value: firstNonEmpty([invoice.contractNumber, invoice.contractTitle])),
+          InvoiceMetaRow(label: l.project, value: invoice.projectName),
           if (onOpenCustomer != null && invoice.customerId != null)
             Align(
               alignment: AlignmentDirectional.centerStart,
@@ -541,14 +544,30 @@ class InvoiceSummaryCard extends StatelessWidget {
             emphasis: true,
             highlight: true,
           ),
-          if ((invoice.zatcaRequirement ?? '').isNotEmpty || invoice.hasZatcaQr || (invoice.zatcaSubtype ?? '').isNotEmpty) ...[
+          if ((invoice.zatcaRequirement ?? '').isNotEmpty ||
+              invoice.hasZatcaQr ||
+              invoice.zatcaXmlAvailable ||
+              (invoice.zatcaSubtype ?? '').isNotEmpty) ...[
             const SizedBox(height: 8),
             const Divider(height: 1),
             const SizedBox(height: 8),
             InvoiceMetaRow(label: l.zatcaInfo, value: invoice.zatcaRequirement),
             InvoiceMetaRow(label: l.taxDocumentSubtype, value: invoice.zatcaSubtype),
-            if (invoice.hasZatcaQr) InvoiceMetaRow(label: l.zatcaQr, value: l.zatcaQr),
+            InvoiceMetaRow(label: l.xmlAvailable, value: invoice.zatcaXmlAvailable ? l.xmlAvailable : l.xmlUnavailable),
+            InvoiceMetaRow(label: l.qrAvailable, value: invoice.zatcaQrAvailable ? l.qrAvailable : l.qrUnavailable),
+            InvoiceMetaRow(label: l.zatcaFoundation, value: invoice.zatcaIntegration ?? 'foundation'),
             InvoiceMetaRow(label: l.taxProfile, value: invoice.taxProfileType),
+          ],
+          if (invoice.taxBreakdown.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            for (final bucket in invoice.taxBreakdown)
+              InvoiceMoneyRow(
+                label: '${bucket['code'] ?? bucket['type'] ?? l.tax}',
+                value: '${bucket['tax_amount'] ?? bucket['amount'] ?? ''}',
+                currency: currency,
+              ),
           ],
         ],
       ),
@@ -682,6 +701,11 @@ class InvoiceItemsTable extends StatelessWidget {
           Text(title, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w800)),
           if (subtitle != null)
             Text(subtitle, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: FinanceTokens.textMuted, fontSize: 11)),
+          if ((line.exemptionReason ?? '').trim().isNotEmpty || (line.exemptionCode ?? '').trim().isNotEmpty)
+            Text(
+              [line.exemptionCode, line.exemptionReason].where((v) => (v ?? '').trim().isNotEmpty).join(' · '),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: FinanceTokens.textMuted, fontSize: 11),
+            ),
         ],
       ),
     );
@@ -744,10 +768,10 @@ class PaymentStatusCard extends StatelessWidget {
       tone: FinanceIconTone.teal,
       trailing: onRecordPayment == null
           ? null
-          : TextButton.icon(
+          : IconButton(
+              tooltip: l.recordPayment,
               onPressed: onRecordPayment,
               icon: const Icon(Icons.add_card_outlined, size: 16),
-              label: Text(l.recordPayment),
             ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -965,6 +989,48 @@ class AuditLogCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class JournalEntriesCard extends StatelessWidget {
+  const JournalEntriesCard({super.key, required this.invoice});
+
+  final InvoiceRecord invoice;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    if (invoice.journalEntries.isEmpty) return const SizedBox.shrink();
+    return InvoiceSectionCard(
+      title: l.journalEntries,
+      icon: Icons.menu_book_outlined,
+      tone: FinanceIconTone.indigo,
+      child: Column(
+        children: [
+          for (final entry in invoice.journalEntries)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text('${entry['entry_number'] ?? ''} · ${entry['type'] ?? ''}'),
+              subtitle: Text('${entry['description'] ?? ''} · ${entry['status'] ?? ''}'),
+              trailing: Text(_journalTotals(entry), style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _journalTotals(Map<String, dynamic> entry) {
+    final lines = entry['lines'];
+    if (lines is! List) return '';
+    var debit = 0.0;
+    var credit = 0.0;
+    for (final line in lines) {
+      if (line is! Map) continue;
+      debit += double.tryParse('${line['debit'] ?? 0}') ?? 0;
+      credit += double.tryParse('${line['credit'] ?? 0}') ?? 0;
+    }
+    return '${debit.toStringAsFixed(2)} / ${credit.toStringAsFixed(2)}';
   }
 }
 

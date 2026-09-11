@@ -14,6 +14,7 @@ use App\Services\Finance\InvoiceStateService;
 use App\Services\Merchant\MerchantPaymentEligibilityService;
 use App\Services\Payment\Contracts\BillableCheckoutRequest;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -366,6 +367,14 @@ class PaymentService
         $checkoutAmount = round((float) $payment->amount, 2);
         $due = round((float) $invoice->amount_due, 2);
         if ($checkoutAmount - $due > InvoiceStateService::PAYMENT_TOLERANCE) {
+            Log::warning('Finance checkout webhook refused: provider amount exceeds invoice due.', [
+                'workspace_id' => $payment->workspace_id,
+                'payment_id' => $payment->id,
+                'invoice_id' => $invoice->id,
+                'checkout_amount' => $checkoutAmount,
+                'amount_due' => $due,
+            ]);
+
             return;
         }
 

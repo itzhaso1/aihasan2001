@@ -29,8 +29,18 @@ class ReceiptController extends FinanceBaseController
             ->when($request->string('search')->toString(), function ($query, $search): void {
                 $query->where(function ($inner) use ($search): void {
                     $inner->where('receipt_number', 'like', '%'.$search.'%')
-                        ->orWhere('reference', 'like', '%'.$search.'%');
+                        ->orWhere('reference', 'like', '%'.$search.'%')
+                        ->orWhereHas('customer', fn ($customer) => $customer->where('name', 'like', '%'.$search.'%'))
+                        ->orWhereHas('invoice', fn ($invoice) => $invoice->where('invoice_number', 'like', '%'.$search.'%'));
                 });
+            })
+            ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')->toString()))
+            ->when($request->filled('customer_id'), fn ($query) => $query->where('customer_id', $request->integer('customer_id')))
+            ->when($request->filled('invoice_id'), fn ($query) => $query->where('invoice_id', $request->integer('invoice_id')))
+            ->when($request->filled('from'), fn ($query) => $query->whereDate('payment_date', '>=', $request->string('from')->toString()))
+            ->when($request->filled('to'), fn ($query) => $query->whereDate('payment_date', '<=', $request->string('to')->toString()))
+            ->when($request->filled('method'), function ($query) use ($request): void {
+                $query->whereHas('payment', fn ($payment) => $payment->where('method', $request->string('method')->toString()));
             })
             ->latest('id')
             ->paginate(20)

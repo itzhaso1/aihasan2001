@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -27,45 +29,218 @@ class InvoicesScreen extends ConsumerStatefulWidget {
 
 class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   String? _lifecycle;
+  String? _invoiceStatus;
+  String? _paymentStatus;
+  int? _customerId;
+  final _from = TextEditingController();
+  final _to = TextEditingController();
+  final _currency = TextEditingController();
+  int? _projectId;
+  int? _contractId;
+  String? _paymentMethod;
+  String _sort = 'id';
+  String _direction = 'desc';
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    _currency.dispose();
+    super.dispose();
+  }
+
+  String get _filterKey => [
+        _lifecycle,
+        _invoiceStatus,
+        _paymentStatus,
+        _customerId,
+        _from.text,
+        _to.text,
+        _currency.text,
+        _projectId,
+        _contractId,
+        _paymentMethod,
+        _sort,
+        _direction,
+      ].join('|');
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
+    final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
     return PagedListScreen<InvoiceRecord>(
-      key: ValueKey(_lifecycle),
+      key: ValueKey(_filterKey),
       title: l.invoices,
       allowed: auth.permissions.invoicesView,
       onCreate: auth.permissions.invoicesCreate ? () => context.push('/invoices/new') : null,
       filterBar: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Wrap(
-          spacing: 8,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final option in <(String?, String)>[
-              (null, l.filterAll),
-              ('draft', l.lifecycleDraft),
-              ('sent', l.lifecycleSent),
-              ('partial', l.partial),
-              ('paid', l.paid),
-              ('overdue', l.overdue),
-              ('cancelled', l.cancelled),
-            ])
-              ChoiceChip(
-                label: Text(option.$2),
-                selected: _lifecycle == option.$1,
-                onSelected: (_) => setState(() => _lifecycle = option.$1),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final option in <(String?, String)>[
+                  (null, l.filterAll),
+                  ('draft', l.lifecycleDraft),
+                  ('sent', l.lifecycleSent),
+                  ('partial', l.partial),
+                  ('paid', l.paid),
+                  ('overdue', l.overdue),
+                  ('cancelled', l.cancelled),
+                ])
+                  ChoiceChip(
+                    label: Text(option.$2),
+                    selected: _lifecycle == option.$1,
+                    onSelected: (_) => setState(() => _lifecycle = option.$1),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            FormGrid(children: [
+              CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
+              DropdownButtonFormField<String?>(
+                // ignore: deprecated_member_use
+                value: _invoiceStatus,
+                decoration: InputDecoration(labelText: l.invoiceStatusFilter),
+                items: [
+                  DropdownMenuItem(value: null, child: Text(l.filterAll)),
+                  DropdownMenuItem(value: 'draft', child: Text(l.draft)),
+                  DropdownMenuItem(value: 'issued', child: Text(l.issue)),
+                  DropdownMenuItem(value: 'cancelled', child: Text(l.cancelled)),
+                ],
+                onChanged: (value) => setState(() => _invoiceStatus = value),
               ),
+              DropdownButtonFormField<String?>(
+                // ignore: deprecated_member_use
+                value: _paymentStatus,
+                decoration: InputDecoration(labelText: l.paymentStatus),
+                items: [
+                  DropdownMenuItem(value: null, child: Text(l.filterAll)),
+                  DropdownMenuItem(value: 'unpaid', child: Text(l.unpaid)),
+                  DropdownMenuItem(value: 'partial', child: Text(l.partial)),
+                  DropdownMenuItem(value: 'paid', child: Text(l.paid)),
+                  DropdownMenuItem(value: 'overdue', child: Text(l.overdue)),
+                ],
+                onChanged: (value) => setState(() => _paymentStatus = value),
+              ),
+              TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
+              TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
+              TextField(controller: _currency, decoration: InputDecoration(labelText: l.currency)),
+              OptionPicker(
+                label: l.contract,
+                options: [for (final row in catalog.contracts) NamedOption(id: row.id, name: row.name)],
+                value: _contractId,
+                onChanged: (id) => setState(() => _contractId = id),
+              ),
+              OptionPicker(
+                label: l.project,
+                options: [for (final row in catalog.projects) NamedOption(id: row.id, name: row.name)],
+                value: _projectId,
+                onChanged: (id) => setState(() => _projectId = id),
+              ),
+              DropdownButtonFormField<String?>(
+                // ignore: deprecated_member_use
+                value: _paymentMethod,
+                decoration: InputDecoration(labelText: l.paymentMethod),
+                items: [
+                  DropdownMenuItem(value: null, child: Text(l.filterAll)),
+                  DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),
+                  DropdownMenuItem(value: 'bank_transfer', child: Text(l.methodBank)),
+                  DropdownMenuItem(value: 'card', child: Text(l.methodCard)),
+                  DropdownMenuItem(value: 'other', child: Text(l.methodOther)),
+                ],
+                onChanged: (value) => setState(() => _paymentMethod = value),
+              ),
+              DropdownButtonFormField<String>(
+                // ignore: deprecated_member_use
+                value: _sort,
+                decoration: InputDecoration(labelText: l.sortBy),
+                items: [
+                  DropdownMenuItem(value: 'id', child: Text(l.sortNewest)),
+                  DropdownMenuItem(value: 'invoice_number', child: Text(l.invoiceNumber)),
+                  DropdownMenuItem(value: 'issue_date', child: Text(l.issueDate)),
+                  DropdownMenuItem(value: 'due_date', child: Text(l.dueDate)),
+                  DropdownMenuItem(value: 'total', child: Text(l.total)),
+                  DropdownMenuItem(value: 'amount_due', child: Text(l.due)),
+                ],
+                onChanged: (value) => setState(() => _sort = value ?? 'id'),
+              ),
+              DropdownButtonFormField<String>(
+                // ignore: deprecated_member_use
+                value: _direction,
+                decoration: InputDecoration(labelText: l.sortDirection),
+                items: [
+                  DropdownMenuItem(value: 'desc', child: Text(l.sortDescending)),
+                  DropdownMenuItem(value: 'asc', child: Text(l.sortAscending)),
+                ],
+                onChanged: (value) => setState(() => _direction = value ?? 'desc'),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: FilledButton.tonal(onPressed: () => setState(() {}), child: Text(l.refresh)),
+            ),
           ],
         ),
       ),
-      loader: (api, search, page) => api.invoices(search: search, page: page, lifecycle: _lifecycle),
-      itemBuilder: (context, invoice) => Card(
-        child: ListTile(
-          title: Text(invoice.invoiceNumber ?? '#${invoice.id}', style: const TextStyle(fontWeight: FontWeight.w800)),
-          subtitle: Text('${invoice.customerName ?? ''} · ${invoice.documentStatus} · ${invoice.paymentStatus} · ${l.due} ${invoice.amountDue}'),
-          trailing: Text(invoice.total, style: const TextStyle(fontWeight: FontWeight.w800)),
-          onTap: () => context.push('/invoices/${invoice.id}'),
+      loader: (api, search, page) => api.invoices(
+        search: search,
+        page: page,
+        lifecycle: _lifecycle,
+        invoiceStatus: _invoiceStatus,
+        paymentStatus: _paymentStatus,
+        customerId: _customerId,
+        from: _from.text.trim(),
+        to: _to.text.trim(),
+        currency: _currency.text.trim(),
+        projectId: _projectId,
+        contractId: _contractId,
+        paymentMethod: _paymentMethod,
+        sort: _sort,
+        direction: _direction,
+      ),
+      summaryBuilder: (context, meta) => _InvoicePipelineSummary(meta: meta),
+      itemBuilder: (context, invoice) => InkWell(
+        onTap: () => context.push('/invoices/${invoice.id}'),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: FinanceTokens.card(),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(invoice.invoiceNumber ?? '#${invoice.id}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        invoice.customerName ?? '',
+                        invoice.documentStatus,
+                        invoice.paymentStatus,
+                        invoice.issueDate,
+                        invoice.currency,
+                      ].where((v) => v.toString().isNotEmpty).join(' · '),
+                      style: const TextStyle(color: FinanceTokens.textMuted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(invoice.total, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  Text('${l.due} ${invoice.amountDue}', style: const TextStyle(color: FinanceTokens.textMuted, fontSize: 11)),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -228,6 +403,56 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
     }
   }
 
+  Future<void> _openXml() async {
+    final invoice = _data;
+    if (invoice == null) return;
+    try {
+      final payload = await ref.read(financeApiProvider).invoiceXml(invoice.id);
+      final xml = payload['xml']?.toString() ?? '';
+      await saveAndOpenBytes(utf8.encode(xml), 'invoice-${invoice.invoiceNumber}.xml');
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+    }
+  }
+
+  Future<void> _openQr() async {
+    final invoice = _data;
+    if (invoice == null) return;
+    try {
+      final payload = await ref.read(financeApiProvider).invoiceQr(invoice.id);
+      if (!mounted) return;
+      final tags = payload['tags'] is Map ? Map<String, dynamic>.from(payload['tags'] as Map) : const <String, dynamic>{};
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) {
+          final l = AppLocalizations.of(ctx);
+          return AlertDialog(
+            title: Text(l.viewQr),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(l.zatcaFoundation, style: Theme.of(ctx).textTheme.bodySmall),
+                  const SizedBox(height: 12),
+                  Text('${tags['seller_name'] ?? ''}'),
+                  Text('${tags['seller_vat'] ?? ''}'),
+                  Text('${tags['timestamp'] ?? ''}'),
+                  Text('${tags['total_with_vat'] ?? ''}'),
+                  const SizedBox(height: 8),
+                  SelectableText(payload['qr_base64']?.toString() ?? '', style: const TextStyle(fontSize: 11)),
+                ],
+              ),
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l.goBack))],
+          );
+        },
+      );
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+    }
+  }
+
   Future<void> _pickAttachments() async {
     final invoice = _data;
     if (invoice == null) return;
@@ -295,6 +520,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                     ],
                     const SizedBox(height: 12),
                     AuditLogCard(invoice: invoice),
+                    if (invoice.journalEntries.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      JournalEntriesCard(invoice: invoice),
+                    ],
                   ],
                 ),
               ),
@@ -432,9 +661,15 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         if (invoice.documentStatus == 'issued' && p.can('invoices.send'))
           InvoiceActionButton(label: l.send, icon: Icons.send_outlined, filled: true, onPressed: () => promptEmailAndSend(context, (email) => _act('send', body: {'email': email}))),
         InvoiceActionButton(label: l.downloadPdf, icon: Icons.download_outlined, onPressed: _openPdf),
+        if (invoice.zatcaXmlAvailable)
+          InvoiceActionButton(label: l.downloadXml, icon: Icons.code_outlined, onPressed: _openXml),
+        if (invoice.zatcaQrAvailable)
+          InvoiceActionButton(label: l.viewQr, icon: Icons.qr_code_2_outlined, onPressed: _openQr),
         InvoiceActionButton(label: l.printDocument, icon: Icons.print_outlined, onPressed: _openPdf),
         if (invoice.documentStatus == 'issued' && invoice.paymentStatus != 'paid' && p.paymentsManage)
           InvoiceActionButton(label: l.recordPayment, icon: Icons.payments_outlined, onPressed: _manualPayment),
+        if (invoice.documentStatus == 'issued' && invoice.paymentStatus != 'paid' && p.paymentsManage)
+          InvoiceActionButton(label: l.createCheckout, icon: Icons.link_outlined, onPressed: _checkout),
         if (moreItems.isNotEmpty)
           PopupMenuButton<String>(
             tooltip: l.more,
@@ -498,7 +733,10 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
   final _taxRate = TextEditingController(text: '15');
   final _notes = TextEditingController();
   final _invoiceNumber = TextEditingController();
+  final _supplyDate = TextEditingController();
   final List<LineDraft> _lines = [LineDraft(description: 'خدمة فوترة', unitPrice: '100')];
+  final List<PlatformFile> _files = [];
+  bool _issueNow = false;
   bool _busy = false;
 
   @override
@@ -523,6 +761,9 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         _invoiceNumber.text = invoice.invoiceNumber ?? '';
         if (invoice.issueDate != null) _issueDate.text = invoice.issueDate!.substring(0, 10);
         if (invoice.dueDate != null) _dueDate.text = invoice.dueDate!.substring(0, 10);
+        if (invoice.supplyDate != null && invoice.supplyDate!.length >= 10) {
+          _supplyDate.text = invoice.supplyDate!.substring(0, 10);
+        }
         if (invoice.lines.isNotEmpty) {
           for (final line in _lines) {
             line.dispose();
@@ -546,6 +787,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
     _taxRate.dispose();
     _notes.dispose();
     _invoiceNumber.dispose();
+    _supplyDate.dispose();
     for (final line in _lines) {
       line.dispose();
     }
@@ -557,15 +799,16 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
     if (_walkIn && _walkInName.text.trim().isEmpty) return;
     setState(() => _busy = true);
     try {
-      final saved = await ref.read(financeApiProvider).saveInvoice({
+      final body = <String, dynamic>{
         if (!_walkIn) 'customer_id': _customerId,
         if (_walkIn) 'customer_name': _walkInName.text.trim(),
         'issue_date': _issueDate.text.trim(),
         'due_date': _dueDate.text.trim(),
+        if (_supplyDate.text.trim().isNotEmpty) 'supply_date': _supplyDate.text.trim(),
         'currency': _currency.text.trim(),
         'payment_terms': _paymentTerms.text.trim(),
         'notes': _notes.text.trim(),
-        'invoice_status': 'draft',
+        'invoice_status': _issueNow && widget.id == null ? 'issued' : 'draft',
         'tax_profile_type': _taxProfile,
         'tax_rate': _taxRate.text.trim(),
         'tax_price_mode': _taxMode,
@@ -575,7 +818,31 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
         if (_contractId != null) 'contract_id': _contractId,
         if (_projectId != null) 'project_id': _projectId,
         'items': _lines.map((line) => line.toPayload()).toList(),
-      }, id: widget.id);
+      };
+      late final InvoiceRecord saved;
+      if (widget.id == null && _files.isNotEmpty) {
+        final form = FormData.fromMap({
+          ...body,
+          'items_json': jsonEncode(body['items']),
+        }..remove('items'));
+        for (final file in _files) {
+          final part = await multipartFromPicked(file);
+          if (part != null) form.files.add(MapEntry('attachments[]', part));
+        }
+        saved = await ref.read(financeApiProvider).saveInvoice({}, form: form);
+      } else {
+        saved = await ref.read(financeApiProvider).saveInvoice(body, id: widget.id);
+        if (_files.isNotEmpty) {
+          final form = FormData();
+          for (final file in _files) {
+            final part = await multipartFromPicked(file);
+            if (part != null) form.files.add(MapEntry('attachments[]', part));
+          }
+          if (form.files.isNotEmpty) {
+            await ref.read(financeApiProvider).uploadInvoiceAttachments(saved.id, form);
+          }
+        }
+      }
       if (!mounted) return;
       context.go('/invoices/${saved.id}');
     } catch (e) {
@@ -655,6 +922,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
             child: FormGrid(children: [
               TextField(controller: _issueDate, decoration: InputDecoration(labelText: l.issueDate)),
               TextField(controller: _dueDate, decoration: InputDecoration(labelText: l.dueDate)),
+              TextField(controller: _supplyDate, decoration: InputDecoration(labelText: l.supplyDate)),
               TextField(controller: _currency, decoration: InputDecoration(labelText: l.currency)),
               TextField(controller: _paymentTerms, decoration: InputDecoration(labelText: l.paymentTerms)),
             ]),
@@ -693,11 +961,95 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
           ),
           FormSection(
             title: l.notesSection,
-            child: TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 3),
+                if (widget.id == null)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(l.issueImmediately),
+                    value: _issueNow,
+                    onChanged: (v) => setState(() => _issueNow = v),
+                  ),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final result = await FilePicker.platform.pickFiles(
+                      allowMultiple: true,
+                      type: FileType.custom,
+                      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+                    );
+                    if (result != null && result.files.isNotEmpty) {
+                      setState(() => _files
+                        ..clear()
+                        ..addAll(result.files));
+                    }
+                  },
+                  icon: const Icon(Icons.attach_file),
+                  label: Text(_files.isEmpty ? l.pickAttachments : '${l.attachmentsTitle} (${_files.length})'),
+                ),
+              ],
+            ),
           ),
           FilledButton(onPressed: _busy ? null : _save, child: Text(l.save)),
         ],
       ),
+      ),
+    );
+  }
+}
+
+class _InvoicePipelineSummary extends StatelessWidget {
+  const _InvoicePipelineSummary({this.meta});
+
+  final Map<String, dynamic>? meta;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final pipeline = meta?['pipeline'];
+    final totals = meta?['totals'];
+    if (pipeline is! Map && totals is! Map) {
+      return const SizedBox.shrink();
+    }
+    final counts = pipeline is Map ? Map<String, dynamic>.from(pipeline) : const <String, dynamic>{};
+    final sums = totals is Map ? Map<String, dynamic>.from(totals) : const <String, dynamic>{};
+    final chips = <(String, String)>[
+      (l.filterAll, '${counts['all'] ?? ''}'),
+      (l.draft, '${counts['draft'] ?? ''}'),
+      (l.lifecycleSent, '${counts['sent'] ?? ''}'),
+      (l.partial, '${counts['partial'] ?? ''}'),
+      (l.paid, '${counts['paid'] ?? ''}'),
+      (l.overdue, '${counts['overdue'] ?? ''}'),
+      (l.cancelled, '${counts['cancelled'] ?? ''}'),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: FinanceTokens.card(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              for (final chip in chips)
+                if (chip.$2.isNotEmpty)
+                  Text('${chip.$1}: ${chip.$2}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: FinanceTokens.textMuted)),
+            ],
+          ),
+          if (sums.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 16,
+              children: [
+                if (sums['total'] != null) Text('${l.total}: ${sums['total']}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                if (sums['due'] != null) Text('${l.due}: ${sums['due']}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                if (sums['overdue'] != null) Text('${l.overdue}: ${sums['overdue']}', style: const TextStyle(fontWeight: FontWeight.w800)),
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }

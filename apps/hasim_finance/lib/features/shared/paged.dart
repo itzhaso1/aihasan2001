@@ -21,6 +21,7 @@ class PagedListScreen<T> extends ConsumerStatefulWidget {
     this.onCreate,
     this.allowed = true,
     this.filterBar,
+    this.summaryBuilder,
   });
 
   final String title;
@@ -29,6 +30,7 @@ class PagedListScreen<T> extends ConsumerStatefulWidget {
   final VoidCallback? onCreate;
   final bool allowed;
   final Widget? filterBar;
+  final Widget Function(BuildContext context, Map<String, dynamic>? meta)? summaryBuilder;
 
   @override
   ConsumerState<PagedListScreen<T>> createState() => _PagedListScreenState<T>();
@@ -42,6 +44,7 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
   List<T> _items = [];
   int _page = 1;
   int _lastPage = 1;
+  Map<String, dynamic>? _meta;
 
   @override
   void initState() {
@@ -71,6 +74,7 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
         _items = reset ? page.items : [..._items, ...page.items];
         _page = page.page;
         _lastPage = page.lastPage;
+        _meta = page.meta;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -121,6 +125,11 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
               ],
             ),
             if (widget.filterBar != null) widget.filterBar!,
+            if (widget.summaryBuilder != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: widget.summaryBuilder!(context, _meta),
+              ),
             Expanded(
               child: AsyncBody(
                 loading: _loading && _items.isEmpty,

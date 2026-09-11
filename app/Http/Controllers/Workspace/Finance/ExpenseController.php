@@ -125,6 +125,7 @@ class ExpenseController extends FinanceBaseController
         $this->authorizeFinance($request, 'expenses.edit');
         abort_unless((int) $expense->workspace_id === (int) $this->currentWorkspace()->id, 404);
 
+        $workspaceId = (int) $this->currentWorkspace()->id;
         $payload = $request->validate([
             'expense_date' => ['required', 'date'],
             'description' => ['nullable', 'string'],
@@ -132,7 +133,25 @@ class ExpenseController extends FinanceBaseController
             'tax_profile_type' => ['nullable', 'in:standard,zero_rated,exempt,out_of_scope'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'payment_method' => ['nullable', 'in:cash,bank_transfer,card,other,credit'],
+            'is_recurring' => ['nullable', 'boolean'],
+            'recurring_frequency' => ['nullable', 'in:weekly,monthly,quarterly,yearly'],
+            'next_due_date' => ['nullable', 'date'],
             'attachment_file' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:4096'],
+            'supplier_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('finance_suppliers', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+            ],
+            'category_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('finance_expense_categories', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+            ],
+            'treasury_account_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('finance_treasury_accounts', 'id')->where(fn ($query) => $query->where('workspace_id', $workspaceId)),
+            ],
         ]);
 
         try {

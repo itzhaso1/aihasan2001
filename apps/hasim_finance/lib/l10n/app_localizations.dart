@@ -1742,6 +1742,12 @@ abstract class AppLocalizations {
   /// **'سبب الإعفاء'**
   String get exemptionReason;
 
+  /// No description provided for @exemptionCode.
+  ///
+  /// In ar, this message translates to:
+  /// **'رمز الإعفاء'**
+  String get exemptionCode;
+
   /// No description provided for @project.
   ///
   /// In ar, this message translates to:
@@ -2863,6 +2869,32 @@ abstract class AppLocalizations {
   /// In ar, this message translates to:
   /// **'مسودة'**
   String get draftStatus;
+
+  String get supplyDate;
+  String get issueImmediately;
+  String get downloadXml;
+  String get viewQr;
+  String get zatcaFoundation;
+  String get xmlAvailable;
+  String get qrAvailable;
+  String get xmlUnavailable;
+  String get qrUnavailable;
+  String get sortBy;
+  String get invoiceStatusFilter;
+  String get recurringFrequency;
+  String get nextDueDate;
+  String get pickAttachments;
+  String get frequencyMonthly;
+  String get frequencyWeekly;
+  String get frequencyQuarterly;
+  String get frequencyYearly;
+  String get sortNewest;
+  String get sortDirection;
+  String get sortAscending;
+  String get sortDescending;
+  String get statusPosted;
+  String get statusReversed;
+  String get statusVoided;
 }
 
 class _AppLocalizationsDelegate

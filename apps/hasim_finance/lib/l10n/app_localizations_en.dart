@@ -838,6 +838,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exemptionReason => 'Exemption reason';
 
   @override
+  String get exemptionCode => 'Exemption code';
+
+  @override
   String get project => 'Project';
 
   @override
@@ -1402,4 +1405,79 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get draftStatus => 'Draft';
+
+  @override
+  String get supplyDate => 'Supply date';
+
+  @override
+  String get issueImmediately => 'Issue immediately on save';
+
+  @override
+  String get downloadXml => 'Download XML';
+
+  @override
+  String get viewQr => 'View QR';
+
+  @override
+  String get zatcaFoundation => 'Internal e-invoice foundation. No FATOORA clearance or production reporting.';
+
+  @override
+  String get xmlAvailable => 'XML available';
+
+  @override
+  String get qrAvailable => 'QR available';
+
+  @override
+  String get xmlUnavailable => 'XML not available';
+
+  @override
+  String get qrUnavailable => 'QR not available';
+
+  @override
+  String get sortBy => 'Sort by';
+
+  @override
+  String get invoiceStatusFilter => 'Invoice status';
+
+  @override
+  String get recurringFrequency => 'Recurring frequency';
+
+  @override
+  String get nextDueDate => 'Next due date';
+
+  @override
+  String get pickAttachments => 'Choose attachments';
+
+  @override
+  String get frequencyMonthly => 'Monthly';
+
+  @override
+  String get frequencyWeekly => 'Weekly';
+
+  @override
+  String get frequencyQuarterly => 'Quarterly';
+
+  @override
+  String get frequencyYearly => 'Yearly';
+
+  @override
+  String get sortNewest => 'Newest';
+
+  @override
+  String get sortDirection => 'Sort direction';
+
+  @override
+  String get sortAscending => 'Ascending';
+
+  @override
+  String get sortDescending => 'Descending';
+
+  @override
+  String get statusPosted => 'Posted';
+
+  @override
+  String get statusReversed => 'Reversed';
+
+  @override
+  String get statusVoided => 'Voided';
 }

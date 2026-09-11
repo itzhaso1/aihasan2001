@@ -159,14 +159,72 @@ class ExpenseService
                 );
             }
 
+            $supplierId = $locked->supplier_id;
+            if (array_key_exists('supplier_id', $payload)) {
+                $supplierId = $payload['supplier_id'] ?: null;
+                if ($supplierId) {
+                    $supplier = FinanceSupplier::withoutGlobalScopes()
+                        ->where('workspace_id', $locked->workspace_id)
+                        ->whereKey((int) $supplierId)
+                        ->first();
+                    if (! $supplier) {
+                        throw new RuntimeException('Supplier is invalid for this workspace.');
+                    }
+                    $supplierId = $supplier->id;
+                }
+            }
+
+            $categoryId = $locked->category_id;
+            if (array_key_exists('category_id', $payload)) {
+                $categoryId = $payload['category_id'] ?: null;
+                if ($categoryId) {
+                    $category = FinanceExpenseCategory::withoutGlobalScopes()
+                        ->where('workspace_id', $locked->workspace_id)
+                        ->whereKey((int) $categoryId)
+                        ->first();
+                    if (! $category) {
+                        throw new RuntimeException('Expense category is invalid for this workspace.');
+                    }
+                    $categoryId = $category->id;
+                }
+            }
+
+            $treasuryId = $locked->treasury_account_id;
+            if (array_key_exists('treasury_account_id', $payload)) {
+                $treasuryId = $payload['treasury_account_id'] ?: null;
+                if ($treasuryId) {
+                    $treasury = FinanceTreasuryAccount::withoutGlobalScopes()
+                        ->where('workspace_id', $locked->workspace_id)
+                        ->whereKey((int) $treasuryId)
+                        ->first();
+                    if (! $treasury) {
+                        throw new RuntimeException('Treasury account is invalid for this workspace.');
+                    }
+                    $treasuryId = $treasury->id;
+                }
+            }
+
             $locked->update([
+                'supplier_id' => $supplierId,
+                'category_id' => $categoryId,
+                'treasury_account_id' => $treasuryId,
                 'expense_date' => (string) ($payload['expense_date'] ?? $locked->expense_date?->toDateString()),
                 'description' => $payload['description'] ?? $locked->description,
                 'amount' => $amount,
                 'tax_rate' => $taxRate,
                 'tax_amount' => $calc['tax_amount'],
                 'total' => $calc['total'],
+                'currency' => (string) ($payload['currency'] ?? $locked->currency ?: 'SAR'),
                 'payment_method' => (string) ($payload['payment_method'] ?? $locked->payment_method),
+                'is_recurring' => array_key_exists('is_recurring', $payload)
+                    ? (bool) $payload['is_recurring']
+                    : (bool) $locked->is_recurring,
+                'recurring_frequency' => array_key_exists('recurring_frequency', $payload)
+                    ? ($payload['recurring_frequency'] ?: null)
+                    : $locked->recurring_frequency,
+                'next_due_date' => array_key_exists('next_due_date', $payload)
+                    ? ($payload['next_due_date'] ?: null)
+                    : $locked->next_due_date,
                 'attachment_path' => $attachmentPath,
             ]);
 

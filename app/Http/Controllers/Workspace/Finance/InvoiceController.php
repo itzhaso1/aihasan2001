@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Workspace\Finance;
 
+use App\Exceptions\Api\ApiApplicationException;
 use App\Models\AuditLog;
 use App\Models\Contract\Contract;
 use App\Models\Customer;
@@ -16,6 +17,7 @@ use App\Models\Finance\FinanceTaxRate;
 use App\Models\Finance\FinanceTreasuryAccount;
 use App\Models\Product;
 use App\Models\Projects\FinanceProject;
+use App\Services\Finance\EInvoiceArtifactService;
 use App\Services\Finance\FinanceBootstrapService;
 use App\Services\Finance\InvoiceCheckoutService;
 use App\Services\Finance\InvoiceEmailService;
@@ -23,6 +25,7 @@ use App\Services\Finance\InvoiceInboxService;
 use App\Services\Finance\InvoicePaymentService;
 use App\Services\Finance\InvoiceReminderEmailService;
 use App\Services\Finance\InvoiceService;
+use App\Services\Finance\Api\InvoiceDocumentReadService;
 use App\Services\Finance\PdfInvoiceService;
 use App\Services\Finance\PriceListService;
 use App\Services\Finance\Tax\TaxCalculationService;
@@ -50,6 +53,8 @@ class InvoiceController extends FinanceBaseController
         private readonly InvoiceReminderEmailService $invoiceReminderEmailService,
         private readonly InvoiceCheckoutService $invoiceCheckoutService,
         private readonly PriceListService $priceListService,
+        private readonly InvoiceDocumentReadService $invoiceDocumentReadService,
+        private readonly EInvoiceArtifactService $eInvoiceArtifactService,
     ) {}
 
     public function index(Request $request): View
@@ -277,6 +282,7 @@ class InvoiceController extends FinanceBaseController
             'auditLogs' => $auditLogs,
             'canViewAccounting' => $request->user()?->can('accounting.view') ?? false,
             'checkout' => $this->invoiceCheckoutService->availability($invoice),
+            'zatcaArtifacts' => $this->eInvoiceArtifactService->availabilityForInvoice($invoice),
         ]);
     }
 
@@ -522,6 +528,43 @@ class InvoiceController extends FinanceBaseController
         } catch (RuntimeException $exception) {
             return back()->with('error', $exception->getMessage());
         }
+    }
+
+    public function downloadXml(Request $request, FinanceInvoice $invoice)
+    {
+        $this->authorizeFinance($request, 'invoices.view');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        try {
+            $dto = $this->invoiceDocumentReadService->xmlForFinance($invoice);
+        } catch (ApiApplicationException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        $filename = ($invoice->invoice_number ?: 'invoice-'.$invoice->id).'.xml';
+
+        return response($dto->xml, 200, [
+            'Content-Type' => 'application/xml; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+        ]);
+    }
+
+    public function showQr(Request $request, FinanceInvoice $invoice): View|RedirectResponse
+    {
+        $this->authorizeFinance($request, 'invoices.view');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        try {
+            $dto = $this->invoiceDocumentReadService->qrForFinance($invoice);
+        } catch (ApiApplicationException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return view('workspace.finance.invoices.qr', [
+            'invoice' => $invoice,
+            'qr' => $dto->toArray(),
+            'zatcaArtifacts' => $this->eInvoiceArtifactService->availabilityForInvoice($invoice),
+        ]);
     }
 
     /**
