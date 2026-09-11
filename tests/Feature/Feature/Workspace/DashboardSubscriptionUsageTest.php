@@ -94,8 +94,11 @@ class DashboardSubscriptionUsageTest extends TestCase
             ->assertSee('المتبقي')
             ->assertSee('سجل الاشتراكات')
             ->assertSee('مقارنة الباقات')
+            ->assertSee('المزيد')
             ->assertDontSee('Messages Used', false)
-            ->assertDontSee('إجمالي المبيعات');
+            ->assertDontSee('إجمالي المبيعات')
+            ->assertDontSee('Quick Actions')
+            ->assertDontSee('مبيعات خلال آخر 7 أيام');
     }
 
     /**

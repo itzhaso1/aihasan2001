@@ -3,7 +3,7 @@
         [
             'key' => 'home',
             'title' => 'الرئيسية',
-            'description' => 'نظرة عامة على أعمالك وإحصاءاتك.',
+            'description' => 'نظرة عامة على أعمالك',
             'icon' => 'home',
             'links' => [
                 ['label' => 'Dashboard', 'route' => 'workspace.dashboard', 'active' => 'workspace.dashboard'],
@@ -128,7 +128,7 @@
     ];
 
     $initialState = collect($modules)->mapWithKeys(function (array $module): array {
-        return [$module['key'] => $module['is_active']];
+        return [$module['key'] => false];
     })->all();
 @endphp
 

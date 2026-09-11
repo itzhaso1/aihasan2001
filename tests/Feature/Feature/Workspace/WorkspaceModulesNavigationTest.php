@@ -29,6 +29,8 @@ class WorkspaceModulesNavigationTest extends TestCase
             ->assertSee('التواصل')
             ->assertSee('المدفوعات والاشتراكات')
             ->assertSee('الفوترة والحسابات')
+            ->assertSee('الإعدادات')
+            ->assertSee('نظرة عامة على أعمالك')
             ->assertSee(route('workspace.categories.index'), false)
             ->assertSee(route('workspace.products.index'), false)
             ->assertSee(route('workspace.inventory.index'), false)

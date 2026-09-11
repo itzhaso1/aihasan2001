@@ -5,12 +5,19 @@
             'trialing' => 'تجريبي',
             'past_due' => 'متأخر الدفع',
             'paused' => 'موقوف',
-            'cancelled' => 'ملغى',
+            'cancelled' => 'ملغي',
             'expired' => 'منتهي',
             'inactive' => 'غير نشط',
         ];
+        $tierLabels = [
+            'starter' => 'Starter',
+            'pro' => 'Pro',
+            'business' => 'Business',
+            'enterprise' => 'Enterprise',
+        ];
         $plan = $currentSubscription?->plan;
         $tier = $entitlements['plan']['tier'] ?? $plan?->tier;
+        $tierLabel = $tierLabels[$tier] ?? ($tier ? ucfirst((string) $tier) : null);
         $planName = $plan?->display_name_ar ?: ($plan?->name ?? ($entitlements['plan']['name'] ?? null));
         $planStatus = $currentSubscription?->status ?? ($entitlements['subscription_status'] ?? 'inactive');
         $expiresAt = $currentSubscription?->current_period_end
@@ -44,14 +51,14 @@
                 <div class="flex items-start gap-3">
                     <span class="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-[#E8F8F4] text-[#06C2A4]">
                         <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M5 16c0 1.1.9 3 3 3h8c2.1 0 3-1.9 3-3v-1H5v1zm14-8h-2.18A3 3 0 0012 5a3 3 0 00-4.82 3H5c-1.1 0-2 .9-2 2v2h18v-2c0-1.1-.9-2-2-2zm-7-1c.55 0 1 .45 1 1h-2c0-.55.45-1 1-1z"/>
+                            <path d="M3 8l4.2 2.1L12 3l4.8 7.1L21 8v9H3V8zm2 11h14v2H5v-2z"/>
                         </svg>
                     </span>
                     <div>
                         <h2 class="text-base font-bold text-[#067e6b]">الباقة الحالية والاستخدام</h2>
                         <p class="mt-1 text-sm font-semibold text-slate-800">
                             المستوى:
-                            <span class="font-bold">{{ $tier ? strtoupper($tier) : ($planName ?? '—') }}</span>
+                            <span class="font-bold">{{ $tierLabel ?? $planName ?? '—' }}</span>
                         </p>
                         @if($plan?->description)
                             <p class="mt-1 max-w-xl text-xs leading-relaxed text-slate-500">{{ $plan->description }}</p>
@@ -90,7 +97,7 @@
                         $pct = ($limit && $limit > 0) ? min(100, round(($used / $limit) * 100)) : 0;
                         $icon = $meterIcons[$meterKey] ?? ['bg' => 'bg-teal-50', 'text' => 'text-teal-600', 'path' => 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'];
                     @endphp
-                    <article class="rounded-2xl border border-[#E7F4F0] bg-white p-4">
+                    <article class="rounded-2xl border border-[#E7F4F0] bg-[#F9FFFD] p-4">
                         <div class="flex items-start justify-between gap-3">
                             <div>
                                 <h3 class="text-sm font-semibold text-slate-800">{{ $label }}</h3>
@@ -138,23 +145,37 @@
                             <th class="px-3 py-2 text-right font-medium">الدفع</th>
                             <th class="px-3 py-2 text-right font-medium">Checkout</th>
                             <th class="px-3 py-2 text-right font-medium">المبلغ</th>
+                            <th class="px-3 py-2"></th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($checkoutSessions as $session)
                             <tr class="border-t border-slate-100">
                                 <td class="px-3 py-3 font-semibold text-slate-800">{{ $session->plan?->name ?? '—' }}</td>
-                                <td class="px-3 py-3 text-slate-600">{{ $statusLabels[$session->subscription_status] ?? ($session->subscription_status ?: '—') }}</td>
+                                <td class="px-3 py-3 text-slate-600">{{ $session->subscription_status === 'cancelled' ? 'الملغي' : ($statusLabels[$session->subscription_status] ?? ($session->subscription_status ?: '—')) }}</td>
                                 <td class="px-3 py-3 text-slate-600">{{ $session->payment_status ?: '—' }}</td>
                                 <td class="px-3 py-3 text-slate-600">{{ $session->checkout_status ?: '—' }}</td>
                                 <td class="px-3 py-3 font-semibold text-slate-800">
                                     {{ strtoupper((string) ($session->currency ?: 'SAR')) }}
                                     {{ number_format((float) $session->amount, 2) }}
                                 </td>
+                                <td class="px-3 py-3">
+                                    <div class="flex items-center justify-end gap-3 whitespace-nowrap">
+                                        <a href="{{ route('workspace.subscriptions.checkout.show', $session) }}" class="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-[#06C2A4]">
+                                            تفاصيل أكثر
+                                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 19l-7-7 7-7"/>
+                                            </svg>
+                                        </a>
+                                        @if($session->checkout_status === 'completed')
+                                            <span class="text-xs font-semibold text-emerald-600">منجز</span>
+                                        @endif
+                                    </div>
+                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="px-3 py-6 text-center text-sm text-slate-400">لا توجد عمليات اشتراك بعد.</td>
+                                <td colspan="6" class="px-3 py-6 text-center text-sm text-slate-400">لا توجد عمليات اشتراك بعد.</td>
                             </tr>
                         @endforelse
                     </tbody>
