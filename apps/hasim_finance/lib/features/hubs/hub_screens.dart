@@ -72,7 +72,7 @@ class _SalesHubScreenState extends ConsumerState<SalesHubScreen> {
       child: FinanceScaffold(
         title: l.salesHub,
         showBack: true,
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+        actions: [IconButton(onPressed: _load, tooltip: l.refresh, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -171,7 +171,7 @@ class _VatHubScreenState extends ConsumerState<VatHubScreen> {
       child: FinanceScaffold(
         title: l.vatPage,
         showBack: true,
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+        actions: [IconButton(onPressed: _load, tooltip: l.refresh, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -237,7 +237,7 @@ class _MapHubState extends ConsumerState<BillingHubScreen> {
       child: FinanceScaffold(
         title: l.billingHub,
         showBack: true,
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+        actions: [IconButton(onPressed: _load, tooltip: l.refresh, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -317,7 +317,7 @@ class _AccountingHubScreenState extends ConsumerState<AccountingHubScreen> {
       child: FinanceScaffold(
         title: l.accountingHub,
         showBack: true,
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+        actions: [IconButton(onPressed: _load, tooltip: l.refresh, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -414,7 +414,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
       child: FinanceScaffold(
         title: l.alerts,
         showBack: true,
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+        actions: [IconButton(onPressed: _load, tooltip: l.refresh, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -589,7 +589,7 @@ class _TreasuryScreenState extends ConsumerState<TreasuryScreen> {
       child: FinanceScaffold(
         title: l.treasury,
         showBack: true,
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+        actions: [IconButton(onPressed: _load, tooltip: l.refresh, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,
@@ -1068,7 +1068,7 @@ class _BankStatementScreenState extends ConsumerState<BankStatementScreen> {
       child: FinanceScaffold(
         title: l.bankStatements,
         showBack: true,
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+        actions: [IconButton(onPressed: _load, tooltip: l.refresh, icon: const Icon(Icons.refresh))],
         body: AsyncBody(
           loading: _loading,
           error: _error,

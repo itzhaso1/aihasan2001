@@ -534,7 +534,7 @@ class _PayrollOverviewScreenState extends ConsumerState<PayrollOverviewScreen> {
       child: FinanceScaffold(
         title: l.payroll,
         subtitle: l.peopleSubtitle,
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded))],
+        actions: [IconButton(onPressed: _load, tooltip: l.refresh, icon: const Icon(Icons.refresh_rounded))],
         primaryAction: FilledButton(onPressed: () => context.go('/people'), child: Text(l.showAll)),
         body: AsyncBody(
           loading: _loading,

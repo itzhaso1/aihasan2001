@@ -118,7 +118,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           label: Text(l.exportReport),
         ),
         actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
+          IconButton(onPressed: _load, tooltip: l.refresh, icon: const Icon(Icons.refresh_rounded)),
         ],
         body: AsyncBody(
           loading: _loading,

@@ -912,9 +912,9 @@ class AttachmentsCard extends StatelessWidget {
                       spacing: 4,
                       children: [
                         if (onDownload != null)
-                          IconButton(icon: const Icon(Icons.download_outlined, size: 18), onPressed: () => onDownload!(row)),
+                          IconButton(tooltip: l.download, icon: const Icon(Icons.download_outlined, size: 18), onPressed: () => onDownload!(row)),
                         if (onDelete != null)
-                          IconButton(icon: const Icon(Icons.delete_outline, size: 18), onPressed: () => onDelete!(row)),
+                          IconButton(tooltip: l.delete, icon: const Icon(Icons.delete_outline, size: 18), onPressed: () => onDelete!(row)),
                       ],
                     ),
                   ),

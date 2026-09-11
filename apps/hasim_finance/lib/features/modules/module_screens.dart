@@ -960,6 +960,7 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                           subtitle: Text('${row['file_type'] ?? ''}'),
                           trailing: Wrap(spacing: 4, children: [
                             IconButton(
+                              tooltip: l.download,
                               icon: const Icon(Icons.download_outlined),
                               onPressed: () async {
                                 try {
@@ -973,6 +974,7 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                             ),
                             if (ref.watch(authControllerProvider).permissions.contractsManage)
                               IconButton(
+                                tooltip: l.delete,
                                 icon: const Icon(Icons.delete_outline),
                                 onPressed: () => confirmAndRun(context, () async {
                                   await ref.read(financeApiProvider).deleteContractAttachment(c.id, int.parse('${row['id']}'));

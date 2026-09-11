@@ -178,6 +178,7 @@ class _QuoteDetailScreenState extends ConsumerState<QuoteDetailScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
+                          tooltip: l.download,
                           icon: const Icon(Icons.download_outlined),
                           onPressed: () async {
                             try {
@@ -191,6 +192,7 @@ class _QuoteDetailScreenState extends ConsumerState<QuoteDetailScreen> {
                         ),
                         if (q.documentStatus != 'cancelled' && p.can('quotes.edit'))
                           IconButton(
+                            tooltip: l.delete,
                             icon: const Icon(Icons.delete_outline),
                             onPressed: () => confirmAndRun(context, () async {
                               await ref.read(financeApiProvider).deleteQuoteAttachment(q.id, int.parse('${row['id']}'));

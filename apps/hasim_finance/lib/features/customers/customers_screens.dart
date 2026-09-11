@@ -82,7 +82,7 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
       error: _error,
       onRetry: _load,
       actions: [
-        IconButton(onPressed: () => context.push('/customers/${widget.id}/edit'), icon: const Icon(Icons.edit)),
+        IconButton(onPressed: () => context.push('/customers/${widget.id}/edit'), tooltip: l.edit, icon: const Icon(Icons.edit)),
       ],
       child: customer == null
           ? const SizedBox.shrink()

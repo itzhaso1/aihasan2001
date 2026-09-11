@@ -144,7 +144,7 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
       child: FinanceScaffold(
         title: widget.title,
         actions: [
-          IconButton(onPressed: () => _load(reset: true), icon: const Icon(Icons.refresh_rounded)),
+          IconButton(onPressed: () => _load(reset: true), tooltip: l.refresh, icon: const Icon(Icons.refresh_rounded)),
         ],
         floatingActionButton: widget.onCreate == null
             ? null
@@ -174,6 +174,7 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
                   prefixIcon: const Icon(Icons.search, size: 18),
                   suffixIcon: searching
                       ? IconButton(
+                          tooltip: MaterialLocalizations.of(context).deleteButtonTooltip,
                           icon: const Icon(Icons.close, size: 16),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
