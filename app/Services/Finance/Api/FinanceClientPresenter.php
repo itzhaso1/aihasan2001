@@ -166,6 +166,66 @@ class FinanceClientPresenter
     }
 
     /**
+     * @return list<array<string, mixed>>
+     */
+    public function relatedAuditLogs(FinanceInvoice $invoice): array
+    {
+        return AuditLog::query()
+            ->with('user')
+            ->where('workspace_id', $invoice->workspace_id)
+            ->where('entity_type', FinanceInvoice::class)
+            ->where('entity_id', $invoice->id)
+            ->latest('id')
+            ->limit(30)
+            ->get()
+            ->map(fn (AuditLog $log) => $this->audit($log))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function relatedJournalEntries(FinanceInvoice $invoice): array
+    {
+        $paymentIds = $invoice->relationLoaded('payments')
+            ? $invoice->payments->pluck('id')->all()
+            : $invoice->payments()->pluck('id')->all();
+        $creditNoteIds = $invoice->relationLoaded('creditNotes')
+            ? $invoice->creditNotes->pluck('id')->all()
+            : $invoice->creditNotes()->pluck('id')->all();
+
+        return FinanceJournalEntry::query()
+            ->with(['lines.account'])
+            ->where(function ($query) use ($invoice, $paymentIds, $creditNoteIds): void {
+                $query->where(function ($inner) use ($invoice): void {
+                    $inner->where('reference_type', FinanceInvoice::class)
+                        ->where('reference_id', $invoice->id);
+                });
+
+                if ($paymentIds !== []) {
+                    $query->orWhere(function ($inner) use ($paymentIds): void {
+                        $inner->where('reference_type', FinanceInvoicePayment::class)
+                            ->whereIn('reference_id', $paymentIds);
+                    });
+                }
+
+                if ($creditNoteIds !== []) {
+                    $query->orWhere(function ($inner) use ($creditNoteIds): void {
+                        $inner->where('reference_type', FinanceCreditNote::class)
+                            ->whereIn('reference_id', $creditNoteIds);
+                    });
+                }
+            })
+            ->latest('id')
+            ->limit(50)
+            ->get()
+            ->map(fn (FinanceJournalEntry $entry) => $this->journalEntry($entry))
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function invoiceItem(FinanceInvoiceItem|FinanceQuoteItem $item): array

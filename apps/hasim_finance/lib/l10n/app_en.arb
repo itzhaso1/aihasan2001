@@ -274,6 +274,7 @@
   "selectProduct": "Select product",
   "freeTextItem": "Free-text item",
   "exemptionReason": "Exemption reason",
+  "exemptionCode": "Exemption code",
   "project": "Project",
   "contract": "Contract",
   "sku": "SKU",

@@ -69,6 +69,22 @@ trait AuthorizesFinanceApi
     }
 
     /**
+     * Matches financePermissionMap['accounting.view'] so invoice journals
+     * are not hidden from workspace owners who operate Finance without a
+     * dedicated accounting.view Spatie row.
+     */
+    protected function mayViewAccounting(?User $user, Workspace $workspace): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $user->can('accounting.view')
+            || $user->can('workspace.manage')
+            || $this->isElevatedFinanceMember($workspace, $user);
+    }
+
+    /**
      * UI gating map. Laravel still authorizes every mutation.
      * Owner/admin/manager match Web FinanceBaseController (not cashier agent elevation).
      *

@@ -6,7 +6,6 @@ use App\Exceptions\Api\ApiErrorCode;
 use App\Exceptions\Api\ApiApplicationException;
 use App\Http\Controllers\Api\Finance\Concerns\HandlesFinanceClient;
 use App\Http\Controllers\Api\Finance\FinanceApiController;
-use App\Models\AuditLog;
 use App\Models\Finance\FinanceInvoice;
 use App\Models\Finance\FinanceInvoiceAttachment;
 use App\Models\Finance\FinanceInvoicePayment;
@@ -118,17 +117,10 @@ class SalesInvoiceController extends FinanceApiController
         $checkout = $this->invoiceCheckoutService->availability($invoice);
 
         $payload = $this->presenter->invoiceDetail($invoice, $checkout);
-        $payload['audit'] = AuditLog::query()
-            ->with('user')
-            ->where('workspace_id', $invoice->workspace_id)
-            ->where('entity_type', FinanceInvoice::class)
-            ->where('entity_id', $invoice->id)
-            ->latest('id')
-            ->limit(30)
-            ->get()
-            ->map(fn (AuditLog $log) => $this->presenter->audit($log))
-            ->values()
-            ->all();
+        $payload['audit'] = $this->presenter->relatedAuditLogs($invoice);
+        if ($this->mayViewAccounting($request->user(), $workspace)) {
+            $payload['journal_entries'] = $this->presenter->relatedJournalEntries($invoice);
+        }
 
         return $this->ok($payload);
     }

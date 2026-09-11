@@ -384,6 +384,7 @@ class InvoiceRecord {
     this.checkout,
     this.audit = const [],
     this.attachments = const [],
+    this.journalEntries = const [],
   });
 
   final int id;
@@ -439,6 +440,7 @@ class InvoiceRecord {
   final CheckoutInfo? checkout;
   final List<Map<String, dynamic>> audit;
   final List<Map<String, dynamic>> attachments;
+  final List<Map<String, dynamic>> journalEntries;
 
   factory InvoiceRecord.fromJson(Map<String, dynamic> json) {
     final zatca = json['zatca'] is Map ? Map<String, dynamic>.from(json['zatca'] as Map) : null;
@@ -508,6 +510,10 @@ class InvoiceRecord {
           .map((row) => Map<String, dynamic>.from(row))
           .toList(),
       attachments: (json['attachments'] as List? ?? [])
+          .whereType<Map>()
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList(),
+      journalEntries: (json['journal_entries'] as List? ?? [])
           .whereType<Map>()
           .map((row) => Map<String, dynamic>.from(row))
           .toList(),

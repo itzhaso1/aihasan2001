@@ -5,7 +5,7 @@ namespace Tests\Feature\Feature\Finance;
 use App\Enums\Finance\TaxProfileType;
 use App\Models\Customer;
 use App\Models\Finance\FinanceInvoice;
-use App\Models\Finance\FinanceQuote;
+use App\Models\Finance\FinanceSetting;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
@@ -63,6 +63,7 @@ class FinanceBillingParityImplementationTest extends TestCase
         [$owner, $workspace] = $this->createWorkspaceOwner();
         Sanctum::actingAs($owner);
         $headers = $this->workspaceHeader($workspace);
+        $this->completeSeller($workspace);
         $customer = $this->makeBuyer($workspace, 'Zatca Buyer');
 
         $created = $this->withHeaders($headers)
@@ -94,6 +95,9 @@ class FinanceBillingParityImplementationTest extends TestCase
             ->assertDontSee('ولا يتم توليد QR أو XML')
             ->assertSee('أساس داخلي')
             ->assertSee('تحميل XML');
+
+        $this->assertIsArray($show->json('data.journal_entries'));
+        $this->assertNotEmpty($show->json('data.journal_entries'));
     }
 
     public function test_invoice_inbox_sorts_and_exposes_pipeline_meta(): void
@@ -123,6 +127,7 @@ class FinanceBillingParityImplementationTest extends TestCase
     {
         [$owner, $workspace] = $this->createWorkspaceOwner('Quote Attach A');
         [$otherOwner, $otherWorkspace] = $this->createWorkspaceOwner('Quote Attach B');
+        app(WorkspaceContext::class)->set($workspace);
         Sanctum::actingAs($owner);
         $headers = $this->workspaceHeader($workspace);
         $customer = $this->makeBuyer($workspace, 'Quote Customer');
@@ -161,13 +166,14 @@ class FinanceBillingParityImplementationTest extends TestCase
             ->assertNotFound();
 
         Sanctum::actingAs($owner);
+        app(WorkspaceContext::class)->set($workspace);
         $this->withHeaders($headers)
             ->deleteJson('/api/finance/v1/quotes/'.$quoteId.'/attachments/'.$attachmentId)
             ->assertOk()
             ->assertJsonPath('data.attachments', []);
     }
 
-    public function test_quote_convert_is_idempotent_and_returns_conflict_on_second_attempt(): void
+    public function test_quote_convert_is_idempotent_and_creates_draft_invoice(): void
     {
         [$owner, $workspace] = $this->createWorkspaceOwner();
         Sanctum::actingAs($owner);
@@ -227,8 +233,8 @@ class FinanceBillingParityImplementationTest extends TestCase
 
         $this->withHeaders($headers)
             ->postJson('/api/finance/v1/quotes/'.$draftQuote->id.'/convert')
-            ->assertStatus(409)
-            ->assertJsonPath('code', 'idempotency_conflict');
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'validation_failed');
     }
 
     public function test_payments_and_receipts_accept_date_method_and_customer_filters(): void
@@ -298,6 +304,92 @@ class FinanceBillingParityImplementationTest extends TestCase
             ->assertJsonPath('data.recurring_frequency', 'yearly');
     }
 
+    public function test_purchase_issue_attachments_and_payment_round_trip(): void
+    {
+        [$owner, $workspace] = $this->createWorkspaceOwner();
+        Sanctum::actingAs($owner);
+        $headers = $this->workspaceHeader($workspace);
+        app(WorkspaceContext::class)->set($workspace);
+
+        $supplier = \App\Models\Finance\FinanceSupplier::withoutGlobalScopes()->create([
+            'workspace_id' => $workspace->id,
+            'name' => 'Parity Supplier',
+            'status' => 'active',
+        ]);
+
+        $created = $this->withHeaders($headers)->post('/api/finance/v1/purchases', [
+            'supplier_id' => $supplier->id,
+            'issue_date' => now()->toDateString(),
+            'due_date' => now()->addDays(7)->toDateString(),
+            'currency' => 'SAR',
+            'invoice_status' => 'issued',
+            'tax_profile_type' => TaxProfileType::Standard->value,
+            'tax_rate' => 15,
+            'items' => [[
+                'product_name' => 'خدمة مورد',
+                'quantity' => 1,
+                'unit_price' => 100,
+                'discount' => 0,
+                'tax_rate' => 15,
+                'tax_type' => TaxProfileType::Standard->value,
+            ]],
+            'attachments' => [UploadedFile::fake()->create('po-scan.pdf', 12, 'application/pdf')],
+        ])->assertCreated();
+
+        $invoiceId = (int) $created->json('data.id');
+        $this->assertSame('issued', $created->json('data.document_status'));
+        $this->assertSame('po-scan.pdf', $created->json('data.attachments.0.file_name'));
+        $this->assertIsArray($created->json('data.tax_breakdown'));
+
+        $show = $this->withHeaders($headers)->getJson('/api/finance/v1/purchases/'.$invoiceId)->assertOk();
+        $this->assertNotEmpty($show->json('data.journal_entries'));
+        $attachmentId = (int) $show->json('data.attachments.0.id');
+        $this->withHeaders($headers)
+            ->get('/api/finance/v1/purchases/'.$invoiceId.'/attachments/'.$attachmentId)
+            ->assertOk();
+
+        $paid = $this->withHeaders($headers)->postJson('/api/finance/v1/purchases/'.$invoiceId.'/payments', [
+            'payment_date' => now()->toDateString(),
+            'amount' => 115,
+            'method' => 'cash',
+            'reference' => 'PUR-PAY-1',
+        ])->assertOk();
+        $this->assertSame('paid', $paid->json('data.invoice.payment_status'));
+
+        $this->withHeaders($headers)
+            ->getJson('/api/finance/v1/payments?invoice_id='.$invoiceId)
+            ->assertOk()
+            ->assertJsonPath('data.0.reference', 'PUR-PAY-1');
+    }
+
+    public function test_invoice_line_exemption_code_is_persisted_from_client_payload(): void
+    {
+        [$owner, $workspace] = $this->createWorkspaceOwner();
+        Sanctum::actingAs($owner);
+        $headers = $this->workspaceHeader($workspace);
+        $customer = $this->makeBuyer($workspace, 'Exempt Buyer');
+
+        $created = $this->withHeaders($headers)->postJson('/api/finance/v1/sales-invoices', array_merge(
+            $this->invoiceBody($customer->id, 100),
+            [
+                'tax_profile_type' => TaxProfileType::Exempt->value,
+                'items' => [[
+                    'product_name' => 'بند معفى',
+                    'quantity' => 1,
+                    'unit_price' => 100,
+                    'discount' => 0,
+                    'tax_rate' => 0,
+                    'tax_profile_type' => TaxProfileType::Exempt->value,
+                    'exemption_reason' => 'صادرات',
+                    'exemption_code' => 'VATEX-SA-32',
+                ]],
+            ]
+        ))->assertCreated();
+
+        $this->assertSame('صادرات', $created->json('data.lines.0.exemption_reason'));
+        $this->assertSame('VATEX-SA-32', $created->json('data.lines.0.exemption_code'));
+    }
+
     /**
      * @return array{0: User, 1: Workspace}
      */
@@ -343,13 +435,39 @@ class FinanceBillingParityImplementationTest extends TestCase
 
     private function makeBuyer(Workspace $workspace, string $name): Customer
     {
+        app(WorkspaceContext::class)->set($workspace);
+
         return Customer::withoutGlobalScopes()->create([
             'workspace_id' => $workspace->id,
             'name' => $name,
             'phone' => '05'.random_int(10000000, 99999999),
             'email' => strtolower(str_replace(' ', '.', $name)).uniqid().'@example.com',
             'vat_number' => '300111111111113',
+            'address' => 'Buyer Street',
+            'street' => 'Buyer Street',
+            'city' => 'Jeddah',
+            'country_code' => 'SA',
+            'district' => 'Al Balad',
+            'postal_code' => '22222',
         ]);
+    }
+
+    private function completeSeller(Workspace $workspace): void
+    {
+        app(WorkspaceContext::class)->set($workspace);
+        FinanceSetting::withoutGlobalScopes()
+            ->where('workspace_id', $workspace->id)
+            ->update([
+                'company_name' => 'Issued Co',
+                'vat_number' => '310000000000003',
+                'commercial_registration' => '1010000000',
+                'street' => 'King Fahd Road',
+                'building_number' => '1234',
+                'district' => 'Al Olaya',
+                'city' => 'Riyadh',
+                'postal_code' => '12345',
+                'country_code' => 'SA',
+            ]);
     }
 
     /**

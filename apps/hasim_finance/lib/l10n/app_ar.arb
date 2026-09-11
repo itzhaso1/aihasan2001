@@ -274,6 +274,7 @@
   "selectProduct": "اختر منتجاً",
   "freeTextItem": "بند حر",
   "exemptionReason": "سبب الإعفاء",
+  "exemptionCode": "رمز الإعفاء",
   "project": "المشروع",
   "contract": "العقد",
   "sku": "رمز SKU",

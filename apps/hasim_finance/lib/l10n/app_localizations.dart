@@ -1742,6 +1742,12 @@ abstract class AppLocalizations {
   /// **'سبب الإعفاء'**
   String get exemptionReason;
 
+  /// No description provided for @exemptionCode.
+  ///
+  /// In ar, this message translates to:
+  /// **'رمز الإعفاء'**
+  String get exemptionCode;
+
   /// No description provided for @project.
   ///
   /// In ar, this message translates to:

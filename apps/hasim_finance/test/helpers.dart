@@ -603,10 +603,24 @@ class FakeFinanceApi extends FinanceApi {
   }
 
   @override
-  Future<InvoiceRecord> savePurchase(Map<String, dynamic> body, {int? id}) async {
+  Future<InvoiceRecord> savePurchase(Map<String, dynamic> body, {int? id, FormData? form}) async {
     lastPurchasePayload = body;
     return InvoiceRecord(id: id ?? 88, invoiceNumber: 'PINV-88', documentStatus: 'draft', supplierName: 'مورد الاختبار');
   }
+
+  @override
+  Future<Map<String, dynamic>> recordPurchasePayment(int invoiceId, Map<String, dynamic> body) async => {
+        'payment': {'id': 1, 'amount': body['amount']},
+      };
+
+  @override
+  Future<InvoiceRecord> uploadPurchaseAttachments(int invoiceId, FormData form) async => invoiceRecord;
+
+  @override
+  Future<Uint8List> downloadPurchaseAttachment(int invoiceId, int attachmentId) async => Uint8List.fromList(const [1, 2, 3]);
+
+  @override
+  Future<InvoiceRecord> deletePurchaseAttachment(int invoiceId, int attachmentId) async => invoiceRecord;
 
   @override
   Future<Map<String, dynamic>> bootstrap() async => {

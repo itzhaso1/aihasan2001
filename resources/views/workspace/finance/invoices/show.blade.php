@@ -321,6 +321,7 @@
                 <p class="mt-2 text-xs leading-5 text-slate-500">{{ $zatcaCopy }}</p>
                 <ul class="mt-3 space-y-1.5 text-sm">
                     <li class="text-slate-700">التكامل الحالي: أساس داخلي — بلا تخليص FATOORA وبلا إبلاغ إنتاج</li>
+                    <li class="text-amber-800">حالة FATOORA/الإنتاج: غير مهيأة</li>
                     <li class="text-slate-600">متطلب داخلي: {{ $zatcaRequirementLabels[$zatcaRequirement] ?? $zatcaRequirement }}</li>
                     <li class="{{ $xmlAvailable ? 'text-emerald-700' : 'text-slate-500' }}">XML: {{ $xmlAvailable ? 'متوفر للتحميل' : 'غير متوفر' }}</li>
                     <li class="{{ $qrAvailable ? 'text-emerald-700' : 'text-slate-500' }}">رمز QR: {{ $qrAvailable ? 'متوفر' : 'غير متوفر' }}</li>

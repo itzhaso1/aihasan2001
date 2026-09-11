@@ -838,6 +838,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exemptionReason => 'Exemption reason';
 
   @override
+  String get exemptionCode => 'Exemption code';
+
+  @override
   String get project => 'Project';
 
   @override

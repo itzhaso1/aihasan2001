@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api\Finance\V1;
 use App\Http\Controllers\Api\Finance\Concerns\HandlesFinanceClient;
 use App\Http\Controllers\Api\Finance\FinanceApiController;
 use App\Models\Finance\FinanceInvoice;
+use App\Models\Finance\FinanceInvoiceAttachment;
 use App\Models\Finance\FinanceSupplier;
 use App\Services\Finance\Api\FinanceClientPresenter;
 use App\Services\Finance\FinanceBootstrapService;
 use App\Services\Finance\InvoiceInboxService;
+use App\Services\Finance\InvoicePaymentService;
 use App\Services\Finance\InvoiceService;
 use App\Services\Finance\LedgerReportService;
 use App\Services\Finance\PdfInvoiceService;
@@ -16,6 +18,7 @@ use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -26,6 +29,7 @@ class PurchaseController extends FinanceApiController
     public function __construct(
         private readonly WorkspaceContext $workspaceContext,
         private readonly InvoiceService $invoiceService,
+        private readonly InvoicePaymentService $invoicePaymentService,
         private readonly InvoiceInboxService $invoiceInboxService,
         private readonly LedgerReportService $ledgerReportService,
         private readonly FinanceBootstrapService $financeBootstrapService,
@@ -65,9 +69,24 @@ class PurchaseController extends FinanceApiController
         $this->clientActor($request, $workspace, 'purchases.view');
         abort_unless((string) $invoice->type === 'purchase', 404);
         $invoice = $this->invoiceService->syncPaymentStatus($invoice);
-        $invoice->load(['supplier', 'items', 'payments.receipt']);
+        $invoice->load([
+            'supplier',
+            'items',
+            'payments.receipt',
+            'payments.treasuryAccount',
+            'attachments',
+            'creditNotes',
+            'contract',
+            'project',
+        ]);
 
-        return $this->ok($this->presenter->invoiceDetail($invoice));
+        $payload = $this->presenter->invoiceDetail($invoice);
+        $payload['audit'] = $this->presenter->relatedAuditLogs($invoice);
+        if ($this->mayViewAccounting($request->user(), $workspace)) {
+            $payload['journal_entries'] = $this->presenter->relatedJournalEntries($invoice);
+        }
+
+        return $this->ok($payload);
     }
 
     public function store(Request $request): JsonResponse
@@ -76,13 +95,14 @@ class PurchaseController extends FinanceApiController
         $this->clientActor($request, $workspace, 'purchases.manage');
         $this->financeBootstrapService->ensureWorkspaceFinanceSetup($workspace);
         $payload = $this->purchasePayload($request, (int) $workspace->id);
+        $payload['attachments'] = $request->file('attachments', []) ?: [];
 
         $invoice = $this->runFinanceDomain(
             fn () => $this->invoiceService->create($workspace, $payload, (int) $request->user()?->id)
         );
 
         return $this->ok(
-            $this->presenter->invoiceDetail($invoice->load(['supplier', 'items'])),
+            $this->presenter->invoiceDetail($invoice->load(['supplier', 'items', 'attachments', 'payments.receipt'])),
             message: 'تم إنشاء فاتورة الشراء.',
             status: 201,
         );
@@ -94,11 +114,15 @@ class PurchaseController extends FinanceApiController
         $this->clientActor($request, $workspace, 'purchases.manage');
         abort_unless((string) $invoice->type === 'purchase', 404);
         $payload = $this->purchasePayload($request, (int) $workspace->id);
+        $payload['attachments'] = $request->file('attachments', []) ?: [];
         $updated = $this->runFinanceDomain(
             fn () => $this->invoiceService->updateDraft($invoice, $payload, (int) $request->user()?->id)
         );
 
-        return $this->ok($this->presenter->invoiceDetail($updated->load(['supplier', 'items'])), message: 'تم تحديث مسودة فاتورة الشراء.');
+        return $this->ok(
+            $this->presenter->invoiceDetail($updated->load(['supplier', 'items', 'attachments', 'payments.receipt'])),
+            message: 'تم تحديث مسودة فاتورة الشراء.',
+        );
     }
 
     public function aging(Request $request): JsonResponse
@@ -209,6 +233,82 @@ class PurchaseController extends FinanceApiController
         abort_unless((string) $invoice->type === 'purchase', 404);
 
         return $this->runFinanceDomain(fn () => $this->pdfInvoiceService->download($invoice));
+    }
+
+    public function storePayment(Request $request, FinanceInvoice $invoice): JsonResponse
+    {
+        $workspace = $this->clientWorkspace($this->workspaceContext);
+        $this->clientActor($request, $workspace, 'payments.manage');
+        abort_unless((string) $invoice->type === 'purchase', 404);
+
+        $validated = $request->validate([
+            'payment_date' => ['required', 'date'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'method' => ['required', 'in:cash,bank_transfer,card,other'],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string'],
+            'treasury_account_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('finance_treasury_accounts', 'id')->where(
+                    fn ($query) => $query->where('workspace_id', $invoice->workspace_id)
+                ),
+            ],
+        ]);
+
+        $payment = $this->runFinanceDomain(
+            fn () => $this->invoicePaymentService->recordPayment($invoice, $validated, (int) $request->user()?->id)
+        );
+        $payment->load(['invoice.supplier', 'receipt']);
+
+        return $this->ok([
+            'payment' => $this->presenter->payment($payment),
+            'invoice' => $this->presenter->invoiceDetail($invoice->fresh(['supplier', 'items', 'payments.receipt', 'attachments'])),
+        ], message: 'تم تسجيل الدفعة.');
+    }
+
+    public function storeAttachment(Request $request, FinanceInvoice $invoice): JsonResponse
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'purchases.manage');
+        abort_unless((string) $invoice->type === 'purchase', 404);
+        $request->validate([
+            'attachments' => ['required', 'array', 'max:10'],
+            'attachments.*' => ['file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,webp'],
+        ]);
+
+        $this->runFinanceDomain(
+            fn () => $this->invoiceService->storeAttachments($invoice, $request->file('attachments', []) ?: [], (int) $request->user()?->id)
+        );
+
+        return $this->ok(
+            $this->presenter->invoiceDetail($invoice->fresh(['supplier', 'items', 'attachments', 'payments.receipt'])),
+            message: 'تم رفع المرفق.',
+        );
+    }
+
+    public function downloadAttachment(Request $request, FinanceInvoice $invoice, FinanceInvoiceAttachment $attachment): mixed
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'purchases.view');
+        abort_unless((string) $invoice->type === 'purchase', 404);
+        abort_unless((int) $attachment->invoice_id === (int) $invoice->id, 404);
+
+        return Storage::disk('public')->download(
+            $attachment->file_path,
+            $attachment->file_name ?: ('purchase-attachment-'.$attachment->id)
+        );
+    }
+
+    public function destroyAttachment(Request $request, FinanceInvoice $invoice, FinanceInvoiceAttachment $attachment): JsonResponse
+    {
+        $this->clientActor($request, $this->clientWorkspace($this->workspaceContext), 'purchases.manage');
+        abort_unless((string) $invoice->type === 'purchase', 404);
+        abort_unless((int) $attachment->invoice_id === (int) $invoice->id, 404);
+        $this->runFinanceDomain(fn () => $this->invoiceService->deleteAttachment($attachment));
+
+        return $this->ok(
+            $this->presenter->invoiceDetail($invoice->fresh(['supplier', 'items', 'attachments', 'payments.receipt'])),
+            message: 'تم حذف المرفق.',
+        );
     }
 
     /**

@@ -520,6 +520,10 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
                     ],
                     const SizedBox(height: 12),
                     AuditLogCard(invoice: invoice),
+                    if (invoice.journalEntries.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      JournalEntriesCard(invoice: invoice),
+                    ],
                   ],
                 ),
               ),
@@ -664,6 +668,8 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
         InvoiceActionButton(label: l.printDocument, icon: Icons.print_outlined, onPressed: _openPdf),
         if (invoice.documentStatus == 'issued' && invoice.paymentStatus != 'paid' && p.paymentsManage)
           InvoiceActionButton(label: l.recordPayment, icon: Icons.payments_outlined, onPressed: _manualPayment),
+        if (invoice.documentStatus == 'issued' && invoice.paymentStatus != 'paid' && p.paymentsManage)
+          InvoiceActionButton(label: l.createCheckout, icon: Icons.link_outlined, onPressed: _checkout),
         if (moreItems.isNotEmpty)
           PopupMenuButton<String>(
             tooltip: l.more,

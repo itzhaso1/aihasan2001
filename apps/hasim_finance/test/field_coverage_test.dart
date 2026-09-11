@@ -23,6 +23,8 @@ void main() {
     expect(invoice.contractNumber, 'C-9');
     expect(invoice.projectName, 'مشروع');
     expect(invoice.taxBreakdown, isNotEmpty);
+    expect(invoice.journalEntries, isNotEmpty);
+    expect(invoice.lines.first.exemptionCode, 'VATEX-SA-32');
     expect(invoice.lines, hasLength(2));
     expect(invoice.lines.first.unit, 'ساعة');
     expect(invoice.lines.first.discount, '10.00');
@@ -93,6 +95,7 @@ void main() {
       taxRate: '15',
       discount: '5',
       exemptionReason: 'صادرات',
+      exemptionCode: 'VATEX-SA-32',
     )..productId = 41
      ..taxProfileType = 'standard';
     final payload = line.toPayload();
@@ -102,6 +105,7 @@ void main() {
     expect(payload['product_id'], 41);
     expect(payload['tax_profile_type'], 'standard');
     expect(payload['exemption_reason'], 'صادرات');
+    expect(payload['exemption_code'], 'VATEX-SA-32');
     line.dispose();
   });
 
@@ -347,6 +351,17 @@ const _richInvoice = {
   'tax_breakdown': [
     {'code': 'S', 'tax_amount': '28.50'},
   ],
+  'journal_entries': [
+    {
+      'entry_number': 'JE-1',
+      'type': 'invoice',
+      'status': 'posted',
+      'lines': [
+        {'debit': '218.50', 'credit': '0.00'},
+        {'debit': '0.00', 'credit': '218.50'},
+      ],
+    },
+  ],
   'zatca': {'requirement': 'simplified', 'has_qr': true, 'xml_available': true, 'qr_available': true, 'clearance': false, 'integration': 'foundation'},
   'company_snapshot': {'name': 'شركة حاسم', 'vat_number': '300000000000003'},
   'lines': [
@@ -361,6 +376,8 @@ const _richInvoice = {
       'tax_rate': '15.00',
       'tax_amount': '13.50',
       'taxable_amount': '90.00',
+      'exemption_reason': 'صادرات',
+      'exemption_code': 'VATEX-SA-32',
       'total': '103.50',
     },
     {

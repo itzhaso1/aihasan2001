@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -14,6 +15,7 @@ import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/core/utils/files.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
+import 'package:hasim_finance/features/invoices/invoice_detail_widgets.dart';
 import 'package:hasim_finance/features/shared/customer_select.dart';
 import 'package:hasim_finance/features/shared/document_lines_editor.dart';
 import 'package:hasim_finance/features/shared/paged.dart';
@@ -34,6 +36,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   final _from = TextEditingController();
   final _to = TextEditingController();
   final _reference = TextEditingController();
+  final _invoiceId = TextEditingController();
   int? _customerId;
   int? _treasuryId;
 
@@ -42,6 +45,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
     _from.dispose();
     _to.dispose();
     _reference.dispose();
+    _invoiceId.dispose();
     super.dispose();
   }
 
@@ -51,7 +55,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
     final auth = ref.watch(authControllerProvider);
     final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
     return PagedListScreen<PaymentRecord>(
-      key: ValueKey('$_status-$_method-${_customerId}-${_treasuryId}-${_from.text}-${_to.text}-${_reference.text}'),
+      key: ValueKey('$_status-$_method-$_customerId-$_treasuryId-${_from.text}-${_to.text}-${_reference.text}-${_invoiceId.text}'),
       title: l.payments,
       allowed: auth.permissions.paymentsView,
       filterBar: Padding(
@@ -85,6 +89,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
           TextField(controller: _from, decoration: InputDecoration(labelText: l.from), onSubmitted: (_) => setState(() {})),
           TextField(controller: _to, decoration: InputDecoration(labelText: l.to), onSubmitted: (_) => setState(() {})),
           TextField(controller: _reference, decoration: InputDecoration(labelText: l.reference), onSubmitted: (_) => setState(() {})),
+          TextField(controller: _invoiceId, decoration: InputDecoration(labelText: l.invoiceId), onSubmitted: (_) => setState(() {})),
           OptionPicker(
             label: l.treasuryAccount,
             options: [for (final row in catalog.treasuryAccounts) NamedOption(id: row.id, name: row.name)],
@@ -104,6 +109,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
         to: _to.text.trim(),
         reference: _reference.text.trim(),
         treasuryAccountId: _treasuryId,
+        invoiceId: int.tryParse(_invoiceId.text.trim()),
       ),
       itemBuilder: (context, payment) => Card(
         child: ListTile(
@@ -201,12 +207,14 @@ class _ReceiptsScreenState extends ConsumerState<ReceiptsScreen> {
   String? _method;
   final _from = TextEditingController();
   final _to = TextEditingController();
+  final _invoiceId = TextEditingController();
   int? _customerId;
 
   @override
   void dispose() {
     _from.dispose();
     _to.dispose();
+    _invoiceId.dispose();
     super.dispose();
   }
 
@@ -215,7 +223,7 @@ class _ReceiptsScreenState extends ConsumerState<ReceiptsScreen> {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<ReceiptRecord>(
-      key: ValueKey('$_status-$_method-${_customerId}-${_from.text}-${_to.text}'),
+      key: ValueKey('$_status-$_method-$_customerId-${_from.text}-${_to.text}-${_invoiceId.text}'),
       title: l.receipts,
       allowed: auth.permissions.receiptsView,
       filterBar: Padding(
@@ -248,6 +256,7 @@ class _ReceiptsScreenState extends ConsumerState<ReceiptsScreen> {
           ),
           TextField(controller: _from, decoration: InputDecoration(labelText: l.from), onSubmitted: (_) => setState(() {})),
           TextField(controller: _to, decoration: InputDecoration(labelText: l.to), onSubmitted: (_) => setState(() {})),
+          TextField(controller: _invoiceId, decoration: InputDecoration(labelText: l.invoiceId), onSubmitted: (_) => setState(() {})),
           FilledButton.tonal(onPressed: () => setState(() {}), child: Text(l.refresh)),
         ]),
       ),
@@ -259,6 +268,7 @@ class _ReceiptsScreenState extends ConsumerState<ReceiptsScreen> {
         customerId: _customerId,
         from: _from.text.trim(),
         to: _to.text.trim(),
+        invoiceId: int.tryParse(_invoiceId.text.trim()),
       ),
       itemBuilder: (context, receipt) => Card(
         child: ListTile(
@@ -1722,16 +1732,48 @@ class _PurchaseDetailScreenState extends ConsumerState<PurchaseDetailScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 DocumentHeader(number: invoice.invoiceNumber ?? '', documentStatus: invoice.documentStatus, paymentStatus: invoice.paymentStatus, customer: invoice.supplierName),
-                TotalsCard(
-                  subtotal: invoice.subtotal,
-                  discount: invoice.discount,
-                  taxable: invoice.taxableAmount,
-                  tax: invoice.taxAmount,
-                  total: invoice.total,
-                  paid: invoice.amountPaid,
-                  due: invoice.amountDue,
+                InvoiceSummaryCard(invoice: invoice),
+                InvoiceItemsTable(invoice: invoice),
+                if (invoice.payments.isNotEmpty)
+                  FormSection(
+                    title: l.payments,
+                    child: Column(
+                      children: [
+                        for (final payment in invoice.payments)
+                          ListTile(
+                            dense: true,
+                            title: Text('${payment.amount} · ${payment.method ?? ''}'),
+                            subtitle: Text('${payment.status} · ${payment.reference ?? ''}'),
+                          ),
+                      ],
+                    ),
+                  ),
+                AttachmentsCard(
+                  invoice: invoice,
+                  onUpload: invoice.documentStatus == 'draft' && ref.watch(authControllerProvider).permissions.purchasesManage
+                      ? _pickPurchaseAttachments
+                      : null,
+                  onDownload: (row) async {
+                    try {
+                      final id = int.parse('${row['id']}');
+                      final bytes = await ref.read(financeApiProvider).downloadPurchaseAttachment(invoice.id, id);
+                      await saveAndOpenBytes(bytes, '${row['file_name'] ?? 'attachment-$id'}');
+                    } catch (e) {
+                      if (context.mounted) showApiError(context, e);
+                    }
+                  },
+                  onDelete: invoice.documentStatus == 'draft' && ref.watch(authControllerProvider).permissions.purchasesManage
+                      ? (row) async {
+                          try {
+                            await ref.read(financeApiProvider).deletePurchaseAttachment(invoice.id, int.parse('${row['id']}'));
+                            await _load();
+                          } catch (e) {
+                            if (context.mounted) showApiError(context, e);
+                          }
+                        }
+                      : null,
                 ),
-                LineTable(lines: invoice.lines),
+                if (invoice.journalEntries.isNotEmpty) JournalEntriesCard(invoice: invoice),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   if (invoice.documentStatus == 'draft' && ref.watch(authControllerProvider).permissions.purchasesManage)
                     FilledButton(onPressed: () => context.push('/purchases/${invoice.id}/edit'), child: Text(l.edit)),
@@ -1748,6 +1790,10 @@ class _PurchaseDetailScreenState extends ConsumerState<PurchaseDetailScreen> {
                       },
                       child: Text(l.issue),
                     ),
+                  if (invoice.documentStatus == 'issued' &&
+                      invoice.paymentStatus != 'paid' &&
+                      ref.watch(authControllerProvider).permissions.paymentsManage)
+                    FilledButton(onPressed: _recordPurchasePayment, child: Text(l.recordPayment)),
                   if (invoice.documentStatus != 'cancelled' && ref.watch(authControllerProvider).permissions.purchasesManage)
                     OutlinedButton(
                       onPressed: () => confirmAndRun(context, () async {
@@ -1772,6 +1818,78 @@ class _PurchaseDetailScreenState extends ConsumerState<PurchaseDetailScreen> {
             ),
     );
   }
+
+  Future<void> _pickPurchaseAttachments() async {
+    final invoice = _data;
+    if (invoice == null) return;
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+    );
+    if (result == null || result.files.isEmpty) return;
+    try {
+      final form = FormData();
+      for (final file in result.files) {
+        final part = await multipartFromPicked(file);
+        if (part == null) continue;
+        form.files.add(MapEntry('attachments[]', part));
+      }
+      if (form.files.isEmpty) return;
+      await ref.read(financeApiProvider).uploadPurchaseAttachments(invoice.id, form);
+      await _load();
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+    }
+  }
+
+  Future<void> _recordPurchasePayment() async {
+    final l = AppLocalizations.of(context);
+    final amount = TextEditingController(text: _data?.amountDue ?? '');
+    final reference = TextEditingController();
+    String method = 'cash';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l.recordPayment),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: amount, decoration: InputDecoration(labelText: l.amount)),
+            TextField(controller: reference, decoration: InputDecoration(labelText: l.reference)),
+            DropdownButtonFormField(
+              // ignore: deprecated_member_use
+              value: method,
+              items: [
+                DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),
+                DropdownMenuItem(value: 'bank_transfer', child: Text(l.methodBank)),
+                DropdownMenuItem(value: 'card', child: Text(l.methodCard)),
+                DropdownMenuItem(value: 'other', child: Text(l.methodOther)),
+              ],
+              onChanged: (v) => method = v ?? 'cash',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l.cancel)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(l.save)),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(financeApiProvider).recordPurchasePayment(widget.id, {
+        'amount': amount.text.trim(),
+        'method': method,
+        'reference': reference.text.trim(),
+        'payment_date': isoDate(),
+      });
+      await _load();
+      if (mounted) showSnack(context, l.success);
+    } catch (e) {
+      if (mounted) showApiError(context, e);
+    }
+  }
 }
 
 class PurchaseFormScreen extends ConsumerStatefulWidget {
@@ -1794,6 +1912,8 @@ class _PurchaseFormScreenState extends ConsumerState<PurchaseFormScreen> {
   final _notes = TextEditingController();
   final List<LineDraft> _lines = [LineDraft(description: 'بند مشتريات', unitPrice: '50')];
   bool _busy = false;
+  bool _issueNow = false;
+  final List<PlatformFile> _files = [];
 
   @override
   void initState() {
@@ -1909,26 +2029,63 @@ class _PurchaseFormScreenState extends ConsumerState<PurchaseFormScreen> {
             child: DocumentLinesEditor(lines: _lines, products: catalog.products, onChanged: () => setState(() {})),
           ),
           TextField(controller: _notes, decoration: InputDecoration(labelText: l.notesField), maxLines: 3),
+          if (widget.id == null)
+            SwitchListTile(
+              title: Text(l.issueImmediately),
+              value: _issueNow,
+              onChanged: (value) => setState(() => _issueNow = value),
+            ),
+          OutlinedButton(
+            onPressed: () async {
+              final result = await FilePicker.platform.pickFiles(
+                allowMultiple: true,
+                type: FileType.custom,
+                allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+              );
+              if (result != null && result.files.isNotEmpty) {
+                setState(() {
+                  _files
+                    ..clear()
+                    ..addAll(result.files);
+                });
+              }
+            },
+            child: Text(_files.isEmpty ? l.attachment : _files.map((file) => file.name).join(', ')),
+          ),
           FilledButton(
             onPressed: _busy || _supplierId == null
                 ? null
                 : () async {
                     setState(() => _busy = true);
                     try {
-                      final saved = await ref.read(financeApiProvider).savePurchase({
+                      final body = <String, dynamic>{
                         'supplier_id': _supplierId,
                         'issue_date': _issueDate.text.trim(),
                         'due_date': _dueDate.text.trim(),
                         'currency': _currency.text.trim(),
                         'notes': _notes.text.trim(),
-                        'invoice_status': 'draft',
+                        'invoice_status': _issueNow && widget.id == null ? 'issued' : 'draft',
                         'tax_profile_type': _taxProfile,
                         'tax_rate': _taxRate.text.trim(),
                         'tax_price_mode': _taxMode,
                         if (_projectId != null) 'project_id': _projectId,
                         if (_contractId != null) 'contract_id': _contractId,
                         'items': _lines.map((line) => line.toPayload()).toList(),
-                      }, id: widget.id);
+                      };
+                      late final InvoiceRecord saved;
+                      if (widget.id == null && _files.isNotEmpty) {
+                        final form = FormData.fromMap({
+                          ...body,
+                          'items_json': jsonEncode(body['items']),
+                        }..remove('items'));
+                        for (final file in _files) {
+                          final part = await multipartFromPicked(file);
+                          if (part != null) form.files.add(MapEntry('attachments[]', part));
+                        }
+                        saved = await ref.read(financeApiProvider).savePurchase({}, form: form);
+                      } else {
+                        saved = await ref.read(financeApiProvider).savePurchase(body, id: widget.id);
+                      }
                       if (context.mounted) context.go('/purchases/${saved.id}');
                     } catch (e) {
                       if (context.mounted) showFormError(context, e);
@@ -2019,7 +2176,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               spacing: 8,
               children: [
                 for (final e in reports.entries)
-                  ChoiceChip(label: Text(e.value), selected: _key == e.key, onSelected: (_) => setState(() => _key = e.key)),
+                  ChoiceChip(
+                    label: Text(e.value),
+                    selected: _key == e.key,
+                    onSelected: (_) {
+                      setState(() => _key = e.key);
+                      _load();
+                    },
+                  ),
               ],
             ),
             const SizedBox(height: 12),

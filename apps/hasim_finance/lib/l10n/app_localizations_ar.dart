@@ -836,6 +836,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get exemptionReason => 'سبب الإعفاء';
 
   @override
+  String get exemptionCode => 'رمز الإعفاء';
+
+  @override
   String get project => 'المشروع';
 
   @override
