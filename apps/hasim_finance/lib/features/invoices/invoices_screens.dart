@@ -478,6 +478,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
             TextField(controller: amount, decoration: InputDecoration(labelText: l.amount)),
             TextField(controller: reference, decoration: InputDecoration(labelText: l.reference)),
             DropdownButtonFormField(
+              isExpanded: true,
               // ignore: deprecated_member_use
               value: method,
               items: [
@@ -892,6 +893,8 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
             ..addAll(invoice.lines.map(LineDraft.fromItem));
         }
         setState(() {});
+      }).catchError((Object error) {
+        if (mounted) showApiError(context, error);
       });
     }
   }
@@ -1001,6 +1004,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                   if (catalog.allowManualInvoiceNumbers || _invoiceNumber.text.isNotEmpty)
                     TextField(controller: _invoiceNumber, decoration: InputDecoration(labelText: l.invoiceNumber)),
                   DropdownButtonFormField(
+                    isExpanded: true,
                     // ignore: deprecated_member_use
                     value: _subtype,
                     decoration: InputDecoration(labelText: l.taxDocumentSubtype),
@@ -1011,6 +1015,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                     onChanged: (v) => setState(() => _subtype = v ?? 'standard'),
                   ),
                   DropdownButtonFormField(
+                    isExpanded: true,
                     // ignore: deprecated_member_use
                     value: _zatca,
                     decoration: InputDecoration(labelText: l.zatcaRequirement),
@@ -1050,6 +1055,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
             title: l.taxSection,
             child: FormGrid(children: [
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _taxProfile,
                 decoration: InputDecoration(labelText: l.taxProfile),
@@ -1062,6 +1068,7 @@ class _InvoiceFormScreenState extends ConsumerState<InvoiceFormScreen> {
                 onChanged: (v) => setState(() => _taxProfile = v ?? 'standard'),
               ),
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _taxMode,
                 decoration: InputDecoration(labelText: l.taxPriceMode),

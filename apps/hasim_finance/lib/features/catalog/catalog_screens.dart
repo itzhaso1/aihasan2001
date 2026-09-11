@@ -954,6 +954,8 @@ class _SupplierFormScreenState extends ConsumerState<SupplierFormScreen> {
         _address.text = s.address ?? '';
         _terms.text = s.paymentTerms ?? '';
         if (mounted) setState(() {});
+      }).catchError((Object error) {
+        if (mounted) showApiError(context, error);
       });
     }
   }

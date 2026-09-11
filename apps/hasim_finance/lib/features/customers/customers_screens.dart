@@ -198,6 +198,8 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
         _notes.text = c.notes ?? '';
         _type = c.partyType ?? 'individual';
         if (mounted) setState(() {});
+      }).catchError((Object error) {
+        if (mounted) showApiError(context, error);
       });
     }
   }
@@ -267,6 +269,7 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
             title: l.headerSection,
             child: FormGrid(children: [
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _type,
                 items: [

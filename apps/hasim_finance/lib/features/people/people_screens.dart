@@ -28,28 +28,57 @@ class PeopleScreen extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: FinanceTokens.card(),
-          child: Row(
-            children: [
-              FinanceIconBadge(icon: Icons.badge_outlined, tone: FinanceIconTone.teal),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(person.fullName, style: const TextStyle(fontWeight: FontWeight.w800)),
-                    Text(
-                      [person.employeeCode, person.jobTitle].where((v) => (v ?? '').isNotEmpty).join(' · '),
-                      style: const TextStyle(color: FinanceTokens.textMuted, fontSize: 12),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 860;
+              final identity = Row(
+                children: [
+                  FinanceIconBadge(icon: Icons.badge_outlined, tone: FinanceIconTone.teal),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(person.fullName, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        Text(
+                          [person.employeeCode, person.jobTitle].where((v) => (v ?? '').isNotEmpty).join(' · '),
+                          style: const TextStyle(color: FinanceTokens.textMuted, fontSize: 12),
+                        ),
+                      ],
                     ),
+                  ),
+                  if (!wide) StatusChip(label: _statusLabel(person.status, l), tone: toneFor(person.status)),
+                ],
+              );
+              final metrics = Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _mini(l.totalOwed, person.summary['total_owed'] ?? '0.00'),
+                  _mini(l.totalPaid, person.summary['total_paid'] ?? '0.00'),
+                  _mini(l.remainingBalance, person.summary['remaining'] ?? '0.00'),
+                  _mini(l.advanceRemaining, person.summary['advance_remaining'] ?? '0.00'),
+                  if (wide) StatusChip(label: _statusLabel(person.status, l), tone: toneFor(person.status)),
+                ],
+              );
+              if (wide) {
+                return Row(
+                  children: [
+                    Expanded(child: identity),
+                    Flexible(child: metrics),
                   ],
-                ),
-              ),
-              _mini(l.totalOwed, person.summary['total_owed'] ?? '0.00'),
-              _mini(l.totalPaid, person.summary['total_paid'] ?? '0.00'),
-              _mini(l.remainingBalance, person.summary['remaining'] ?? '0.00'),
-              _mini(l.advanceRemaining, person.summary['advance_remaining'] ?? '0.00'),
-              StatusChip(label: _statusLabel(person.status, l), tone: toneFor(person.status)),
-            ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  identity,
+                  const SizedBox(height: 10),
+                  metrics,
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -179,6 +208,7 @@ class _PersonFormScreenState extends ConsumerState<PersonFormScreen> {
                   TextField(controller: _salary, decoration: InputDecoration(labelText: l.basicSalary), keyboardType: TextInputType.number),
                   TextField(controller: _hire, decoration: InputDecoration(labelText: l.hireDate)),
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     // ignore: deprecated_member_use
                     value: _status,
                     decoration: InputDecoration(labelText: l.status),
@@ -334,6 +364,7 @@ class _PersonDetailScreenState extends ConsumerState<PersonDetailScreen> {
                           TextField(controller: _allow, decoration: InputDecoration(labelText: l.allowancesTotal)),
                           TextField(controller: _deduct, decoration: InputDecoration(labelText: l.deductionsTotal)),
                           DropdownButtonFormField<String>(
+                            isExpanded: true,
                             // ignore: deprecated_member_use
                             value: _payStatus,
                             decoration: InputDecoration(labelText: l.paymentStatus),
@@ -614,6 +645,7 @@ class _SalaryAdvancesScreenState extends ConsumerState<SalaryAdvancesScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<int>(
+                isExpanded: true,
                 decoration: InputDecoration(labelText: l.selectEmployee),
                 items: [
                   for (final person in people.items)
@@ -627,6 +659,7 @@ class _SalaryAdvancesScreenState extends ConsumerState<SalaryAdvancesScreen> {
               TextField(controller: date, decoration: InputDecoration(labelText: l.issuedAt)),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: type,
                 decoration: InputDecoration(labelText: l.status),
@@ -684,6 +717,7 @@ class _SalaryAdvancesScreenState extends ConsumerState<SalaryAdvancesScreen> {
               TextField(controller: date, decoration: InputDecoration(labelText: l.paymentDate)),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: method,
                 items: [
@@ -796,6 +830,7 @@ class PayrollAdjustmentsScreen extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<int>(
+                isExpanded: true,
                 decoration: InputDecoration(labelText: l.selectEmployee),
                 items: [
                   for (final person in people.items) DropdownMenuItem(value: person.id, child: Text(person.fullName)),

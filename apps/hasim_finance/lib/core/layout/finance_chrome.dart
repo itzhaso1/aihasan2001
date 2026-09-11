@@ -277,15 +277,20 @@ class FinanceFilterBar extends StatelessWidget {
       margin: margin,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: FinanceTokens.card(radius: FinanceTokens.radiusLg),
-      child: below == null
-          ? top
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (children.isNotEmpty || trailing != null) ...[top, const SizedBox(height: gap)],
-                below!,
-              ],
-            ),
+      // Ink-based children (ListTile, chips) need a Material above them that
+      // sits inside the decorated box, otherwise their ink is painted below it.
+      child: Material(
+        type: MaterialType.transparency,
+        child: below == null
+            ? top
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (children.isNotEmpty || trailing != null) ...[top, const SizedBox(height: gap)],
+                  below!,
+                ],
+              ),
+      ),
     );
   }
 }

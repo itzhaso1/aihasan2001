@@ -314,6 +314,8 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
             ..addAll(q.lines.map(LineDraft.fromItem));
         }
         setState(() {});
+      }).catchError((Object error) {
+        if (mounted) showApiError(context, error);
       });
     }
   }
@@ -394,6 +396,7 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
             title: l.taxSection,
             child: FormGrid(children: [
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _taxProfile,
                 decoration: InputDecoration(labelText: l.taxProfile),
@@ -406,6 +409,7 @@ class _QuoteFormScreenState extends ConsumerState<QuoteFormScreen> {
                 onChanged: (v) => setState(() => _taxProfile = v ?? 'standard'),
               ),
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _taxMode,
                 decoration: InputDecoration(labelText: l.taxPriceMode),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hasim_finance/core/auth/auth_controller.dart';
+import 'package:hasim_finance/core/layout/finance_chrome.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
 
@@ -11,10 +12,20 @@ class SupplierSelectField extends ConsumerStatefulWidget {
     super.key,
     required this.selectedId,
     required this.onSelected,
+    this.compact = false,
+    this.allowClear = false,
+    this.label,
+    this.floatingLabel = true,
   });
 
   final int? selectedId;
-  final ValueChanged<int> onSelected;
+  final ValueChanged<int?> onSelected;
+
+  /// Renders a single dropdown (for filter bars) instead of search + list.
+  final bool compact;
+  final bool allowClear;
+  final String? label;
+  final bool floatingLabel;
 
   @override
   ConsumerState<SupplierSelectField> createState() => _SupplierSelectFieldState();
@@ -74,6 +85,22 @@ class _SupplierSelectFieldState extends ConsumerState<SupplierSelectField> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    if (widget.compact) {
+      return DropdownButtonFormField<int?>(
+        // ignore: deprecated_member_use
+        value: widget.selectedId != null && _suppliers.any((row) => row.id == widget.selectedId) ? widget.selectedId : null,
+        isExpanded: true,
+        isDense: true,
+        decoration: widget.floatingLabel
+            ? InputDecoration(labelText: widget.label ?? l.selectSupplier)
+            : FinanceFilterField.decoration(),
+        items: [
+          if (widget.allowClear) DropdownMenuItem<int?>(value: null, child: Text(l.filterAll)),
+          for (final supplier in _suppliers) DropdownMenuItem<int?>(value: supplier.id, child: Text(supplier.name)),
+        ],
+        onChanged: widget.onSelected,
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

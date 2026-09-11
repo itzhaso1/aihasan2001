@@ -61,8 +61,9 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
       title: l.payments,
       allowed: auth.permissions.paymentsView,
       filterBar: FormGrid(children: [
-          CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
+          CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id), compact: true, allowClear: true, label: l.customer),
           DropdownButtonFormField<String?>(
+            isExpanded: true,
             // ignore: deprecated_member_use
             value: _status,
             decoration: InputDecoration(labelText: l.status),
@@ -74,6 +75,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
             onChanged: (value) => setState(() => _status = value),
           ),
           DropdownButtonFormField<String?>(
+            isExpanded: true,
             // ignore: deprecated_member_use
             value: _method,
             decoration: InputDecoration(labelText: l.method),
@@ -227,8 +229,9 @@ class _ReceiptsScreenState extends ConsumerState<ReceiptsScreen> {
       title: l.receipts,
       allowed: auth.permissions.receiptsView,
       filterBar: FormGrid(children: [
-          CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
+          CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id), compact: true, allowClear: true, label: l.customer),
           DropdownButtonFormField<String?>(
+            isExpanded: true,
             // ignore: deprecated_member_use
             value: _status,
             decoration: InputDecoration(labelText: l.status),
@@ -240,6 +243,7 @@ class _ReceiptsScreenState extends ConsumerState<ReceiptsScreen> {
             onChanged: (value) => setState(() => _status = value),
           ),
           DropdownButtonFormField<String?>(
+            isExpanded: true,
             // ignore: deprecated_member_use
             value: _method,
             decoration: InputDecoration(labelText: l.method),
@@ -691,6 +695,7 @@ class _NoteFormScreenState extends ConsumerState<NoteFormScreen> {
             title: l.headerSection,
             child: FormGrid(children: [
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _type,
                 items: [
@@ -1030,6 +1035,7 @@ class _ContractDetailScreenState extends ConsumerState<ContractDetailScreen> {
                               TextField(controller: start, decoration: InputDecoration(labelText: l.from)),
                               TextField(controller: occurrences, decoration: InputDecoration(labelText: l.generatedCount)),
                               DropdownButtonFormField(
+                                isExpanded: true,
                                 // ignore: deprecated_member_use
                                 value: frequency,
                                 items: const [
@@ -1102,6 +1108,8 @@ class _ContractFormScreenState extends ConsumerState<ContractFormScreen> {
         _notes.text = c.notes ?? '';
         _terms.text = c.terms ?? '';
         if (mounted) setState(() {});
+      }).catchError((Object error) {
+        if (mounted) showApiError(context, error);
       });
     }
   }
@@ -1303,6 +1311,8 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
           _nextDue.text = expense.nextDueDate!.substring(0, 10);
         }
         setState(() {});
+      }).catchError((Object error) {
+        if (mounted) showApiError(context, error);
       });
     }
   }
@@ -1334,6 +1344,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
               TextField(controller: _amount, decoration: InputDecoration(labelText: l.amount)),
               TextField(controller: _date, decoration: InputDecoration(labelText: l.date)),
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _method,
                 decoration: InputDecoration(labelText: l.method),
@@ -1347,6 +1358,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
                 onChanged: (v) => setState(() => _method = v ?? 'cash'),
               ),
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _status,
                 decoration: InputDecoration(labelText: l.status),
@@ -1375,6 +1387,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
             title: l.taxSection,
             child: FormGrid(children: [
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _taxProfile,
                 decoration: InputDecoration(labelText: l.taxProfile),
@@ -1398,6 +1411,7 @@ class _ExpenseFormScreenState extends ConsumerState<ExpenseFormScreen> {
           if (_recurring)
             FormGrid(children: [
               DropdownButtonFormField<String?>(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _frequency,
                 decoration: InputDecoration(labelText: l.recurringFrequency),
@@ -1619,8 +1633,9 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
             ),
             const SizedBox(height: 8),
             FormGrid(children: [
-              SupplierSelectField(selectedId: _supplierId, onSelected: (id) => setState(() => _supplierId = id)),
+              SupplierSelectField(selectedId: _supplierId, onSelected: (id) => setState(() => _supplierId = id), compact: true, allowClear: true, label: l.supplier),
               DropdownButtonFormField<String?>(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _invoiceStatus,
                 decoration: InputDecoration(labelText: l.invoiceStatusFilter),
@@ -1633,6 +1648,7 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
                 onChanged: (value) => setState(() => _invoiceStatus = value),
               ),
               DropdownButtonFormField<String?>(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _paymentStatus,
                 decoration: InputDecoration(labelText: l.paymentStatus),
@@ -1852,6 +1868,7 @@ class _PurchaseDetailScreenState extends ConsumerState<PurchaseDetailScreen> {
             TextField(controller: amount, decoration: InputDecoration(labelText: l.amount)),
             TextField(controller: reference, decoration: InputDecoration(labelText: l.reference)),
             DropdownButtonFormField(
+              isExpanded: true,
               // ignore: deprecated_member_use
               value: method,
               items: [
@@ -1933,6 +1950,8 @@ class _PurchaseFormScreenState extends ConsumerState<PurchaseFormScreen> {
             ..addAll(invoice.lines.map(LineDraft.fromItem));
         }
         if (mounted) setState(() {});
+      }).catchError((Object error) {
+        if (mounted) showApiError(context, error);
       });
     }
   }
@@ -1994,6 +2013,7 @@ class _PurchaseFormScreenState extends ConsumerState<PurchaseFormScreen> {
             title: l.taxSection,
             child: FormGrid(children: [
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _taxProfile,
                 decoration: InputDecoration(labelText: l.taxProfile),
@@ -2006,6 +2026,7 @@ class _PurchaseFormScreenState extends ConsumerState<PurchaseFormScreen> {
                 onChanged: (v) => setState(() => _taxProfile = v ?? 'standard'),
               ),
               DropdownButtonFormField(
+                isExpanded: true,
                 // ignore: deprecated_member_use
                 value: _taxMode,
                 decoration: InputDecoration(labelText: l.taxPriceMode),
@@ -2395,6 +2416,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ListTile(contentPadding: EdgeInsets.zero, title: Text(l.workspace), subtitle: Text(auth.workspace?.name ?? '-')),
           if (auth.workspaces.length > 1)
             DropdownButtonFormField<int>(
+              isExpanded: true,
               // ignore: deprecated_member_use
               value: auth.workspace?.id,
               items: [
@@ -2590,6 +2612,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       TextField(controller: _taxCode, decoration: InputDecoration(labelText: l.sku)),
                       TextField(controller: _taxPct, decoration: InputDecoration(labelText: l.taxRate)),
                       DropdownButtonFormField(
+                        isExpanded: true,
                         // ignore: deprecated_member_use
                         value: _taxType,
                         decoration: InputDecoration(labelText: l.taxProfile),
@@ -2659,6 +2682,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     FormGrid(children: [
                       TextField(controller: _treasuryName, decoration: InputDecoration(labelText: l.fieldName)),
                       DropdownButtonFormField<String>(
+                        isExpanded: true,
                         // ignore: deprecated_member_use
                         value: _treasuryType,
                         decoration: InputDecoration(labelText: l.accountType),

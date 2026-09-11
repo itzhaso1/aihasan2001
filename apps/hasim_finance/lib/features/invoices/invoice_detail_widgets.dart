@@ -409,7 +409,8 @@ class InvoiceHeader extends StatelessWidget {
       children: [
         Expanded(child: identity),
         const SizedBox(width: 16),
-        actions,
+        // Bounded so a long action toolbar wraps instead of overflowing.
+        Flexible(child: actions),
       ],
     );
   }
