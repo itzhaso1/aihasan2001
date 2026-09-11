@@ -1417,7 +1417,8 @@ class AppLocalizationsAr extends AppLocalizations {
   String get viewQr => 'عرض رمز QR';
 
   @override
-  String get zatcaFoundation => 'أساس داخلي للفوترة الإلكترونية. لا يوجد تخليص FATOORA ولا إبلاغ إنتاج.';
+  String get zatcaFoundation =>
+      'أساس داخلي للفوترة الإلكترونية. لا يوجد تخليص FATOORA ولا إبلاغ إنتاج.';
 
   @override
   String get xmlAvailable => 'XML متوفر';
@@ -1478,4 +1479,30 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get statusVoided => 'ملغى';
+
+  @override
+  String get noInvoicesYet => 'لا توجد فواتير بعد';
+
+  @override
+  String get noInvoicesSubtitle =>
+      'أنشئ أول فاتورة أو عدّل معايير التصفية لعرض النتائج.';
+
+  @override
+  String get noResultsForFilters =>
+      'لا توجد نتائج مطابقة لمعايير التصفية الحالية.';
+
+  @override
+  String get advancedFilters => 'تصفية متقدمة';
+
+  @override
+  String get newInvoice => 'فاتورة جديدة';
+
+  @override
+  String get statusOpen => 'مفتوح';
+
+  @override
+  String get statusClosed => 'مغلق';
+
+  @override
+  String get statusApproved => 'معتمد';
 }

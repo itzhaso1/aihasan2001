@@ -6,6 +6,7 @@ import 'package:hasim_finance/core/layout/finance_layout.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/core/utils/files.dart';
+import 'package:hasim_finance/core/widgets/date_field.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
 import 'package:hasim_finance/features/shared/paged.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
@@ -81,8 +82,8 @@ class _SalesHubScreenState extends ConsumerState<SalesHubScreen> {
               FormSection(
                 title: l.decisionPeriod,
                 child: FormGrid(children: [
-                  TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
-                  TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
+                  DateField(controller: _from, label: l.from),
+                  DateField(controller: _to, label: l.to),
                   Align(
                     alignment: AlignmentDirectional.centerStart,
                     child: FilledButton(onPressed: _load, child: Text(l.applyFilters)),

@@ -488,5 +488,13 @@
     "sortDescending": "تنازلي",
     "statusPosted": "مرحّل",
     "statusReversed": "معكوس",
-    "statusVoided": "ملغى"
+    "statusVoided": "ملغى",
+  "noInvoicesYet": "لا توجد فواتير بعد",
+  "noInvoicesSubtitle": "أنشئ أول فاتورة أو عدّل معايير التصفية لعرض النتائج.",
+  "noResultsForFilters": "لا توجد نتائج مطابقة لمعايير التصفية الحالية.",
+  "advancedFilters": "تصفية متقدمة",
+  "newInvoice": "فاتورة جديدة",
+  "statusOpen": "مفتوح",
+  "statusClosed": "مغلق",
+  "statusApproved": "معتمد"
 }

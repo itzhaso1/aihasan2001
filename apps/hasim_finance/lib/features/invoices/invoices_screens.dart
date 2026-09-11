@@ -10,6 +10,7 @@ import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/core/permissions/finance_permissions.dart';
 import 'package:hasim_finance/core/layout/finance_layout.dart';
+import 'package:hasim_finance/core/widgets/date_field.dart';
 import 'package:hasim_finance/core/providers/catalog_provider.dart';
 import 'package:hasim_finance/core/theme/finance_tokens.dart';
 import 'package:hasim_finance/core/utils/files.dart';
@@ -40,6 +41,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   String? _paymentMethod;
   String _sort = 'id';
   String _direction = 'desc';
+  bool? _advancedOpen;
+  int _applyTick = 0;
 
   @override
   void dispose() {
@@ -56,13 +59,237 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
         _customerId,
         _from.text,
         _to.text,
-        _currency.text,
+        _currency.text.trim(),
         _projectId,
         _contractId,
         _paymentMethod,
         _sort,
         _direction,
+        _applyTick,
       ].join('|');
+
+  int get _activeFilterCount => [
+        _invoiceStatus != null,
+        _paymentStatus != null,
+        _customerId != null,
+        _from.text.isNotEmpty,
+        _to.text.isNotEmpty,
+        _currency.text.trim().isNotEmpty,
+        _projectId != null,
+        _contractId != null,
+        _paymentMethod != null,
+      ].where((active) => active).length;
+
+  bool get _filtersActive => _lifecycle != null || _activeFilterCount > 0;
+
+  void _resetFilters() {
+    setState(() {
+      _lifecycle = null;
+      _invoiceStatus = null;
+      _paymentStatus = null;
+      _customerId = null;
+      _from.clear();
+      _to.clear();
+      _currency.clear();
+      _projectId = null;
+      _contractId = null;
+      _paymentMethod = null;
+      _sort = 'id';
+      _direction = 'desc';
+    });
+  }
+
+  Widget _buildFilterPanel(BuildContext context, AppLocalizations l, FinanceCatalog catalog) {
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final open = _advancedOpen ?? wide;
+    final activeCount = _activeFilterCount;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            for (final option in <(String?, String)>[
+              (null, l.filterAll),
+              ('draft', l.lifecycleDraft),
+              ('sent', l.lifecycleSent),
+              ('partial', l.partial),
+              ('paid', l.paid),
+              ('overdue', l.overdue),
+              ('cancelled', l.cancelled),
+            ])
+              ChoiceChip(
+                label: Text(option.$2),
+                selected: _lifecycle == option.$1,
+                onSelected: (_) => setState(() => _lifecycle = option.$1),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            TextButton.icon(
+              key: const Key('invoices-advanced-toggle'),
+              onPressed: () => setState(() => _advancedOpen = !open),
+              icon: Icon(open ? Icons.expand_less_rounded : Icons.tune_rounded, size: 18),
+              label: Text(activeCount > 0 ? '${l.advancedFilters} ($activeCount)' : l.advancedFilters),
+            ),
+            const Spacer(),
+            if (_filtersActive)
+              TextButton(
+                key: const Key('invoices-reset-filters'),
+                onPressed: _resetFilters,
+                child: Text(l.resetFilters),
+              ),
+          ],
+        ),
+        if (open) ...[
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: FinanceFilterBar.gap,
+            runSpacing: FinanceFilterBar.gap,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            children: [
+              FinanceFilterField(
+                label: l.customer,
+                width: 220,
+                child: CustomerSelectField(
+                  selectedId: _customerId,
+                  onSelected: (id) => setState(() => _customerId = id),
+                  compact: true,
+                  allowClear: true,
+                  floatingLabel: false,
+                ),
+              ),
+              FinanceFilterField(
+                label: l.invoiceStatusFilter,
+                width: 170,
+                child: FinanceFilterDropdown<String>(
+                  value: _invoiceStatus,
+                  items: [
+                    DropdownMenuItem(value: null, child: Text(l.filterAll)),
+                    DropdownMenuItem(value: 'draft', child: Text(l.draft)),
+                    DropdownMenuItem(value: 'issued', child: Text(l.issue)),
+                    DropdownMenuItem(value: 'cancelled', child: Text(l.cancelled)),
+                  ],
+                  onChanged: (value) => setState(() => _invoiceStatus = value),
+                ),
+              ),
+              FinanceFilterField(
+                label: l.paymentStatus,
+                width: 170,
+                child: FinanceFilterDropdown<String>(
+                  value: _paymentStatus,
+                  items: [
+                    DropdownMenuItem(value: null, child: Text(l.filterAll)),
+                    DropdownMenuItem(value: 'unpaid', child: Text(l.unpaid)),
+                    DropdownMenuItem(value: 'partial', child: Text(l.partial)),
+                    DropdownMenuItem(value: 'paid', child: Text(l.paid)),
+                    DropdownMenuItem(value: 'overdue', child: Text(l.overdue)),
+                  ],
+                  onChanged: (value) => setState(() => _paymentStatus = value),
+                ),
+              ),
+              FinanceFilterField(
+                label: l.from,
+                width: 170,
+                child: DateField(controller: _from, compact: true, onChanged: (_) => setState(() {})),
+              ),
+              FinanceFilterField(
+                label: l.to,
+                width: 170,
+                child: DateField(controller: _to, compact: true, onChanged: (_) => setState(() {})),
+              ),
+              FinanceFilterField(
+                label: l.currency,
+                width: 140,
+                child: TextField(
+                  controller: _currency,
+                  textCapitalization: TextCapitalization.characters,
+                  textInputAction: TextInputAction.search,
+                  decoration: FinanceFilterField.decoration(hintText: 'SAR'),
+                  onSubmitted: (_) => setState(() {}),
+                ),
+              ),
+              FinanceFilterField(
+                label: l.contract,
+                width: 190,
+                child: OptionPicker(
+                  label: l.contract,
+                  floatingLabel: false,
+                  options: [for (final row in catalog.contracts) NamedOption(id: row.id, name: row.name)],
+                  value: _contractId,
+                  onChanged: (id) => setState(() => _contractId = id),
+                ),
+              ),
+              FinanceFilterField(
+                label: l.project,
+                width: 190,
+                child: OptionPicker(
+                  label: l.project,
+                  floatingLabel: false,
+                  options: [for (final row in catalog.projects) NamedOption(id: row.id, name: row.name)],
+                  value: _projectId,
+                  onChanged: (id) => setState(() => _projectId = id),
+                ),
+              ),
+              FinanceFilterField(
+                label: l.paymentMethod,
+                width: 170,
+                child: FinanceFilterDropdown<String>(
+                  value: _paymentMethod,
+                  items: [
+                    DropdownMenuItem(value: null, child: Text(l.filterAll)),
+                    DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),
+                    DropdownMenuItem(value: 'bank_transfer', child: Text(l.methodBank)),
+                    DropdownMenuItem(value: 'card', child: Text(l.methodCard)),
+                    DropdownMenuItem(value: 'other', child: Text(l.methodOther)),
+                  ],
+                  onChanged: (value) => setState(() => _paymentMethod = value),
+                ),
+              ),
+              FinanceFilterField(
+                label: l.sortBy,
+                width: 170,
+                child: FinanceFilterDropdown<String>(
+                  value: _sort,
+                  items: [
+                    DropdownMenuItem(value: 'id', child: Text(l.sortNewest)),
+                    DropdownMenuItem(value: 'invoice_number', child: Text(l.invoiceNumber)),
+                    DropdownMenuItem(value: 'issue_date', child: Text(l.issueDate)),
+                    DropdownMenuItem(value: 'due_date', child: Text(l.dueDate)),
+                    DropdownMenuItem(value: 'total', child: Text(l.total)),
+                    DropdownMenuItem(value: 'amount_due', child: Text(l.due)),
+                  ],
+                  onChanged: (value) => setState(() => _sort = value ?? 'id'),
+                ),
+              ),
+              FinanceFilterField(
+                label: l.sortDirection,
+                width: 140,
+                child: FinanceFilterDropdown<String>(
+                  value: _direction,
+                  items: [
+                    DropdownMenuItem(value: 'desc', child: Text(l.sortDescending)),
+                    DropdownMenuItem(value: 'asc', child: Text(l.sortAscending)),
+                  ],
+                  onChanged: (value) => setState(() => _direction = value ?? 'desc'),
+                ),
+              ),
+              FilledButton.icon(
+                key: const Key('invoices-apply-filters'),
+                onPressed: () => setState(() => _applyTick++),
+                icon: const Icon(Icons.filter_alt_rounded, size: 16),
+                label: Text(l.applyFilters),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,124 +297,16 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
     final auth = ref.watch(authControllerProvider);
     final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
     return PagedListScreen<InvoiceRecord>(
-      key: ValueKey(_filterKey),
       title: l.invoices,
       allowed: auth.permissions.invoicesView,
       onCreate: auth.permissions.invoicesCreate ? () => context.push('/invoices/new') : null,
-      filterBar: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final option in <(String?, String)>[
-                  (null, l.filterAll),
-                  ('draft', l.lifecycleDraft),
-                  ('sent', l.lifecycleSent),
-                  ('partial', l.partial),
-                  ('paid', l.paid),
-                  ('overdue', l.overdue),
-                  ('cancelled', l.cancelled),
-                ])
-                  ChoiceChip(
-                    label: Text(option.$2),
-                    selected: _lifecycle == option.$1,
-                    onSelected: (_) => setState(() => _lifecycle = option.$1),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            FormGrid(children: [
-              CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
-              DropdownButtonFormField<String?>(
-                // ignore: deprecated_member_use
-                value: _invoiceStatus,
-                decoration: InputDecoration(labelText: l.invoiceStatusFilter),
-                items: [
-                  DropdownMenuItem(value: null, child: Text(l.filterAll)),
-                  DropdownMenuItem(value: 'draft', child: Text(l.draft)),
-                  DropdownMenuItem(value: 'issued', child: Text(l.issue)),
-                  DropdownMenuItem(value: 'cancelled', child: Text(l.cancelled)),
-                ],
-                onChanged: (value) => setState(() => _invoiceStatus = value),
-              ),
-              DropdownButtonFormField<String?>(
-                // ignore: deprecated_member_use
-                value: _paymentStatus,
-                decoration: InputDecoration(labelText: l.paymentStatus),
-                items: [
-                  DropdownMenuItem(value: null, child: Text(l.filterAll)),
-                  DropdownMenuItem(value: 'unpaid', child: Text(l.unpaid)),
-                  DropdownMenuItem(value: 'partial', child: Text(l.partial)),
-                  DropdownMenuItem(value: 'paid', child: Text(l.paid)),
-                  DropdownMenuItem(value: 'overdue', child: Text(l.overdue)),
-                ],
-                onChanged: (value) => setState(() => _paymentStatus = value),
-              ),
-              TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
-              TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
-              TextField(controller: _currency, decoration: InputDecoration(labelText: l.currency)),
-              OptionPicker(
-                label: l.contract,
-                options: [for (final row in catalog.contracts) NamedOption(id: row.id, name: row.name)],
-                value: _contractId,
-                onChanged: (id) => setState(() => _contractId = id),
-              ),
-              OptionPicker(
-                label: l.project,
-                options: [for (final row in catalog.projects) NamedOption(id: row.id, name: row.name)],
-                value: _projectId,
-                onChanged: (id) => setState(() => _projectId = id),
-              ),
-              DropdownButtonFormField<String?>(
-                // ignore: deprecated_member_use
-                value: _paymentMethod,
-                decoration: InputDecoration(labelText: l.paymentMethod),
-                items: [
-                  DropdownMenuItem(value: null, child: Text(l.filterAll)),
-                  DropdownMenuItem(value: 'cash', child: Text(l.methodCash)),
-                  DropdownMenuItem(value: 'bank_transfer', child: Text(l.methodBank)),
-                  DropdownMenuItem(value: 'card', child: Text(l.methodCard)),
-                  DropdownMenuItem(value: 'other', child: Text(l.methodOther)),
-                ],
-                onChanged: (value) => setState(() => _paymentMethod = value),
-              ),
-              DropdownButtonFormField<String>(
-                // ignore: deprecated_member_use
-                value: _sort,
-                decoration: InputDecoration(labelText: l.sortBy),
-                items: [
-                  DropdownMenuItem(value: 'id', child: Text(l.sortNewest)),
-                  DropdownMenuItem(value: 'invoice_number', child: Text(l.invoiceNumber)),
-                  DropdownMenuItem(value: 'issue_date', child: Text(l.issueDate)),
-                  DropdownMenuItem(value: 'due_date', child: Text(l.dueDate)),
-                  DropdownMenuItem(value: 'total', child: Text(l.total)),
-                  DropdownMenuItem(value: 'amount_due', child: Text(l.due)),
-                ],
-                onChanged: (value) => setState(() => _sort = value ?? 'id'),
-              ),
-              DropdownButtonFormField<String>(
-                // ignore: deprecated_member_use
-                value: _direction,
-                decoration: InputDecoration(labelText: l.sortDirection),
-                items: [
-                  DropdownMenuItem(value: 'desc', child: Text(l.sortDescending)),
-                  DropdownMenuItem(value: 'asc', child: Text(l.sortAscending)),
-                ],
-                onChanged: (value) => setState(() => _direction = value ?? 'desc'),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: FilledButton.tonal(onPressed: () => setState(() {}), child: Text(l.refresh)),
-            ),
-          ],
-        ),
-      ),
+      filterKey: _filterKey,
+      filtersActive: _filtersActive,
+      emptyTitle: l.noInvoicesYet,
+      emptySubtitle: l.noInvoicesSubtitle,
+      emptyIcon: Icons.receipt_long_outlined,
+      emptyActionLabel: l.newInvoice,
+      filterBar: _buildFilterPanel(context, l, catalog),
       loader: (api, search, page) => api.invoices(
         search: search,
         page: page,

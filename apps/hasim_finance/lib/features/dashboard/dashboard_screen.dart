@@ -10,6 +10,7 @@ import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/core/providers/catalog_provider.dart';
 import 'package:hasim_finance/core/theme/finance_tokens.dart';
+import 'package:hasim_finance/core/widgets/date_field.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
 import 'package:hasim_finance/features/shared/customer_select.dart';
 import 'package:hasim_finance/l10n/app_localizations.dart';
@@ -146,20 +147,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           FinanceFilterField(
                             label: l.from,
                             width: 160,
-                            child: TextField(
-                              controller: _from,
-                              textAlignVertical: TextAlignVertical.center,
-                              decoration: FinanceFilterField.decoration(prefixIcon: const Icon(Icons.event, size: 18)),
-                            ),
+                            child: DateField(controller: _from, compact: true, allowClear: false),
                           ),
                           FinanceFilterField(
                             label: l.to,
                             width: 160,
-                            child: TextField(
-                              controller: _to,
-                              textAlignVertical: TextAlignVertical.center,
-                              decoration: FinanceFilterField.decoration(prefixIcon: const Icon(Icons.event, size: 18)),
-                            ),
+                            child: DateField(controller: _to, compact: true, allowClear: false),
                           ),
                           FinanceFilterField(
                             label: l.selectCustomer,

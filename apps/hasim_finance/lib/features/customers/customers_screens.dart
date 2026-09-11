@@ -128,11 +128,11 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
                         Text(customer.address ?? ''),
                         TextButton(onPressed: () => context.push('/statements?customer_id=${customer.id}'), child: Text(l.statements)),
                       ]),
-                      _miniList(customer.invoices.map((i) => ListTile(title: Text(i.invoiceNumber ?? ''), trailing: Text(i.total), onTap: () => context.push('/invoices/${i.id}'))).toList()),
-                      _miniList(customer.quotes.map((q) => ListTile(title: Text(q.quoteNumber ?? ''), trailing: Text(q.total), onTap: () => context.push('/quotes/${q.id}'))).toList()),
-                      _miniList(customer.payments.map((p) => ListTile(title: Text(p.invoiceNumber ?? ''), trailing: Text(p.amount), onTap: () => context.push('/payments/${p.id}'))).toList()),
-                      _miniList(customer.receipts.map((r) => ListTile(title: Text(r.receiptNumber ?? ''), trailing: Text(r.amount), onTap: () => context.push('/receipts/${r.id}'))).toList()),
-                      _miniList(customer.contracts.map((c) => ListTile(title: Text(c.title ?? c.contractNumber ?? ''), onTap: () => context.push('/contracts/${c.id}'))).toList()),
+                      _miniList(l, customer.invoices.map((i) => ListTile(title: Text(i.invoiceNumber ?? ''), trailing: Text(i.total), onTap: () => context.push('/invoices/${i.id}'))).toList()),
+                      _miniList(l, customer.quotes.map((q) => ListTile(title: Text(q.quoteNumber ?? ''), trailing: Text(q.total), onTap: () => context.push('/quotes/${q.id}'))).toList()),
+                      _miniList(l, customer.payments.map((p) => ListTile(title: Text(p.invoiceNumber ?? ''), trailing: Text(p.amount), onTap: () => context.push('/payments/${p.id}'))).toList()),
+                      _miniList(l, customer.receipts.map((r) => ListTile(title: Text(r.receiptNumber ?? ''), trailing: Text(r.amount), onTap: () => context.push('/receipts/${r.id}'))).toList()),
+                      _miniList(l, customer.contracts.map((c) => ListTile(title: Text(c.title ?? c.contractNumber ?? ''), onTap: () => context.push('/contracts/${c.id}'))).toList()),
                     ]),
                   ),
                 ],
@@ -141,8 +141,8 @@ class _CustomerDetailScreenState extends ConsumerState<CustomerDetailScreen> {
     );
   }
 
-  Widget _miniList(List<Widget> children) {
-    if (children.isEmpty) return const EmptyState(title: 'لا توجد بيانات');
+  Widget _miniList(AppLocalizations l, List<Widget> children) {
+    if (children.isEmpty) return EmptyState(title: l.empty);
     return ListView(children: children);
   }
 }

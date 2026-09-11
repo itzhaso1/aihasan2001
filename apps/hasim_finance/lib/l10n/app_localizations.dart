@@ -2870,31 +2870,203 @@ abstract class AppLocalizations {
   /// **'مسودة'**
   String get draftStatus;
 
+  /// No description provided for @supplyDate.
+  ///
+  /// In ar, this message translates to:
+  /// **'تاريخ التوريد'**
   String get supplyDate;
+
+  /// No description provided for @issueImmediately.
+  ///
+  /// In ar, this message translates to:
+  /// **'إصدار الفاتورة مباشرة عند الحفظ'**
   String get issueImmediately;
+
+  /// No description provided for @downloadXml.
+  ///
+  /// In ar, this message translates to:
+  /// **'تحميل XML'**
   String get downloadXml;
+
+  /// No description provided for @viewQr.
+  ///
+  /// In ar, this message translates to:
+  /// **'عرض رمز QR'**
   String get viewQr;
+
+  /// No description provided for @zatcaFoundation.
+  ///
+  /// In ar, this message translates to:
+  /// **'أساس داخلي للفوترة الإلكترونية. لا يوجد تخليص FATOORA ولا إبلاغ إنتاج.'**
   String get zatcaFoundation;
+
+  /// No description provided for @xmlAvailable.
+  ///
+  /// In ar, this message translates to:
+  /// **'XML متوفر'**
   String get xmlAvailable;
+
+  /// No description provided for @qrAvailable.
+  ///
+  /// In ar, this message translates to:
+  /// **'رمز QR متوفر'**
   String get qrAvailable;
+
+  /// No description provided for @xmlUnavailable.
+  ///
+  /// In ar, this message translates to:
+  /// **'XML غير متوفر'**
   String get xmlUnavailable;
+
+  /// No description provided for @qrUnavailable.
+  ///
+  /// In ar, this message translates to:
+  /// **'رمز QR غير متوفر'**
   String get qrUnavailable;
+
+  /// No description provided for @sortBy.
+  ///
+  /// In ar, this message translates to:
+  /// **'الترتيب'**
   String get sortBy;
+
+  /// No description provided for @invoiceStatusFilter.
+  ///
+  /// In ar, this message translates to:
+  /// **'حالة الفاتورة'**
   String get invoiceStatusFilter;
+
+  /// No description provided for @recurringFrequency.
+  ///
+  /// In ar, this message translates to:
+  /// **'دورية التكرار'**
   String get recurringFrequency;
+
+  /// No description provided for @nextDueDate.
+  ///
+  /// In ar, this message translates to:
+  /// **'تاريخ الاستحقاق التالي'**
   String get nextDueDate;
+
+  /// No description provided for @pickAttachments.
+  ///
+  /// In ar, this message translates to:
+  /// **'اختيار مرفقات'**
   String get pickAttachments;
+
+  /// No description provided for @frequencyMonthly.
+  ///
+  /// In ar, this message translates to:
+  /// **'شهري'**
   String get frequencyMonthly;
+
+  /// No description provided for @frequencyWeekly.
+  ///
+  /// In ar, this message translates to:
+  /// **'أسبوعي'**
   String get frequencyWeekly;
+
+  /// No description provided for @frequencyQuarterly.
+  ///
+  /// In ar, this message translates to:
+  /// **'ربع سنوي'**
   String get frequencyQuarterly;
+
+  /// No description provided for @frequencyYearly.
+  ///
+  /// In ar, this message translates to:
+  /// **'سنوي'**
   String get frequencyYearly;
+
+  /// No description provided for @sortNewest.
+  ///
+  /// In ar, this message translates to:
+  /// **'الأحدث'**
   String get sortNewest;
+
+  /// No description provided for @sortDirection.
+  ///
+  /// In ar, this message translates to:
+  /// **'اتجاه الترتيب'**
   String get sortDirection;
+
+  /// No description provided for @sortAscending.
+  ///
+  /// In ar, this message translates to:
+  /// **'تصاعدي'**
   String get sortAscending;
+
+  /// No description provided for @sortDescending.
+  ///
+  /// In ar, this message translates to:
+  /// **'تنازلي'**
   String get sortDescending;
+
+  /// No description provided for @statusPosted.
+  ///
+  /// In ar, this message translates to:
+  /// **'مرحّل'**
   String get statusPosted;
+
+  /// No description provided for @statusReversed.
+  ///
+  /// In ar, this message translates to:
+  /// **'معكوس'**
   String get statusReversed;
+
+  /// No description provided for @statusVoided.
+  ///
+  /// In ar, this message translates to:
+  /// **'ملغى'**
   String get statusVoided;
+
+  /// No description provided for @noInvoicesYet.
+  ///
+  /// In ar, this message translates to:
+  /// **'لا توجد فواتير بعد'**
+  String get noInvoicesYet;
+
+  /// No description provided for @noInvoicesSubtitle.
+  ///
+  /// In ar, this message translates to:
+  /// **'أنشئ أول فاتورة أو عدّل معايير التصفية لعرض النتائج.'**
+  String get noInvoicesSubtitle;
+
+  /// No description provided for @noResultsForFilters.
+  ///
+  /// In ar, this message translates to:
+  /// **'لا توجد نتائج مطابقة لمعايير التصفية الحالية.'**
+  String get noResultsForFilters;
+
+  /// No description provided for @advancedFilters.
+  ///
+  /// In ar, this message translates to:
+  /// **'تصفية متقدمة'**
+  String get advancedFilters;
+
+  /// No description provided for @newInvoice.
+  ///
+  /// In ar, this message translates to:
+  /// **'فاتورة جديدة'**
+  String get newInvoice;
+
+  /// No description provided for @statusOpen.
+  ///
+  /// In ar, this message translates to:
+  /// **'مفتوح'**
+  String get statusOpen;
+
+  /// No description provided for @statusClosed.
+  ///
+  /// In ar, this message translates to:
+  /// **'مغلق'**
+  String get statusClosed;
+
+  /// No description provided for @statusApproved.
+  ///
+  /// In ar, this message translates to:
+  /// **'معتمد'**
+  String get statusApproved;
 }
 
 class _AppLocalizationsDelegate

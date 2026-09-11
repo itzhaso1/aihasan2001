@@ -14,6 +14,7 @@ import 'package:hasim_finance/core/auth/auth_controller.dart';
 import 'package:hasim_finance/core/models/models.dart';
 import 'package:hasim_finance/core/network/api_exception.dart';
 import 'package:hasim_finance/core/utils/files.dart';
+import 'package:hasim_finance/core/widgets/date_field.dart';
 import 'package:hasim_finance/core/widgets/widgets.dart';
 import 'package:hasim_finance/features/invoices/invoice_detail_widgets.dart';
 import 'package:hasim_finance/features/shared/customer_select.dart';
@@ -55,12 +56,11 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
     final auth = ref.watch(authControllerProvider);
     final catalog = ref.watch(financeCatalogProvider).valueOrNull ?? const FinanceCatalog();
     return PagedListScreen<PaymentRecord>(
-      key: ValueKey('$_status-$_method-$_customerId-$_treasuryId-${_from.text}-${_to.text}-${_reference.text}-${_invoiceId.text}'),
+      filterKey: '$_status-$_method-$_customerId-$_treasuryId-${_from.text}-${_to.text}-${_reference.text}-${_invoiceId.text}',
+      filtersActive: _status != null || _method != null || _customerId != null || _treasuryId != null || _from.text.isNotEmpty || _to.text.isNotEmpty || _reference.text.isNotEmpty || _invoiceId.text.isNotEmpty,
       title: l.payments,
       allowed: auth.permissions.paymentsView,
-      filterBar: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: FormGrid(children: [
+      filterBar: FormGrid(children: [
           CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
           DropdownButtonFormField<String?>(
             // ignore: deprecated_member_use
@@ -86,8 +86,8 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
             ],
             onChanged: (value) => setState(() => _method = value),
           ),
-          TextField(controller: _from, decoration: InputDecoration(labelText: l.from), onSubmitted: (_) => setState(() {})),
-          TextField(controller: _to, decoration: InputDecoration(labelText: l.to), onSubmitted: (_) => setState(() {})),
+          DateField(controller: _from, label: l.from, onChanged: (_) => setState(() {})),
+          DateField(controller: _to, label: l.to, onChanged: (_) => setState(() {})),
           TextField(controller: _reference, decoration: InputDecoration(labelText: l.reference), onSubmitted: (_) => setState(() {})),
           TextField(controller: _invoiceId, decoration: InputDecoration(labelText: l.invoiceId), onSubmitted: (_) => setState(() {})),
           OptionPicker(
@@ -98,7 +98,6 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
           ),
           FilledButton.tonal(onPressed: () => setState(() {}), child: Text(l.refresh)),
         ]),
-      ),
       loader: (api, search, page) => api.payments(
         search: search,
         page: page,
@@ -223,12 +222,11 @@ class _ReceiptsScreenState extends ConsumerState<ReceiptsScreen> {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<ReceiptRecord>(
-      key: ValueKey('$_status-$_method-$_customerId-${_from.text}-${_to.text}-${_invoiceId.text}'),
+      filterKey: '$_status-$_method-$_customerId-${_from.text}-${_to.text}-${_invoiceId.text}',
+      filtersActive: _status != null || _method != null || _customerId != null || _from.text.isNotEmpty || _to.text.isNotEmpty || _invoiceId.text.isNotEmpty,
       title: l.receipts,
       allowed: auth.permissions.receiptsView,
-      filterBar: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: FormGrid(children: [
+      filterBar: FormGrid(children: [
           CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
           DropdownButtonFormField<String?>(
             // ignore: deprecated_member_use
@@ -254,12 +252,11 @@ class _ReceiptsScreenState extends ConsumerState<ReceiptsScreen> {
             ],
             onChanged: (value) => setState(() => _method = value),
           ),
-          TextField(controller: _from, decoration: InputDecoration(labelText: l.from), onSubmitted: (_) => setState(() {})),
-          TextField(controller: _to, decoration: InputDecoration(labelText: l.to), onSubmitted: (_) => setState(() {})),
+          DateField(controller: _from, label: l.from, onChanged: (_) => setState(() {})),
+          DateField(controller: _to, label: l.to, onChanged: (_) => setState(() {})),
           TextField(controller: _invoiceId, decoration: InputDecoration(labelText: l.invoiceId), onSubmitted: (_) => setState(() {})),
           FilledButton.tonal(onPressed: () => setState(() {}), child: Text(l.refresh)),
         ]),
-      ),
       loader: (api, search, page) => api.receipts(
         search: search,
         page: page,
@@ -441,8 +438,8 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             CustomerSelectField(selectedId: _customerId, onSelected: (id) => setState(() => _customerId = id)),
-            TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
-            TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
+            DateField(controller: _from, label: l.from),
+            DateField(controller: _to, label: l.to),
             const SizedBox(height: 8),
             FilledButton(onPressed: _loading || _customerId == null ? null : _load, child: Text(l.refresh)),
             if (_error != null) Text(_error!),
@@ -749,23 +746,22 @@ class _ContractsScreenState extends ConsumerState<ContractsScreen> {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<ContractRecord>(
-      key: ValueKey(_status),
+      filterKey: _status,
+      filtersActive: _status != null,
       title: l.contracts,
       allowed: auth.permissions.contractsView,
       onCreate: auth.permissions.can('contracts.create') ? () => context.push('/contracts/new') : null,
-      filterBar: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Wrap(
-          spacing: 8,
-          children: [
-            for (final option in <String?>[null, 'draft', 'open', 'closed', 'cancelled'])
-              ChoiceChip(
-                label: Text(option ?? l.filterAll),
-                selected: _status == option,
-                onSelected: (_) => setState(() => _status = option),
-              ),
-          ],
-        ),
+      filterBar: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final option in <(String?, String)>[(null, l.filterAll), ('draft', l.draft), ('open', l.statusOpen), ('closed', l.statusClosed), ('cancelled', l.cancelled)])
+            ChoiceChip(
+              label: Text(option.$2),
+              selected: _status == option.$1,
+              onSelected: (_) => setState(() => _status = option.$1),
+            ),
+        ],
       ),
       loader: (api, search, page) => api.contracts(search: search, page: page, status: _status),
       itemBuilder: (context, contract) => Card(
@@ -1228,23 +1224,22 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<ExpenseRecord>(
-      key: ValueKey(_status),
+      filterKey: _status,
+      filtersActive: _status != null,
       title: l.expenses,
       allowed: auth.permissions.expensesView,
       onCreate: auth.permissions.expensesCreate ? () => context.push('/expenses/new') : null,
-      filterBar: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Wrap(
-          spacing: 8,
-          children: [
-            for (final option in <String?>[null, 'draft', 'approved', 'paid', 'cancelled'])
-              ChoiceChip(
-                label: Text(option ?? l.filterAll),
-                selected: _status == option,
-                onSelected: (_) => setState(() => _status = option),
-              ),
-          ],
-        ),
+      filterBar: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final option in <(String?, String)>[(null, l.filterAll), ('draft', l.draft), ('approved', l.statusApproved), ('paid', l.paid), ('cancelled', l.cancelled)])
+            ChoiceChip(
+              label: Text(option.$2),
+              selected: _status == option.$1,
+              onSelected: (_) => setState(() => _status = option.$1),
+            ),
+        ],
       ),
       loader: (api, search, page) => api.expenses(search: search, page: page, status: _status),
       itemBuilder: (context, expense) => Card(
@@ -1594,17 +1589,17 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<InvoiceRecord>(
-      key: ValueKey('$_lifecycle-$_invoiceStatus-$_paymentStatus-$_supplierId-${_from.text}-${_to.text}'),
+      filterKey: '$_lifecycle-$_invoiceStatus-$_paymentStatus-$_supplierId-${_from.text}-${_to.text}',
+      filtersActive: _lifecycle != null || _invoiceStatus != null || _paymentStatus != null || _supplierId != null || _from.text.isNotEmpty || _to.text.isNotEmpty,
       title: l.purchases,
       allowed: auth.permissions.purchasesView,
       onCreate: auth.permissions.purchasesCreate ? () => context.push('/purchases/new') : null,
-      filterBar: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: Column(
+      filterBar: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: [
                 for (final option in <(String?, String)>[
                   (null, l.filterAll),
@@ -1650,13 +1645,12 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
                 ],
                 onChanged: (value) => setState(() => _paymentStatus = value),
               ),
-              TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
-              TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
+              DateField(controller: _from, label: l.from, onChanged: (_) => setState(() {})),
+              DateField(controller: _to, label: l.to, onChanged: (_) => setState(() {})),
               FilledButton.tonal(onPressed: () => setState(() {}), child: Text(l.refresh)),
             ]),
           ],
         ),
-      ),
       loader: (api, search, page) => api.purchases(
         search: search,
         page: page,
@@ -2187,8 +2181,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            TextField(controller: _from, decoration: InputDecoration(labelText: l.from)),
-            TextField(controller: _to, decoration: InputDecoration(labelText: l.to)),
+            DateField(controller: _from, label: l.from),
+            DateField(controller: _to, label: l.to),
             FilledButton(onPressed: _loading ? null : _load, child: Text(l.refresh)),
             if (_error != null) Text(_error!),
             if (_data != null) ...[

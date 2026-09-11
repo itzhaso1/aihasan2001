@@ -488,5 +488,13 @@
   "sortDescending": "Descending",
   "statusPosted": "Posted",
   "statusReversed": "Reversed",
-  "statusVoided": "Voided"
+  "statusVoided": "Voided",
+  "noInvoicesYet": "No invoices yet",
+  "noInvoicesSubtitle": "Create your first invoice or adjust the filters to see results.",
+  "noResultsForFilters": "No results match the current filters.",
+  "advancedFilters": "Advanced filters",
+  "newInvoice": "New invoice",
+  "statusOpen": "Open",
+  "statusClosed": "Closed",
+  "statusApproved": "Approved"
 }

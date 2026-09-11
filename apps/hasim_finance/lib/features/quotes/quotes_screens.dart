@@ -30,34 +30,38 @@ class _QuotesScreenState extends ConsumerState<QuotesScreen> {
     final l = AppLocalizations.of(context);
     final auth = ref.watch(authControllerProvider);
     return PagedListScreen<QuoteRecord>(
-      key: ValueKey('$_status-$_outcome'),
+      filterKey: '$_status-$_outcome',
+      filtersActive: _status != null || _outcome != null,
       title: l.quotes,
       allowed: auth.permissions.quotesView,
       onCreate: auth.permissions.quotesCreate ? () => context.push('/quotes/new') : null,
-      filterBar: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Wrap(
-          spacing: 8,
-          children: [
-            for (final option in <String?>[null, 'draft', 'issued', 'cancelled'])
-              ChoiceChip(
-                label: Text(option ?? l.filterAll),
-                selected: _status == option,
-                onSelected: (_) => setState(() => _status = option),
-              ),
-            for (final option in <(String, String)>[
-              ('pending', l.pending),
-              ('accepted', l.accepted),
-              ('rejected', l.rejected),
-              ('converted', l.converted),
-            ])
-              ChoiceChip(
-                label: Text(option.$2),
-                selected: _outcome == option.$1,
-                onSelected: (_) => setState(() => _outcome = _outcome == option.$1 ? null : option.$1),
-              ),
-          ],
-        ),
+      filterBar: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final option in <(String?, String)>[
+            (null, l.filterAll),
+            ('draft', l.draft),
+            ('issued', l.issue),
+            ('cancelled', l.cancelled),
+          ])
+            ChoiceChip(
+              label: Text(option.$2),
+              selected: _status == option.$1,
+              onSelected: (_) => setState(() => _status = option.$1),
+            ),
+          for (final option in <(String, String)>[
+            ('pending', l.pending),
+            ('accepted', l.accepted),
+            ('rejected', l.rejected),
+            ('converted', l.converted),
+          ])
+            ChoiceChip(
+              label: Text(option.$2),
+              selected: _outcome == option.$1,
+              onSelected: (_) => setState(() => _outcome = _outcome == option.$1 ? null : option.$1),
+            ),
+        ],
       ),
       loader: (api, search, page) => api.quotes(search: search, page: page, status: _status, outcome: _outcome),
       itemBuilder: (context, quote) => Card(

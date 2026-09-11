@@ -21,7 +21,13 @@ class PagedListScreen<T> extends ConsumerStatefulWidget {
     this.onCreate,
     this.allowed = true,
     this.filterBar,
+    this.filterKey,
+    this.filtersActive = false,
     this.summaryBuilder,
+    this.emptyTitle,
+    this.emptySubtitle,
+    this.emptyIcon = Icons.inbox_outlined,
+    this.emptyActionLabel,
   });
 
   final String title;
@@ -29,8 +35,25 @@ class PagedListScreen<T> extends ConsumerStatefulWidget {
   final Widget Function(BuildContext context, T item) itemBuilder;
   final VoidCallback? onCreate;
   final bool allowed;
+
+  /// Extra filter controls rendered inside the same card as the search box.
   final Widget? filterBar;
+
+  /// Opaque string describing the current filter values. When it changes the
+  /// list reloads from page 1 while keeping the search text and scroll state
+  /// (unlike swapping the widget [key], which threw the whole state away).
+  final String? filterKey;
+
+  /// Whether any filter other than the search box is active; drives the
+  /// empty-state copy ("no results for the current filters" vs "nothing yet").
+  final bool filtersActive;
   final Widget Function(BuildContext context, Map<String, dynamic>? meta)? summaryBuilder;
+  final String? emptyTitle;
+  final String? emptySubtitle;
+  final IconData emptyIcon;
+
+  /// Label for the empty-state CTA; shown only when [onCreate] is set.
+  final String? emptyActionLabel;
 
   @override
   ConsumerState<PagedListScreen<T>> createState() => _PagedListScreenState<T>();
@@ -44,12 +67,21 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
   List<T> _items = [];
   int _page = 1;
   int _lastPage = 1;
+  int _requestId = 0;
   Map<String, dynamic>? _meta;
 
   @override
   void initState() {
     super.initState();
     _load(reset: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant PagedListScreen<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.filterKey != oldWidget.filterKey) {
+      _load(reset: true);
+    }
   }
 
   @override
@@ -60,6 +92,7 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
   }
 
   Future<void> _load({bool reset = false}) async {
+    final requestId = ++_requestId;
     if (reset) {
       _page = 1;
     }
@@ -69,7 +102,7 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
     });
     try {
       final page = await widget.loader(ref.read(financeApiProvider), _search.text.trim(), _page);
-      if (!mounted) return;
+      if (!mounted || requestId != _requestId) return;
       setState(() {
         _items = reset ? page.items : [..._items, ...page.items];
         _page = page.page;
@@ -78,12 +111,24 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestId != _requestId) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
+    } catch (e) {
+      if (!mounted || requestId != _requestId) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
+  }
+
+  void _loadMore() {
+    if (_loading || _page >= _lastPage) return;
+    _page += 1;
+    _load();
   }
 
   @override
@@ -104,68 +149,111 @@ class _PagedListScreenState<T> extends ConsumerState<PagedListScreen<T>> {
         floatingActionButton: widget.onCreate == null
             ? null
             : FloatingActionButton(onPressed: widget.onCreate, child: const Icon(Icons.add)),
-        body: Column(
+        body: _buildBody(context, l),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, AppLocalizations l) {
+    final searching = _search.text.trim().isNotEmpty;
+    final showState = _error != null || _items.isEmpty;
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FinanceFilterBar(
+          below: widget.filterBar,
           children: [
-            FinanceFilterBar(
-              children: [
-                SizedBox(
-                  width: 280,
-                  child: TextField(
-                    controller: _search,
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.search, size: 18),
-                      hintText: l.search,
-                    ),
-                    onChanged: (value) {
-                      _debounce?.cancel();
-                      _debounce = Timer(const Duration(milliseconds: 350), () => _load(reset: true));
-                    },
-                  ),
+            SizedBox(
+              width: MediaQuery.sizeOf(context).width < FinanceFilterField.stackBreakpoint ? double.infinity : 320,
+              child: TextField(
+                key: const Key('paged-search'),
+                controller: _search,
+                textInputAction: TextInputAction.search,
+                decoration: FinanceFilterField.decoration(
+                  hintText: l.search,
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  suffixIcon: searching
+                      ? IconButton(
+                          icon: const Icon(Icons.close, size: 16),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                          onPressed: () {
+                            _search.clear();
+                            _debounce?.cancel();
+                            _load(reset: true);
+                          },
+                        )
+                      : null,
                 ),
-              ],
-            ),
-            if (widget.filterBar != null) widget.filterBar!,
-            if (widget.summaryBuilder != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: widget.summaryBuilder!(context, _meta),
-              ),
-            Expanded(
-              child: AsyncBody(
-                loading: _loading && _items.isEmpty,
-                error: _error,
-                isEmpty: _items.isEmpty,
-                emptyTitle: l.empty,
-                onRetry: () => _load(reset: true),
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                  itemCount: _items.length + (_page < _lastPage ? 1 : 0),
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    if (i >= _items.length) {
-                      return Center(
-                        child: TextButton(
-                          onPressed: _loading
-                              ? null
-                              : () {
-                                  _page += 1;
-                                  _load();
-                                },
-                          child: Text(l.loadMore),
-                        ),
-                      );
-                    }
-                    return Material(
-                      color: Colors.transparent,
-                      child: widget.itemBuilder(context, _items[i]),
-                    );
-                  },
-                ),
+                onChanged: (value) {
+                  _debounce?.cancel();
+                  _debounce = Timer(const Duration(milliseconds: 350), () => _load(reset: true));
+                  // Re-render immediately so the clear icon tracks the text.
+                  setState(() {});
+                },
+                onSubmitted: (_) {
+                  _debounce?.cancel();
+                  _load(reset: true);
+                },
               ),
             ),
           ],
         ),
-      ),
+        if (widget.summaryBuilder != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: widget.summaryBuilder!(context, _meta),
+          ),
+        if (_loading && _items.isNotEmpty) const LinearProgressIndicator(minHeight: 2),
+      ],
+    );
+    // A single scroll view keeps tall filter panels from squeezing the list
+    // (or overflowing the viewport) on short screens.
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(child: header),
+        if (showState)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: AsyncBody(
+                loading: _loading && _items.isEmpty,
+                error: _error,
+                isEmpty: _items.isEmpty,
+                emptyIcon: widget.emptyIcon,
+                emptyTitle: (searching || widget.filtersActive) ? l.noResults : (widget.emptyTitle ?? l.empty),
+                emptySubtitle: (searching || widget.filtersActive) ? l.noResultsForFilters : widget.emptySubtitle,
+                emptyActionLabel: (searching || widget.filtersActive) ? null : widget.emptyActionLabel,
+                onEmptyAction: (searching || widget.filtersActive) ? null : widget.onCreate,
+                onRetry: () => _load(reset: true),
+                child: const SizedBox.shrink(),
+              ),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            sliver: SliverList.separated(
+              itemCount: _items.length + (_page < _lastPage ? 1 : 0),
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, i) {
+                if (i >= _items.length) {
+                  return Center(
+                    child: TextButton(
+                      onPressed: _loading ? null : _loadMore,
+                      child: Text(l.loadMore),
+                    ),
+                  );
+                }
+                return Material(
+                  color: Colors.transparent,
+                  child: widget.itemBuilder(context, _items[i]),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 }

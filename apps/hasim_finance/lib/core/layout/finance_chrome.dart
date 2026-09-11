@@ -156,11 +156,15 @@ class FinanceFilterField extends StatelessWidget {
     );
   }
 
+  /// Below this width fields stretch to the full row (single-column form).
+  static const double stackBreakpoint = 600;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final fill = MediaQuery.sizeOf(context).width < stackBreakpoint;
     return SizedBox(
-      width: width,
+      width: fill ? double.infinity : width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
@@ -172,7 +176,7 @@ class FinanceFilterField extends StatelessWidget {
               child: Text(
                 label,
                 maxLines: 1,
-                overflow: TextOverflow.visible,
+                overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: FinanceTokens.textMuted,
                   fontWeight: FontWeight.w600,
@@ -192,62 +196,94 @@ class FinanceFilterField extends StatelessWidget {
   }
 }
 
+/// Compact dropdown styled for [FinanceFilterField] slots.
+class FinanceFilterDropdown<T> extends StatelessWidget {
+  const FinanceFilterDropdown({
+    super.key,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
+
+  final T? value;
+  final List<DropdownMenuItem<T?>> items;
+  final ValueChanged<T?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<T?>(
+      // ignore: deprecated_member_use
+      value: value,
+      isExpanded: true,
+      isDense: true,
+      decoration: FinanceFilterField.decoration(),
+      items: items,
+      onChanged: onChanged,
+    );
+  }
+}
+
+/// Card that hosts filter controls.
+///
+/// Fields flow in a [Wrap] so they never overlap [trailing] actions or spill
+/// outside the card (the previous horizontal scroller was unclipped and drew
+/// over the action buttons in RTL). [below] renders an optional second block
+/// (chips, advanced filters, summaries) inside the same card.
 class FinanceFilterBar extends StatelessWidget {
   const FinanceFilterBar({
     super.key,
     required this.children,
     this.trailing,
+    this.below,
     this.margin = const EdgeInsets.fromLTRB(20, 8, 20, 12),
   });
 
   final List<Widget> children;
   final Widget? trailing;
+  final Widget? below;
   final EdgeInsets margin;
+
+  static const double gap = 12;
 
   @override
   Widget build(BuildContext context) {
     final stacked = MediaQuery.sizeOf(context).width < 720;
-    final filters = SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      clipBehavior: Clip.none,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < children.length; i++) ...[
-            if (i > 0) const SizedBox(width: 12),
-            children[i],
-          ],
-        ],
-      ),
+    // On wide screens the actions flow inline after the last field (bottom
+    // aligned with the controls) and wrap to a new run when space runs out;
+    // on phones they get their own row.
+    final inlineTrailing = trailing != null && !stacked;
+    final fields = Wrap(
+      spacing: gap,
+      runSpacing: gap,
+      crossAxisAlignment: WrapCrossAlignment.end,
+      children: [
+        ...children,
+        if (inlineTrailing) trailing!,
+      ],
     );
+    final Widget top;
+    if (trailing == null || inlineTrailing) {
+      top = fields;
+    } else {
+      top = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (children.isNotEmpty) ...[fields, const SizedBox(height: gap)],
+          Align(alignment: AlignmentDirectional.centerEnd, child: trailing),
+        ],
+      );
+    }
     return Container(
       margin: margin,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: FinanceTokens.card(radius: FinanceTokens.radiusLg),
-      clipBehavior: Clip.none,
-      child: stacked
-          ? Column(
+      child: below == null
+          ? top
+          : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(height: FinanceFilterField.stackHeight, child: filters),
-                if (trailing != null) ...[
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: trailing!,
-                  ),
-                ],
-              ],
-            )
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                const SizedBox(height: FinanceFilterField.stackHeight),
-                Expanded(child: filters),
-                if (trailing != null) ...[
-                  const SizedBox(width: 12),
-                  trailing!,
-                ],
+                if (children.isNotEmpty || trailing != null) ...[top, const SizedBox(height: gap)],
+                below!,
               ],
             ),
     );

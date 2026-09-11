@@ -1419,7 +1419,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get viewQr => 'View QR';
 
   @override
-  String get zatcaFoundation => 'Internal e-invoice foundation. No FATOORA clearance or production reporting.';
+  String get zatcaFoundation =>
+      'Internal e-invoice foundation. No FATOORA clearance or production reporting.';
 
   @override
   String get xmlAvailable => 'XML available';
@@ -1480,4 +1481,29 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get statusVoided => 'Voided';
+
+  @override
+  String get noInvoicesYet => 'No invoices yet';
+
+  @override
+  String get noInvoicesSubtitle =>
+      'Create your first invoice or adjust the filters to see results.';
+
+  @override
+  String get noResultsForFilters => 'No results match the current filters.';
+
+  @override
+  String get advancedFilters => 'Advanced filters';
+
+  @override
+  String get newInvoice => 'New invoice';
+
+  @override
+  String get statusOpen => 'Open';
+
+  @override
+  String get statusClosed => 'Closed';
+
+  @override
+  String get statusApproved => 'Approved';
 }

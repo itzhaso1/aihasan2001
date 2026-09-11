@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hasim_finance/l10n/app_localizations.dart';
 
 class EmptyState extends StatelessWidget {
   const EmptyState({
@@ -51,8 +52,11 @@ class AsyncBody extends StatelessWidget {
     required this.child,
     this.error,
     this.isEmpty = false,
-    this.emptyTitle = 'لا توجد بيانات',
+    this.emptyTitle,
     this.emptySubtitle,
+    this.emptyIcon = Icons.inbox_outlined,
+    this.emptyActionLabel,
+    this.onEmptyAction,
   });
 
   final bool loading;
@@ -60,11 +64,15 @@ class AsyncBody extends StatelessWidget {
   final bool isEmpty;
   final VoidCallback onRetry;
   final Widget child;
-  final String emptyTitle;
+  final String? emptyTitle;
   final String? emptySubtitle;
+  final IconData emptyIcon;
+  final String? emptyActionLabel;
+  final VoidCallback? onEmptyAction;
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     if (loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -75,16 +83,28 @@ class AsyncBody extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Icon(Icons.error_outline_rounded, size: 44, color: Theme.of(context).colorScheme.error),
+              const SizedBox(height: 12),
               Text(error!, textAlign: TextAlign.center),
               const SizedBox(height: 12),
-              FilledButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(l.retry),
+              ),
             ],
           ),
         ),
       );
     }
     if (isEmpty) {
-      return EmptyState(title: emptyTitle, subtitle: emptySubtitle);
+      return EmptyState(
+        title: emptyTitle ?? l.empty,
+        subtitle: emptySubtitle,
+        icon: emptyIcon,
+        actionLabel: emptyActionLabel,
+        onAction: onEmptyAction,
+      );
     }
     return child;
   }
@@ -173,16 +193,16 @@ class PermissionGate extends StatelessWidget {
     super.key,
     required this.allowed,
     required this.child,
-    this.message = 'هذه الشاشة غير متاحة لصلاحياتك الحالية.',
+    this.message,
   });
 
   final bool allowed;
   final Widget child;
-  final String message;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
     if (allowed) return child;
-    return EmptyState(title: message, icon: Icons.lock_outline);
+    return EmptyState(title: message ?? AppLocalizations.of(context).noPermissionScreen, icon: Icons.lock_outline);
   }
 }
