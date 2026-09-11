@@ -3,7 +3,7 @@
         [
             'key' => 'home',
             'title' => 'الرئيسية',
-            'description' => 'نقطة الانطلاق وإحصاءات العمل.',
+            'description' => 'نظرة عامة على أعمالك',
             'icon' => 'home',
             'links' => [
                 ['label' => 'Dashboard', 'route' => 'workspace.dashboard', 'active' => 'workspace.dashboard'],
@@ -24,11 +24,11 @@
         ],
         [
             'key' => 'pos-cashier',
-            'title' => 'POS / الكاشير',
-            'description' => 'الكاشير، الطاولات، وطلبات QR.',
+            'title' => 'POS / الإدارة',
+            'description' => 'الطاولات، QR Menu، والفواتير السحابية.',
             'icon' => 'wallet',
             'links' => [
-                ['label' => 'POS / الكاشير', 'route' => 'workspace.pos.cashier.index', 'active' => 'workspace.pos.*'],
+                ['label' => 'الطاولات / QR', 'route' => 'workspace.pos.tables.index', 'active' => 'workspace.pos.*'],
             ],
         ],
         [
@@ -92,6 +92,15 @@
                 ['label' => 'إعدادات الذكاء الاصطناعي', 'route' => 'workspace.ai-settings.edit', 'active' => 'workspace.ai-settings.*'],
             ],
         ],
+        [
+            'key' => 'settings',
+            'title' => 'الإعدادات',
+            'description' => 'إعدادات النظام والتكاملات.',
+            'icon' => 'settings',
+            'links' => [
+                ['label' => 'الملف الشخصي', 'route' => 'profile.edit', 'active' => 'profile.*'],
+            ],
+        ],
     ];
 
     foreach ($modules as &$module) {
@@ -115,28 +124,29 @@
         'bank' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 9.75 12 4.5l9 5.25M4.5 10.5V18m5.25-7.5V18m5.25-7.5V18m5.25-7.5V18M3 21h18" />',
         'calendar' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M7.5 2.25v3m9-3v3m-12 3h15m-15 0V19.5a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5V8.25m-15 0A1.5 1.5 0 0 1 6 6.75h12a1.5 1.5 0 0 1 1.5 1.5" />',
         'spark' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M12 3.75 13.9 8.1 18.25 10l-4.35 1.9L12 16.25l-1.9-4.35L5.75 10l4.35-1.9L12 3.75Zm6.75 12.75 1.125 2.625L22.5 20.25l-2.625 1.125L18.75 24l-1.125-2.625L15 20.25l2.625-1.125L18.75 16.5Z" />',
+        'settings' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />',
     ];
 
     $initialState = collect($modules)->mapWithKeys(function (array $module): array {
-        return [$module['key'] => $module['is_active']];
+        return [$module['key'] => false];
     })->all();
 @endphp
 
 <div x-data='{ openModules: @json($initialState) }' class="space-y-3">
     @foreach($modules as $module)
         @continue(empty($module['links']))
-        <section class="rounded-2xl border border-slate-200/80 bg-white/90 shadow-sm">
+        <section class="rounded-2xl border {{ $module['is_active'] ? 'border-[#C9F0E8] bg-[#E8F8F4]' : 'border-slate-200/80 bg-white/90' }} shadow-sm">
             <button
                 type="button"
                 @click="openModules['{{ $module['key'] }}'] = !openModules['{{ $module['key'] }}']"
-                class="flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-right transition hover:bg-slate-50"
+                class="flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-right transition {{ $module['is_active'] ? 'hover:bg-[#DDF6F0]' : 'hover:bg-slate-50' }}"
             >
-                <span class="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl {{ $module['is_active'] ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700' }}">
+                <span class="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl {{ $module['is_active'] ? 'bg-[#06C2A4] text-white' : 'bg-slate-100 text-slate-700' }}">
                     <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">{!! $icons[$module['icon']] ?? '' !!}</svg>
                 </span>
                 <span class="flex-1">
-                    <span class="block text-sm font-bold text-slate-900">{{ $module['title'] }}</span>
-                    <span class="mt-0.5 block text-[11px] text-slate-500">{{ $module['description'] }}</span>
+                    <span class="block text-sm font-bold {{ $module['is_active'] ? 'text-[#067e6b]' : 'text-slate-900' }}">{{ $module['title'] }}</span>
+                    <span class="mt-0.5 block text-[11px] {{ $module['is_active'] ? 'text-[#4E8F84]' : 'text-slate-500' }}">{{ $module['description'] }}</span>
                 </span>
                 <svg class="mt-1 h-4 w-4 text-slate-400 transition-transform" :class="openModules['{{ $module['key'] }}'] ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
@@ -149,11 +159,11 @@
                     @endphp
                     <a
                         href="{{ route($link['route']) }}"
-                        class="{{ $isActive ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100' }} flex items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition"
+                        class="{{ $isActive ? 'bg-white text-[#067e6b] shadow-sm' : 'text-slate-700 hover:bg-white/70' }} flex items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition"
                     >
                         <span>{{ $link['label'] }}</span>
                         @if($isActive)
-                            <span class="h-1.5 w-1.5 rounded-full bg-white"></span>
+                            <span class="h-1.5 w-1.5 rounded-full bg-[#06C2A4]"></span>
                         @endif
                     </a>
                 @endforeach

@@ -8,7 +8,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 
-class PaymentConfirmedNotification extends Notification implements ShouldQueue, CentralEmailNotification
+class PaymentConfirmedNotification extends Notification implements CentralEmailNotification, ShouldQueue
 {
     use Queueable;
 
@@ -35,7 +35,7 @@ class PaymentConfirmedNotification extends Notification implements ShouldQueue, 
             'workspace_id' => $this->payment->workspace_id,
             'data' => [
                 'headline' => 'تم تأكيد عملية الدفع',
-                'intro' => 'تم تأكيد دفعة للطلب '.$this->payment->order->order_number,
+                'intro' => 'تم تأكيد دفعة للمرجع '.$this->paymentReference(),
                 'lines' => [
                     'المبلغ: '.$this->payment->amount.' '.$this->payment->currency,
                 ],
@@ -56,9 +56,26 @@ class PaymentConfirmedNotification extends Notification implements ShouldQueue, 
             'type' => 'payment_confirmed',
             'payment_id' => $this->payment->id,
             'order_id' => $this->payment->order_id,
+            'billable_type' => $this->payment->billable_type,
+            'billable_id' => $this->payment->billable_id,
             'amount' => $this->payment->amount,
             'currency' => $this->payment->currency,
             'workspace_id' => $this->payment->workspace_id,
         ];
+    }
+
+    private function paymentReference(): string
+    {
+        $orderNumber = $this->payment->order?->order_number;
+        if (is_string($orderNumber) && $orderNumber !== '') {
+            return $orderNumber;
+        }
+
+        $checkoutReference = (string) ($this->payment->checkout_reference ?? '');
+        if ($checkoutReference !== '') {
+            return $checkoutReference;
+        }
+
+        return '#'.$this->payment->id;
     }
 }

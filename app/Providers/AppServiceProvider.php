@@ -2,6 +2,11 @@
 
 namespace App\Providers;
 
+use App\EInvoicing\QR\Harness\QrTag9Provider;
+use App\EInvoicing\QR\Harness\UnresolvedProductionQrTag9Provider;
+use App\EInvoicing\Security\CryptographicStampSigner;
+use App\EInvoicing\Security\Harness\CryptographicProfile;
+use App\EInvoicing\Security\Harness\UnresolvedProductionZatcaCryptographicProfile;
 use App\Models\Appointment\AppointmentBooking;
 use App\Models\Appointment\AppointmentHoliday;
 use App\Models\Appointment\AppointmentReminder;
@@ -41,6 +46,9 @@ use App\Models\Finance\FinanceJournalEntryLine;
 use App\Models\Finance\FinancePayrollAdjustment;
 use App\Models\Finance\FinancePriceList;
 use App\Models\Finance\FinancePurchaseOrder;
+use App\Models\Finance\FinanceQuote;
+use App\Models\Finance\FinanceQuoteItem;
+use App\Models\Finance\FinanceReceipt;
 use App\Models\Finance\FinanceSalaryAdvance;
 use App\Models\Finance\FinanceSalaryAdvanceRepayment;
 use App\Models\Finance\FinanceSetting;
@@ -93,8 +101,11 @@ use App\Policies\WebsitePolicy;
 use App\Policies\WorkspacePolicy;
 use App\Services\Domain\Contracts\DomainRegistrarInterface;
 use App\Services\Domain\NamecheapRegistrar;
+use App\Services\EInvoicing\Security\DeferredCryptographicStampSigner;
+use App\Services\Payment\Contracts\BillableCheckoutPort;
 use App\Services\Payment\Contracts\MerchantSettlementProviderInterface;
 use App\Services\Payment\Providers\HyperPayMerchantSettlementProvider;
+use App\Services\Payment\SharedBillableCheckout;
 use App\Services\Subscription\Contracts\SubscriptionBillingProviderInterface;
 use App\Services\Subscription\LocalSubscriptionBillingProvider;
 use App\Support\Tenancy\WorkspaceContext;
@@ -118,10 +129,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(WorkspaceContext::class);
         $this->app->bind(DomainRegistrarInterface::class, NamecheapRegistrar::class);
         $this->app->bind(SubscriptionBillingProviderInterface::class, LocalSubscriptionBillingProvider::class);
+        $this->app->bind(BillableCheckoutPort::class, SharedBillableCheckout::class);
         $this->app->bind(
             MerchantSettlementProviderInterface::class,
             HyperPayMerchantSettlementProvider::class
         );
+        $this->app->bind(CryptographicStampSigner::class, DeferredCryptographicStampSigner::class);
+        $this->app->bind(CryptographicProfile::class, UnresolvedProductionZatcaCryptographicProfile::class);
+        $this->app->bind(QrTag9Provider::class, UnresolvedProductionQrTag9Provider::class);
     }
 
     /**
@@ -168,6 +183,7 @@ class AppServiceProvider extends ServiceProvider
         DiningTable::observe(WorkspaceAuditObserver::class);
         DiningTable::observe(PosSyncChangeObserver::class);
         TableSession::observe(WorkspaceAuditObserver::class);
+        TableSession::observe(PosSyncChangeObserver::class);
         PosItemCategory::observe(WorkspaceAuditObserver::class);
         PosItemCategory::observe(PosSyncChangeObserver::class);
         PosMenuItem::observe(WorkspaceAuditObserver::class);
@@ -189,7 +205,10 @@ class AppServiceProvider extends ServiceProvider
         FinanceInvoiceItem::observe(WorkspaceAuditObserver::class);
         FinanceInvoicePayment::observe(WorkspaceAuditObserver::class);
         FinanceInvoicePayment::observe(FinanceInvoicePaymentObserver::class);
+        FinanceReceipt::observe(WorkspaceAuditObserver::class);
         FinanceInvoiceAttachment::observe(WorkspaceAuditObserver::class);
+        FinanceQuote::observe(WorkspaceAuditObserver::class);
+        FinanceQuoteItem::observe(WorkspaceAuditObserver::class);
         FinanceCreditNote::observe(WorkspaceAuditObserver::class);
         FinanceCreditNoteItem::observe(WorkspaceAuditObserver::class);
         FinanceBillingSchedule::observe(WorkspaceAuditObserver::class);

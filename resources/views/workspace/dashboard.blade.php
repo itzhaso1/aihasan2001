@@ -1,303 +1,240 @@
 <x-app-layout>
-    <x-slot name="header">
-        <div class="flex flex-wrap items-end justify-between gap-3">
-            <div>
-                <h2 class="text-xl font-semibold text-gray-900">لوحة {{ $workspace->name }}</h2>
-                <p class="mt-1 text-xs text-slate-500">واجهة عمل موحدة بتقسيمات واضحة حسب الوحدات.</p>
-            </div>
-        </div>
-    </x-slot>
+    @php
+        $statusLabels = [
+            'active' => 'نشط',
+            'trialing' => 'تجريبي',
+            'past_due' => 'متأخر الدفع',
+            'paused' => 'موقوف',
+            'cancelled' => 'ملغي',
+            'expired' => 'منتهي',
+            'inactive' => 'غير نشط',
+        ];
+        $tierLabels = [
+            'starter' => 'Starter',
+            'pro' => 'Pro',
+            'business' => 'Business',
+            'enterprise' => 'Enterprise',
+        ];
+        $plan = $currentSubscription?->plan;
+        $tier = $entitlements['plan']['tier'] ?? $plan?->tier;
+        $tierLabel = $tierLabels[$tier] ?? ($tier ? ucfirst((string) $tier) : null);
+        $planName = $plan?->display_name_ar ?: ($plan?->name ?? ($entitlements['plan']['name'] ?? null));
+        $planStatus = $currentSubscription?->status ?? ($entitlements['subscription_status'] ?? 'inactive');
+        $expiresAt = $currentSubscription?->current_period_end
+            ?? $currentSubscription?->trial_ends_at
+            ?? $currentSubscription?->ends_at;
+        $meters = $entitlements['meters'] ?? [];
+        $meterOrder = array_keys(config('plans.meters', []));
+        $meterIcons = [
+            'ai_tokens' => ['bg' => 'bg-violet-50', 'text' => 'text-violet-500', 'path' => 'M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3m8-5h3m-3 5v-3a2 2 0 0 1 2-2'],
+            'ai_usage' => ['bg' => 'bg-emerald-50', 'text' => 'text-emerald-600', 'path' => 'M13 10V3L4 14h7v7l9-11h-7z'],
+            'whatsapp_messages' => ['bg' => 'bg-green-50', 'text' => 'text-green-600', 'path' => 'M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 0 1-4.255-.947L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z'],
+            'email_sends' => ['bg' => 'bg-teal-50', 'text' => 'text-teal-600', 'path' => 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z'],
+            'storage_mb' => ['bg' => 'bg-emerald-50', 'text' => 'text-emerald-600', 'path' => 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4'],
+            'api_calls' => ['bg' => 'bg-teal-50', 'text' => 'text-teal-600', 'path' => 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4'],
+            'bookings' => ['bg' => 'bg-teal-50', 'text' => 'text-teal-600', 'path' => 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'],
+            'orders' => ['bg' => 'bg-orange-50', 'text' => 'text-orange-500', 'path' => 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z'],
+            'products' => ['bg' => 'bg-teal-50', 'text' => 'text-teal-600', 'path' => 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4'],
+            'customers' => ['bg' => 'bg-emerald-50', 'text' => 'text-emerald-600', 'path' => 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z'],
+            'team_members' => ['bg' => 'bg-emerald-50', 'text' => 'text-emerald-600', 'path' => 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z'],
+            'users' => ['bg' => 'bg-emerald-50', 'text' => 'text-emerald-600', 'path' => 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'],
+            'domains' => ['bg' => 'bg-teal-50', 'text' => 'text-teal-600', 'path' => 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9'],
+            'websites' => ['bg' => 'bg-emerald-50', 'text' => 'text-emerald-600', 'path' => 'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z'],
+        ];
+    @endphp
 
-    <div class="py-8">
-        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            @include('workspace.partials.nav')
-            @include('partials.flash')
+    <div class="space-y-5" dir="rtl">
+        @include('partials.flash')
 
-            @php
-                $moduleCards = [
-                    [
-                        'title' => 'Dashboard',
-                        'description' => 'ملخص حالة مساحة العمل ومؤشرات الأداء.',
-                        'icon' => 'home',
-                        'links' => [
-                            ['label' => 'الرئيسية', 'route' => 'workspace.dashboard', 'active' => 'workspace.dashboard'],
-                        ],
-                    ],
-                    [
-                        'title' => 'Products & Inventory',
-                        'description' => 'التصنيفات والمنتجات وإدارة المخزون.',
-                        'icon' => 'box',
-                        'links' => [
-                            ['label' => 'التصنيفات', 'route' => 'workspace.categories.index', 'active' => 'workspace.categories.*'],
-                            ['label' => 'المنتجات', 'route' => 'workspace.products.index', 'active' => 'workspace.products.*'],
-                            ['label' => 'المخزون', 'route' => 'workspace.inventory.index', 'active' => 'workspace.inventory.*'],
-                        ],
-                    ],
-                    [
-                        'title' => 'POS / Cashier',
-                        'description' => 'واجهة الكاشير، إدارة الطاولات، وطلبات QR Menu.',
-                        'icon' => 'wallet',
-                        'links' => [
-                            ['label' => 'POS / Cashier', 'route' => 'workspace.pos.cashier.index', 'active' => 'workspace.pos.*'],
-                        ],
-                    ],
-                    [
-                        'title' => 'Communication',
-                        'description' => 'المحادثات والبريد الإلكتروني وواتساب.',
-                        'icon' => 'chat',
-                        'links' => [
-                            ['label' => 'المحادثات', 'route' => 'workspace.conversations.index', 'active' => 'workspace.conversations.*'],
-                            ['label' => 'Channels', 'route' => 'workspace.channels.index', 'active' => 'workspace.channels.*'],
-                            ['label' => 'البريد الإلكتروني', 'route' => 'workspace.emails.index', 'active' => 'workspace.emails.*'],
-                            ['label' => 'واتساب', 'route' => 'workspace.whatsapp-accounts.index', 'active' => 'workspace.whatsapp-accounts.*'],
-                        ],
-                    ],
-                    [
-                        'title' => 'Payments & Subscriptions',
-                        'description' => 'المدفوعات، بوابات الدفع، والاشتراكات.',
-                        'icon' => 'wallet',
-                        'links' => [
-                            ['label' => 'المدفوعات', 'route' => 'workspace.payments.index', 'active' => 'workspace.payments.*'],
-                            ['label' => 'بوابات الدفع', 'route' => 'workspace.payment-gateways.index', 'active' => 'workspace.payment-gateways.*'],
-                            ['label' => 'الاشتراكات', 'route' => 'workspace.subscriptions.index', 'active' => 'workspace.subscriptions.*'],
-                        ],
-                    ],
-                    [
-                        'title' => 'Employees',
-                        'description' => 'إدارة موظفي مساحة العمل.',
-                        'icon' => 'id-card',
-                        'links' => [
-                            ['label' => 'Workspace Employees', 'route' => 'workspace.employees.index', 'active' => 'workspace.employees.*'],
-                        ],
-                    ],
-                    [
-                        'title' => 'Finance',
-                        'description' => 'وحدة الفوترة والحسابات بشكل مستقل.',
-                        'icon' => 'bank',
-                        'links' => [
-                            ['label' => 'Finance Dashboard', 'route' => 'workspace.finance.dashboard', 'active' => 'workspace.finance.dashboard'],
-                            ['label' => 'Invoices', 'route' => 'workspace.finance.invoices.index', 'active' => 'workspace.finance.invoices.*'],
-                            ['label' => 'Accounting', 'route' => 'workspace.finance.accounting.dashboard', 'active' => 'workspace.finance.accounting.*'],
-                            ['label' => 'Expenses', 'route' => 'workspace.finance.expenses.index', 'active' => 'workspace.finance.expenses.*'],
-                            ['label' => 'Payroll', 'route' => 'workspace.finance.payroll.index', 'active' => 'workspace.finance.payroll.*'],
-                            ['label' => 'Banks', 'route' => 'workspace.finance.banks.index', 'active' => 'workspace.finance.banks.*'],
-                            ['label' => 'VAT', 'route' => 'workspace.finance.vat.index', 'active' => 'workspace.finance.vat.*'],
-                            ['label' => 'Reports', 'route' => 'workspace.finance.reports.index', 'active' => 'workspace.finance.reports.*'],
-                            ['label' => 'Finance Employees', 'route' => 'workspace.finance.employees.index', 'active' => 'workspace.finance.employees.*'],
-                            ['label' => 'العقود', 'route' => 'workspace.finance.contracts.index', 'active' => 'workspace.finance.contracts.*'],
-                            ['label' => 'Finance Settings', 'route' => 'workspace.finance.settings.index', 'active' => 'workspace.finance.settings.*'],
-                        ],
-                    ],
-                    [
-                        'title' => 'Appointments',
-                        'description' => 'إدارة الحجز والمواعيد.',
-                        'icon' => 'calendar',
-                        'links' => [
-                            ['label' => 'Appointments', 'route' => 'workspace.appointments.dashboard', 'active' => 'workspace.appointments.*'],
-                            ['label' => 'Website Builder', 'route' => 'workspace.appointments.website.overview', 'active' => 'workspace.appointments.website.*'],
-                        ],
-                    ],
-                    [
-                        'title' => 'AI',
-                        'description' => 'إعدادات الذكاء الاصطناعي.',
-                        'icon' => 'spark',
-                        'links' => [
-                            ['label' => 'AI Settings', 'route' => 'workspace.ai-settings.edit', 'active' => 'workspace.ai-settings.*'],
-                        ],
-                    ],
-                ];
-
-                $icons = [
-                    'home' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 10.75 12 3l9 7.75V21a1 1 0 0 1-1 1h-5.5v-7h-5v7H4a1 1 0 0 1-1-1V10.75Z" />',
-                    'box' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="m3.75 7.5 8.25-4.5 8.25 4.5m-16.5 0 8.25 4.5m8.25-4.5v9L12 21.75m0-9.75v9.75" />',
-                    'users' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M16 19.5v-1.125A3.375 3.375 0 0 0 12.625 15h-4.25A3.375 3.375 0 0 0 5 18.375V19.5m11-9.375a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Zm-8.75 0a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />',
-                    'chat' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M7.5 17.25H4.875A1.875 1.875 0 0 1 3 15.375V5.625A1.875 1.875 0 0 1 4.875 3.75h14.25A1.875 1.875 0 0 1 21 5.625v9.75a1.875 1.875 0 0 1-1.875 1.875H12l-4.5 3v-3Z" />',
-                    'wallet' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M2.25 7.5A2.25 2.25 0 0 1 4.5 5.25h15A2.25 2.25 0 0 1 21.75 7.5v9A2.25 2.25 0 0 1 19.5 18.75h-15A2.25 2.25 0 0 1 2.25 16.5v-9Zm15.75 4.5h3.75v3H18a1.5 1.5 0 0 1 0-3Z" />',
-                    'id-card' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h12A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6Zm4.5 3.75a2.25 2.25 0 1 0 4.5 0 2.25 2.25 0 0 0-4.5 0Zm-.75 6h6m1.5-6h2.25m-2.25 3h2.25m-2.25 3h2.25" />',
-                    'bank' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 9.75 12 4.5l9 5.25M4.5 10.5V18m5.25-7.5V18m5.25-7.5V18m5.25-7.5V18M3 21h18" />',
-                    'calendar' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M7.5 2.25v3m9-3v3m-12 3h15m-15 0V19.5a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5V8.25m-15 0A1.5 1.5 0 0 1 6 6.75h12a1.5 1.5 0 0 1 1.5 1.5" />',
-                    'spark' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M12 3.75 13.9 8.1 18.25 10l-4.35 1.9L12 16.25l-1.9-4.35L5.75 10l4.35-1.9L12 3.75Zm6.75 12.75 1.125 2.625L22.5 20.25l-2.625 1.125L18.75 24l-1.125-2.625L15 20.25l2.625-1.125L18.75 16.5Z" />',
-                ];
-
-                foreach ($moduleCards as &$moduleCard) {
-                    $moduleCard['links'] = collect($moduleCard['links'])
-                        ->filter(fn (array $link): bool => \Illuminate\Support\Facades\Route::has($link['route']))
-                        ->values()
-                        ->all();
-                    $moduleCard['is_active'] = collect($moduleCard['links'])
-                        ->contains(fn (array $link): bool => request()->routeIs($link['active'] ?? $link['route']));
-                }
-                unset($moduleCard);
-            @endphp
-
-            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                    <p class="text-sm text-gray-500">المحادثات</p>
-                    <p class="mt-2 text-2xl font-bold">{{ $stats['conversations'] }}</p>
-                </div>
-                <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                    <p class="text-sm text-gray-500">حالة الاشتراك</p>
-                    <p class="mt-2 text-2xl font-bold">{{ $stats['subscription_status'] }}</p>
-                </div>
-                <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                    <p class="text-sm text-gray-500">استهلاك AI (30 يوم)</p>
-                    <p class="mt-2 text-2xl font-bold">{{ number_format($stats['ai_tokens_30d']) }}</p>
-                </div>
-                @if($isCommercial)
-                    <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                        <p class="text-sm text-gray-500">طلبات اليوم</p>
-                        <p class="mt-2 text-2xl font-bold">{{ $stats['orders_today'] }}</p>
-                    </div>
-                    <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                        <p class="text-sm text-gray-500">طلبات مدفوعة</p>
-                        <p class="mt-2 text-2xl font-bold">{{ $stats['paid_orders'] }}</p>
-                    </div>
-                    <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                        <p class="text-sm text-gray-500">إجمالي المبيعات</p>
-                        <p class="mt-2 text-2xl font-bold">{{ number_format($stats['sales_total'], 2) }}</p>
-                    </div>
-                    <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                        <p class="text-sm text-gray-500">العملاء</p>
-                        <p class="mt-2 text-2xl font-bold">{{ $stats['customers'] }}</p>
-                    </div>
-                    <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                        <p class="text-sm text-gray-500">المنتجات</p>
-                        <p class="mt-2 text-2xl font-bold">{{ $stats['products'] }}</p>
-                    </div>
-                    <div class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-                        <p class="text-sm text-gray-500">مدفوعات ناجحة</p>
-                        <p class="mt-2 text-2xl font-bold">{{ $stats['paid_payments'] }}</p>
-                    </div>
-                @endif
-            </div>
-
-            @if(!empty($entitlements['comparison']))
-                <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" dir="rtl">
-                    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                            <h3 class="text-base font-bold text-slate-900">مزايا الباقة الحالية</h3>
-                            <p class="text-xs text-slate-500">
-                                الباقة:
-                                {{ $entitlements['plan']['name'] ?? '—' }}
-                                @if(!empty($entitlements['plan']['tier']))
-                                    ({{ strtoupper($entitlements['plan']['tier']) }})
-                                @endif
-                            </p>
-                        </div>
-                        <a href="{{ route('workspace.subscriptions.index') }}" class="text-sm font-semibold text-[#067e6b] underline">إدارة الاشتراك</a>
-                    </div>
-                    <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        @foreach($entitlements['comparison'] as $row)
-                            <div class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
-                                <span class="text-slate-700">{{ $row['label'] }}</span>
-                                <span class="{{ !empty($row['enabled']) ? 'text-emerald-600' : 'text-slate-300' }} font-bold">
-                                    {{ !empty($row['enabled']) ? '✅' : '❌' }}
-                                </span>
-                            </div>
-                        @endforeach
-                    </div>
-                </section>
-            @endif
-
-            <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <h3 class="text-base font-bold text-slate-900">الاشتراك والاستخدام</h3>
-                        <p class="text-xs text-slate-500">بيانات مباشرة من الاشتراك الحالي واستهلاك الرسائل في نفس فترة الاشتراك.</p>
-                    </div>
-                    <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                        Status: {{ $subscriptionUsage['status'] }}
+        <section class="rounded-2xl border border-[#D8F5EF] bg-white p-5 shadow-sm">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="flex items-start gap-3">
+                    <span class="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-[#E8F8F4] text-[#06C2A4]">
+                        <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M3 8l4.2 2.1L12 3l4.8 7.1L21 8v9H3V8zm2 11h14v2H5v-2z"/>
+                        </svg>
                     </span>
-                </div>
-
-                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                        <p class="text-xs text-slate-500">Current Plan</p>
-                        <p class="mt-2 text-sm font-bold text-slate-900">{{ $subscriptionUsage['plan_name'] ?? 'No active plan' }}</p>
-                    </div>
-                    <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                        <p class="text-xs text-slate-500">Expiry Date</p>
-                        <p class="mt-2 text-sm font-bold text-slate-900">{{ $subscriptionUsage['expires_at']?->format('Y-m-d H:i') ?? '-' }}</p>
-                    </div>
-                    <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                        <p class="text-xs text-slate-500">Messages Used</p>
-                        <p class="mt-2 text-sm font-bold text-slate-900">{{ number_format((int) $subscriptionUsage['messages_used']) }}</p>
-                    </div>
-                    <div class="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                        <p class="text-xs text-slate-500">Messages Limit</p>
-                        <p class="mt-2 text-sm font-bold text-slate-900">
-                            {{ $subscriptionUsage['messages_limit'] !== null ? number_format((int) $subscriptionUsage['messages_limit']) : 'Unlimited / Not set' }}
+                    <div>
+                        <h2 class="text-base font-bold text-[#067e6b]">الباقة الحالية والاستخدام</h2>
+                        <p class="mt-1 text-sm font-semibold text-slate-800">
+                            المستوى:
+                            <span class="font-bold">{{ $tierLabel ?? $planName ?? '—' }}</span>
                         </p>
-                    </div>
-                </div>
-
-                @if($subscriptionUsage['messages_limit'] !== null)
-                    @php
-                        $progress = max(0, min(100, (float) ($subscriptionUsage['usage_percent'] ?? 0)));
-                    @endphp
-                    <div class="mt-5">
-                        <div class="mb-2 flex items-center justify-between text-xs text-slate-600">
-                            <span>Usage Percentage</span>
-                            <span>{{ number_format($progress, 1) }}%</span>
-                        </div>
-                        <div class="h-3 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                                class="h-full rounded-full {{ $subscriptionUsage['is_over_limit'] ? 'bg-rose-500' : ($subscriptionUsage['is_near_limit'] ? 'bg-amber-500' : 'bg-emerald-500') }}"
-                                style="width: {{ $progress }}%;"
-                            ></div>
-                        </div>
-
-                        @if($subscriptionUsage['is_over_limit'])
-                            <p class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                                تجاوزت حد الرسائل المحدد في خطتك الحالية.
-                            </p>
-                        @elseif($subscriptionUsage['is_near_limit'])
-                            <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-                                تنبيه: وصلت لاستهلاك مرتفع ويُنصح بمتابعة الاستخدام قبل بلوغ الحد.
-                            </p>
+                        @if($plan?->description)
+                            <p class="mt-1 max-w-xl text-xs leading-relaxed text-slate-500">{{ $plan->description }}</p>
+                        @elseif($planName)
+                            <p class="mt-1 text-xs text-slate-500">{{ $planName }}</p>
+                        @else
+                            <p class="mt-1 text-xs text-slate-500">لا يوجد اشتراك نشط حالياً.</p>
                         @endif
                     </div>
-                @endif
-            </section>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+                        الحالة: {{ $statusLabels[$planStatus] ?? $planStatus }}
+                    </span>
+                    <span class="inline-flex items-center gap-2 rounded-full border border-[#D8F5EF] bg-[#F7FCFB] px-3 py-1 text-xs font-semibold text-slate-600">
+                        <svg class="h-4 w-4 text-[#06C2A4]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        {{ $expiresAt?->format('d-m-Y') ?? '—' }}
+                    </span>
+                </div>
+            </div>
 
-            <section class="mt-6">
-                <div class="mb-4 flex items-center justify-between">
-                    <h3 class="text-lg font-bold text-slate-900">Modules</h3>
-                    <p class="text-xs text-slate-500">تنظيم سريع للوحدات مع نفس الروابط الحالية.</p>
-                </div>
-                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    @foreach($moduleCards as $card)
-                        @continue(empty($card['links']))
-                        <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                            <div class="mb-3 flex items-start gap-3">
-                                <span class="flex h-10 w-10 items-center justify-center rounded-xl {{ $card['is_active'] ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700' }}">
-                                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">{!! $icons[$card['icon']] ?? '' !!}</svg>
-                                </span>
-                                <div>
-                                    <h4 class="text-sm font-bold text-slate-900">{{ $card['title'] }}</h4>
-                                    <p class="mt-1 text-xs text-slate-500">{{ $card['description'] }}</p>
-                                </div>
+            <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                @foreach($meterOrder as $meterKey)
+                    @php
+                        $meter = $meters[$meterKey] ?? null;
+                        if ($meter === null) {
+                            continue;
+                        }
+                        $label = config("plans.meters.{$meterKey}.label", $meterKey);
+                        $limit = $meter['limit'] ?? null;
+                        $used = (float) ($meter['used'] ?? 0);
+                        $remaining = $meter['remaining'] ?? ($limit === null ? null : max(0, (float) $limit - $used));
+                        $pct = ($limit && $limit > 0) ? min(100, round(($used / $limit) * 100)) : 0;
+                        $icon = $meterIcons[$meterKey] ?? ['bg' => 'bg-teal-50', 'text' => 'text-teal-600', 'path' => 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'];
+                    @endphp
+                    <article class="rounded-2xl border border-[#E7F4F0] bg-[#F9FFFD] p-4 {{ $loop->last && $loop->count % 3 === 2 ? 'xl:col-span-2' : '' }}">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-semibold text-slate-800">{{ $label }}</h3>
+                                <p class="mt-2 text-right text-lg font-bold tabular-nums text-slate-900" dir="ltr">
+                                    {{ $limit === null ? '∞' : number_format((float) $limit) }}
+                                    <span class="text-sm font-medium text-slate-400">/ {{ number_format($used) }}</span>
+                                </p>
+                                <p class="mt-1 text-[11px] text-slate-400">
+                                    المتبقي
+                                    <span class="tabular-nums" dir="ltr">{{ $remaining === null ? '∞' : number_format((float) $remaining) }}</span>
+                                </p>
                             </div>
-                            <div class="space-y-1.5">
-                                @foreach($card['links'] as $link)
-                                    @php
-                                        $isActive = request()->routeIs($link['active'] ?? $link['route']);
-                                    @endphp
-                                    <a
-                                        href="{{ route($link['route']) }}"
-                                        class="{{ $isActive ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50' }} flex items-center justify-between rounded-xl border px-3 py-2 text-sm font-medium transition"
-                                    >
-                                        <span>{{ $link['label'] }}</span>
-                                        <svg class="h-4 w-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="m14.25 6.75-6 5.25 6 5.25" />
-                                        </svg>
-                                    </a>
-                                @endforeach
-                            </div>
-                        </article>
-                    @endforeach
-                </div>
-            </section>
-        </div>
+                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl {{ $icon['bg'] }} {{ $icon['text'] }}">
+                                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="{{ $icon['path'] }}"/>
+                                </svg>
+                            </span>
+                        </div>
+                        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                            <div class="h-full rounded-full bg-[#06C2A4]" style="width: {{ $pct }}%"></div>
+                        </div>
+                    </article>
+                @endforeach
+            </div>
+        </section>
+
+        <section class="rounded-2xl border border-[#E7F4F0] bg-white p-5 shadow-sm">
+            <div class="mb-4 flex items-center justify-between gap-3">
+                <h2 class="flex items-center gap-2 text-sm font-bold text-[#067e6b]">
+                    <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E8F8F4] text-[#06C2A4]">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M3 10h18M3 14h18m-9-4v8m-7 4h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                    </span>
+                    مقارنة الباقات
+                </h2>
+                <a href="{{ route('workspace.subscriptions.index') }}" class="text-xs font-semibold text-[#06C2A4] hover:underline">المزيد</a>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="text-xs text-slate-400">
+                            <th class="px-3 py-2 text-right font-medium">الباقة</th>
+                            <th class="px-3 py-2 text-right font-medium">الاشتراكات</th>
+                            <th class="px-3 py-2 text-right font-medium">الدفع</th>
+                            <th class="px-3 py-2 text-right font-medium">Checkout</th>
+                            <th class="px-3 py-2 text-right font-medium">المبلغ</th>
+                            <th class="px-3 py-2"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($checkoutSessions as $session)
+                            <tr class="border-t border-slate-100">
+                                <td class="px-3 py-3 font-semibold text-slate-800">{{ $session->plan?->name ?? '—' }}</td>
+                                <td class="px-3 py-3 text-slate-600">{{ $session->subscription_status === 'cancelled' ? 'الملغي' : ($statusLabels[$session->subscription_status] ?? ($session->subscription_status ?: '—')) }}</td>
+                                <td class="px-3 py-3 text-slate-600">{{ $session->payment_status ?: '—' }}</td>
+                                <td class="px-3 py-3 text-slate-600">{{ $session->checkout_status ?: '—' }}</td>
+                                <td class="px-3 py-3 font-semibold tabular-nums text-slate-800" dir="ltr">
+                                    {{ strtoupper((string) ($session->currency ?: 'SAR')) }}
+                                    {{ number_format((float) $session->amount, 2) }}
+                                </td>
+                                <td class="px-3 py-3">
+                                    <div class="flex items-center justify-end gap-3 whitespace-nowrap">
+                                        <a href="{{ route('workspace.subscriptions.checkout.show', $session) }}" class="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-[#06C2A4]">
+                                            تفاصيل أكثر
+                                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M15 19l-7-7 7-7"/>
+                                            </svg>
+                                        </a>
+                                        @if($session->checkout_status === 'completed')
+                                            <span class="text-xs font-semibold text-emerald-600">منجز</span>
+                                        @endif
+                                    </div>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="px-3 py-6 text-center text-sm text-slate-400">لا توجد عمليات اشتراك بعد.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="rounded-2xl border border-[#E7F4F0] bg-white p-5 shadow-sm">
+            <h2 class="mb-4 flex items-center gap-2 text-sm font-bold text-[#067e6b]">
+                <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E8F8F4] text-[#06C2A4]">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </span>
+                سجل الاشتراكات
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="text-xs text-slate-400">
+                            <th class="px-3 py-2 text-right font-medium">الخطة</th>
+                            <th class="px-3 py-2 text-right font-medium">الحالة</th>
+                            <th class="px-3 py-2 text-right font-medium">الفترة</th>
+                            <th class="px-3 py-2 text-right font-medium">الانتهاء</th>
+                            <th class="px-3 py-2 text-right font-medium">المبلغ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($subscriptionHistory as $subscription)
+                            <tr class="border-t border-slate-100">
+                                <td class="px-3 py-3 font-semibold text-slate-800">{{ $subscription->plan?->name ?? '—' }}</td>
+                                <td class="px-3 py-3">
+                                    @if($subscription->status === 'active')
+                                        <span class="inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">{{ $statusLabels[$subscription->status] }}</span>
+                                    @elseif(in_array($subscription->status, ['cancelled', 'expired'], true))
+                                        <span class="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">{{ $statusLabels[$subscription->status] ?? $subscription->status }}</span>
+                                    @else
+                                        <span class="text-slate-600">{{ $statusLabels[$subscription->status] ?? $subscription->status }}</span>
+                                    @endif
+                                </td>
+                                <td class="px-3 py-3 tabular-nums text-slate-600">
+                                    {{ $subscription->current_period_start?->format('Y-m-d') ?? '—' }}
+                                    --
+                                    {{ $subscription->current_period_end?->format('Y-m-d') ?? '—' }}
+                                </td>
+                                <td class="px-3 py-3 tabular-nums text-slate-600">{{ $subscription->current_period_end?->format('Y-m-d') ?? '—' }}</td>
+                                <td class="px-3 py-3 font-semibold tabular-nums text-slate-800" dir="ltr">
+                                    {{ strtoupper((string) ($subscription->plan?->currency ?: 'SAR')) }}
+                                    {{ $subscription->plan?->price !== null ? number_format((float) $subscription->plan->price, 2) : '—' }}
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="5" class="px-3 py-6 text-center text-sm text-slate-400">لا يوجد سجل.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
 </x-app-layout>

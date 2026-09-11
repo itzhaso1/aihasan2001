@@ -40,18 +40,27 @@ class ReportController extends CashierController
         $this->authorizeCashier($request, $workspace, 'reports.view');
         $this->ensurePos($workspace);
 
-        $date = $request->date('date')?->toDateString() ?? now()->toDateString();
+        $window = $this->posOrderStatsService->resolveReportWindow(
+            $request->input('date'),
+            $request->input('from'),
+            $request->input('to'),
+        );
+        $date = $window['date'];
+        $from = $window['from'];
+        $to = $window['to'];
 
         $cashierInvoices = PosCashierInvoice::query()
             ->with(['table:id,name', 'closer:id,name'])
-            ->whereDate('closed_at', $date)
+            ->whereDate('closed_at', '>=', $from)
+            ->whereDate('closed_at', '<=', $to)
             ->latest('id')
             ->get();
 
         $orders = Order::query()
             ->with(['customer:id,name,phone', 'table:id,name', 'items'])
             ->whereIn('source', ['pos', 'qr_menu'])
-            ->whereDate('placed_at', $date)
+            ->whereDate('placed_at', '>=', $from)
+            ->whereDate('placed_at', '<=', $to)
             ->latest('id')
             ->get();
 
@@ -86,15 +95,41 @@ class ReportController extends CashierController
             ->values();
 
         $channelStats = $this->posOrderStatsService->channelCounts(
-            \Illuminate\Support\Carbon::parse($date)->startOfDay()
+            \Illuminate\Support\Carbon::parse($from)->startOfDay(),
+            \Illuminate\Support\Carbon::parse($to)->startOfDay(),
         );
+        $cashSalesTotal = (float) $cashierInvoices
+            ->filter(function (PosCashierInvoice $invoice): bool {
+                $method = strtolower(trim((string) data_get($invoice->metadata, 'payment_method', '')));
+
+                return $method === 'cash' || str_contains($method, 'cash');
+            })
+            ->sum('total_amount');
+        $salesByDay = $cashierInvoices
+            ->groupBy(fn (PosCashierInvoice $invoice): string => optional($invoice->closed_at)?->toDateString() ?: $from)
+            ->map(fn (Collection $group, string $day): array => [
+                'date' => $day,
+                'invoices_count' => $group->count(),
+                'sales_total' => (float) $group->sum('total_amount'),
+            ])
+            ->sortKeys()
+            ->values();
+        $salesByCategory = $quantityByType
+            ->map(fn (array $row): array => [
+                'category' => $row['item_type'],
+                'item_type' => $row['item_type'],
+                'quantity' => $row['quantity'],
+                'sales' => $row['sales'],
+            ])
+            ->values();
 
         $salesByHour = $this->buildSalesByHour($orders->whereNotNull('pos_cashier_invoice_id'));
         $customerSummary = $this->buildCustomerSummary($orders);
 
         $recentOperations = AuditLog::query()
             ->with('user:id,name')
-            ->whereDate('occurred_at', $date)
+            ->whereDate('occurred_at', '>=', $from)
+            ->whereDate('occurred_at', '<=', $to)
             ->whereIn('entity_type', [
                 Order::class,
                 OrderItem::class,
@@ -130,10 +165,13 @@ class ReportController extends CashierController
 
         return $this->ok([
             'date' => $date,
+            'from' => $from,
+            'to' => $to,
             'summary' => [
                 'invoices_count' => $cashierInvoices->count(),
                 'invoices_total' => (float) $cashierInvoices->sum('total_amount'),
                 'invoice_sales_total' => (float) $cashierInvoices->sum('total_amount'),
+                'cash_sales_total' => $cashSalesTotal,
                 'orders_count' => $orders->count(),
                 'orders_total' => (float) $orders->sum('total_amount'),
                 'total_quantity' => (int) $quantityByType->sum('quantity'),
@@ -164,6 +202,8 @@ class ReportController extends CashierController
                 ])
                 ->values(),
             'quantity_by_type' => $quantityByType,
+            'sales_by_category' => $salesByCategory,
+            'sales_by_day' => $salesByDay,
             'top_items' => $topItems,
             'sales_by_hour' => $salesByHour,
             'customer_summary' => $customerSummary,

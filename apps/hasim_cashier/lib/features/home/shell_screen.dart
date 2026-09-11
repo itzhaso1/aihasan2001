@@ -13,9 +13,11 @@ import '../../core/offline/offline_store.dart';
 import '../../core/permissions/cashier_permissions.dart';
 import '../../core/permissions/permissions_provider.dart';
 import '../../core/pos/application/checkout_service.dart';
+import '../../core/pos/application/local_auth_service.dart';
 import '../../core/pos/application/pos_providers.dart';
 import '../../core/pos/pos_errors.dart';
 import '../../core/pos/pos_labels.dart';
+import '../../core/sync/pos_sync_coordinator.dart';
 import '../../core/printing/printer_service.dart';
 import '../../core/theme/hasim_colors.dart';
 import '../../core/theme/hasim_radius.dart';
@@ -60,6 +62,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
   _PosSection _section = _PosSection.cashier;
   final _search = TextEditingController();
   var _bootstrapInFlight = false;
+  String _shopName = '';
   var _checkoutInFlight = false;
   String? _checkoutClientRef;
 
@@ -94,6 +97,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
       // Offline-only: local SQLite path only — never hit API / sync.
       final store = await ref.read(localAuthServiceProvider).anyStore();
       if (store != null) {
+        _shopName = store.name.trim();
         ref.read(currentStoreIdProvider.notifier).state = store.localId;
         ref.read(posConnectedModeProvider.notifier).state = false;
         ref.read(cartControllerProvider.notifier).setTaxRate(store.taxRate);
@@ -187,28 +191,30 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     // Do NOT watch the full cart / auth session object here — every change
     // would rebuild the product grid under a hovering mouse and trip
     // mouse_tracker / no-size asserts.
-    final workspaceName = ref.watch(
-      authControllerProvider.select(
-        (auth) =>
-            (auth.valueOrNull?.workspace?['name'] as String?) ??
-            'المتجر المحلي',
-      ),
+    final sessionShop = ref.watch(
+      authControllerProvider.select((auth) {
+        final name = '${auth.valueOrNull?.workspace?['name'] ?? ''}'.trim();
+        return name;
+      }),
     );
+    final shopName = _shopName.isNotEmpty
+        ? _shopName
+        : (sessionShop.isNotEmpty ? sessionShop : 'المتجر المحلي');
 
     return Scaffold(
+      backgroundColor: HasimColors.page,
       body: Column(
         children: [
-          _TopHeader(
-            workspaceName: workspaceName,
+          _PosChrome(
+            section: _section,
+            onSelect: (s) => setState(() => _section = s),
+            workspaceName: shopName,
+            compact: !isDesktop,
             onCart: isDesktop ? null : () => _openCartSheet(context),
             onLogout: () async {
               await ref.read(authControllerProvider.notifier).logout();
               if (context.mounted) context.go('/login');
             },
-          ),
-          _TopNav(
-            section: _section,
-            onSelect: (s) => setState(() => _section = s),
           ),
           Expanded(
             child: Stack(
@@ -337,12 +343,6 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
     }
     ref.read(currentShiftIdProvider.notifier).state = shiftId;
 
-    // Cashier checkout: create the order immediately — no payment dialog.
-    // Default tender is cash for the full cart total.
-    final payments = <PaymentTender>[
-      PaymentTender(method: 'cash', amount: Money.round(cart.total)),
-    ];
-
     _checkoutInFlight = true;
     _checkoutClientRef ??= const Uuid().v4();
     final clientRef = _checkoutClientRef!;
@@ -391,11 +391,79 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
         tableServerId =
             asInt(match['id'] ?? match['server_id']) ?? tableServerId;
       }
+      if (cart.channel == OrderChannel.table) {
+        final tableId = tableServerId;
+        if (tableId == null || tableId <= 0) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('اختر طاولة لطلب الطاولة.')),
+          );
+          return;
+        }
+        final created = await ref
+            .read(ordersRepositoryProvider)
+            .createCashierTableOrder(
+              tables: ref.read(tablesRepositoryProvider),
+              workspaceId: workspaceId,
+              deviceId: deviceId,
+              tableId: tableId,
+              clientReference: clientRef,
+              notes: cart.notes,
+              items: [
+                for (final line in cart.lines)
+                  {
+                    'pos_menu_item_id': line.menuItemId,
+                    'product_local_id': line.productLocalId,
+                    'name': line.name,
+                    'quantity': line.quantity,
+                    'unit_price': line.unitPrice,
+                    'total_amount': line.quantity * line.unitPrice,
+                  },
+              ],
+            );
+        unawaited(
+          ref
+              .read(posSyncCoordinatorProvider)
+              .flushPendingOrders(workspaceId: workspaceId, deviceId: deviceId),
+        );
+        ref.read(cartControllerProvider.notifier).clear();
+        _checkoutClientRef = null;
+        ref.read(tablesRevisionProvider.notifier).state++;
+        ref.invalidate(localTablesProvider);
+        if (!mounted) return;
+        final orderNumber = '${created['order_number'] ?? 'محلي'}';
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            backgroundColor: HasimColors.card,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(HasimRadius.lg),
+            ),
+            title: const Text('تم إنشاء الطلب'),
+            content: Text(
+              'الطلب #$orderNumber جاهز للمطبخ بحالة جديدة.\n'
+              'الطاولة أصبحت مشغولة. الفاتورة تُصدر عند الدفع أو إغلاق الجلسة.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إغلاق'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
       final store = await ref.read(localAuthServiceProvider).anyStore();
       final resolvedPerms = CashierPermissions.resolve(
         ref.read(cashierPermissionsProvider),
         session?.permissions,
       );
+      final payments = <PaymentTender>[
+        PaymentTender(method: 'cash', amount: Money.round(cart.total)),
+      ];
       final result = await ref
           .read(checkoutServiceProvider)
           .execute(
@@ -425,7 +493,14 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
             ),
           );
 
-      final occupiedTable = cart.channel == OrderChannel.table;
+      if (cart.channel == OrderChannel.takeaway ||
+          cart.channel == OrderChannel.delivery) {
+        unawaited(
+          ref
+              .read(posSyncCoordinatorProvider)
+              .flushPendingOrders(workspaceId: workspaceId, deviceId: deviceId),
+        );
+      }
       ref.read(cartControllerProvider.notifier).clear();
       _checkoutClientRef = null;
       ref.read(invoicesRevisionProvider.notifier).state++;
@@ -439,10 +514,7 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
         barrierColor: HasimColors.ink.withValues(alpha: 0.38),
         builder: (context) => HsInvoiceSuccessDialog(
           invoiceNumber: result.invoiceNumber,
-          details: [
-            'حُفظت الفاتورة في قاعدة البيانات المحلية.',
-            if (occupiedTable) 'الطاولة أصبحت مشغولة.',
-          ],
+          details: const ['حُفظت الفاتورة في قاعدة البيانات المحلية.'],
           onPrint: () async {
             Navigator.pop(context);
             try {
@@ -503,137 +575,362 @@ class _ShellScreenState extends ConsumerState<ShellScreen> {
   }
 }
 
-class _TopHeader extends ConsumerWidget {
-  const _TopHeader({
+class _PosChrome extends ConsumerWidget {
+  const _PosChrome({
+    required this.section,
+    required this.onSelect,
     required this.workspaceName,
     required this.onLogout,
+    required this.compact,
     this.onCart,
   });
 
+  final _PosSection section;
+  final ValueChanged<_PosSection> onSelect;
   final String workspaceName;
   final VoidCallback onLogout;
+  final bool compact;
   final VoidCallback? onCart;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final cartCount = ref.watch(
-      cartControllerProvider.select(
-        (c) => c.lines.fold<int>(0, (s, l) => s + l.quantity),
+    final userName = ref.watch(
+      authControllerProvider.select(
+        (auth) => auth.valueOrNull?.userName.trim() ?? '',
       ),
     );
+    final role = ref.watch(
+      authControllerProvider.select(
+        (auth) => '${auth.valueOrNull?.user['role'] ?? ''}',
+      ),
+    );
+    final displayName = userName.isEmpty ? workspaceName : userName;
+    final roleLabel = LocalAuthService.roleLabelAr(role);
+
     return Material(
-      color: HasimColors.surface.withValues(alpha: 0.95),
+      color: HasimColors.card,
+      elevation: 0,
       child: SafeArea(
         bottom: false,
         child: Container(
-          height: 56,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          width: double.infinity,
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: HasimColors.border)),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          padding: EdgeInsets.fromLTRB(
+            compact ? 10 : 16,
+            8,
+            compact ? 10 : 16,
+            8,
+          ),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      workspaceName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: HasimColors.muted,
-                        fontWeight: FontWeight.w600,
+                    _brandRow(
+                      context,
+                      ref,
+                      displayName: displayName,
+                      roleLabel: roleLabel,
+                    ),
+                    const SizedBox(height: 6),
+                    _navRow(context, ref, scrollable: true),
+                  ],
+                )
+              : Row(
+                  children: [
+                    _brandMark(workspaceName),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.center,
+                        child: _navRow(context, ref, scrollable: false),
                       ),
                     ),
-                    const Text(
-                      'واجهة الكاشير',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
+                    const SizedBox(width: 12),
+                    _userCluster(
+                      context,
+                      ref,
+                      displayName: displayName,
+                      roleLabel: roleLabel,
                     ),
                   ],
                 ),
+        ),
+      ),
+    );
+  }
+
+  Widget _brandRow(
+    BuildContext context,
+    WidgetRef ref, {
+    required String displayName,
+    required String roleLabel,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerStart,
+              child: _brandMark(workspaceName),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerEnd,
+              child: _userCluster(
+                context,
+                ref,
+                displayName: displayName,
+                roleLabel: roleLabel,
               ),
-              Flexible(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'أوفلاين',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: HasimColors.muted,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      if (onCart != null)
-                        PosTap(
-                          onTap: onCart,
-                          child: Padding(
-                            padding: const EdgeInsets.all(10),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.shopping_bag_outlined),
-                                if (cartCount > 0) ...[
-                                  const SizedBox(width: 4),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: HasimColors.cta,
-                                      borderRadius: BorderRadius.circular(
-                                        HasimRadius.pill,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      '$cartCount',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                      PosTap(
-                        onTap: onLogout,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          child: Text(
-                            'خروج',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: HasimColors.ink,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _brandMark(String shopName) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: HasimColors.ctaSoft,
+            borderRadius: BorderRadius.circular(HasimRadius.md),
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.storefront_rounded,
+            color: HasimColors.ctaDark,
+            size: 20,
+          ),
+        ),
+        const SizedBox(width: 8),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 180),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                shopName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: HasimColors.ink,
+                ),
+              ),
+              const Text(
+                'إدارة أسهل.. لعمل أفضل',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: HasimColors.muted,
                 ),
               ),
             ],
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _navRow(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool scrollable,
+  }) {
+    final perms = CashierPermissions.resolve(
+      ref.watch(cashierPermissionsProvider),
+      ref.watch(authControllerProvider).valueOrNull?.permissions,
+    );
+    final items = <(_PosSection, String, IconData)>[
+      (_PosSection.cashier, 'الكاشير', Icons.point_of_sale_outlined),
+      if (CashierPermissions.canViewTables(perms))
+        (_PosSection.tables, 'الطاولات', Icons.table_restaurant_outlined),
+      (_PosSection.menu, 'طلبات المنيو', Icons.restaurant_menu_outlined),
+      (_PosSection.orders, 'الطلبات', Icons.receipt_long_outlined),
+      if (CashierPermissions.canViewInvoices(perms))
+        (_PosSection.invoices, 'الفواتير', Icons.description_outlined),
+      if (CashierPermissions.canManageMenu(perms))
+        (_PosSection.items, 'التصنيفات', Icons.category_outlined),
+      if (CashierPermissions.canManageUsers(perms))
+        (_PosSection.users, 'إدارة المستخدمين', Icons.manage_accounts_outlined),
+      if (CashierPermissions.canViewReports(perms))
+        (_PosSection.reports, 'التقارير', Icons.bar_chart_outlined),
+      (_PosSection.settings, 'الإعدادات', Icons.settings_outlined),
+    ];
+    final menuBadge = ref.watch(menuNewOrdersCountProvider);
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final item in items) ...[
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              HsNavPill(
+                label: item.$2,
+                icon: item.$3,
+                selected: section == item.$1,
+                onTap: () => onSelect(item.$1),
+              ),
+              if (item.$1 == _PosSection.menu && menuBadge > 0)
+                Positioned(
+                  top: -4,
+                  left: -2,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: HasimColors.warning,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      '$menuBadge',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 4),
+        ],
+      ],
+    );
+    if (!scrollable) return row;
+    return SingleChildScrollView(scrollDirection: Axis.horizontal, child: row);
+  }
+
+  Widget _userCluster(
+    BuildContext context,
+    WidgetRef ref, {
+    required String displayName,
+    required String roleLabel,
+  }) {
+    final cartCount = ref.watch(
+      cartControllerProvider.select(
+        (c) => c.lines.fold<int>(0, (s, l) => s + l.quantity),
       ),
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onCart != null)
+          PosTap(
+            onTap: onCart,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.shopping_bag_outlined, size: 20),
+                  if (cartCount > 0) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: HasimColors.cta,
+                        borderRadius: BorderRadius.circular(HasimRadius.pill),
+                      ),
+                      child: Text(
+                        '$cartCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        Container(
+          width: 34,
+          height: 34,
+          decoration: const BoxDecoration(
+            color: HasimColors.ctaSoft,
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.person_outline,
+            size: 18,
+            color: HasimColors.ctaDark,
+          ),
+        ),
+        const SizedBox(width: 8),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 140),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: HasimColors.ink,
+                ),
+              ),
+              Text(
+                roleLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: HasimColors.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 4),
+        PosTap(
+          onTap: onLogout,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Text(
+              'خروج',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: HasimColors.ink,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -672,90 +969,6 @@ class _MobileCartFab extends ConsumerWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TopNav extends ConsumerWidget {
-  const _TopNav({required this.section, required this.onSelect});
-
-  final _PosSection section;
-  final ValueChanged<_PosSection> onSelect;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final perms = CashierPermissions.resolve(
-      ref.watch(cashierPermissionsProvider),
-      ref.watch(authControllerProvider).valueOrNull?.permissions,
-    );
-    final items = <(_PosSection, String)>[
-      (_PosSection.cashier, 'الكاشير'),
-      if (CashierPermissions.canViewTables(perms))
-        (_PosSection.tables, 'الطاولات'),
-      (_PosSection.menu, 'طلبات المنيو'),
-      (_PosSection.orders, 'الطلبات'),
-      if (CashierPermissions.canViewInvoices(perms))
-        (_PosSection.invoices, 'الفواتير'),
-      if (CashierPermissions.canManageMenu(perms))
-        (_PosSection.items, 'إدارة الأصناف'),
-      if (CashierPermissions.canManageUsers(perms))
-        (_PosSection.users, 'المستخدمون'),
-      (_PosSection.settings, 'الإعدادات'),
-    ];
-    final menuBadge = ref.watch(menuNewOrdersCountProvider);
-    return Material(
-      color: HasimColors.surface,
-      child: Container(
-        width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 52),
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: HasimColors.border)),
-        ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              for (final item in items) ...[
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    HsNavPill(
-                      label: item.$2,
-                      selected: section == item.$1,
-                      onTap: () => onSelect(item.$1),
-                    ),
-                    if (item.$1 == _PosSection.menu && menuBadge > 0)
-                      Positioned(
-                        top: -4,
-                        left: -2,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: HasimColors.warning,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          child: Text(
-                            '$menuBadge',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(width: 6),
-              ],
             ],
           ),
         ),
@@ -1058,18 +1271,10 @@ class _ProductsPanelState extends ConsumerState<_ProductsPanel> {
   @override
   Widget build(BuildContext context) {
     final items = ref.watch(catalogItemsProvider);
-    final width = MediaQuery.sizeOf(context).width;
-    final crossAxis = width >= 1500
-        ? 5
-        : width >= 1200
-        ? 4
-        : width >= 900
-        ? 3
-        : 2;
     final search = widget.search;
     final selectedCategoryId = widget.selectedCategoryId;
     final onCategory = widget.onCategory;
-
+    final width = MediaQuery.sizeOf(context).width;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1078,6 +1283,8 @@ class _ProductsPanelState extends ConsumerState<_ProductsPanel> {
             const Expanded(
               child: Text(
                 'أصناف الكاشير',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
               ),
             ),
@@ -1087,7 +1294,9 @@ class _ProductsPanelState extends ConsumerState<_ProductsPanel> {
                 controller: search,
                 onSubmitted: (raw) async {
                   final workspaceId = ref.read(workspaceIdProvider);
-                  if (workspaceId == null || raw.trim().isEmpty) return;
+                  if (workspaceId == null || raw.trim().isEmpty) {
+                    return;
+                  }
                   final hit = await ref
                       .read(barcodeInputProvider)
                       .lookup(workspaceId: workspaceId, raw: raw.trim());
@@ -1110,10 +1319,20 @@ class _ProductsPanelState extends ConsumerState<_ProductsPanel> {
                   search.clear();
                   if (mounted) setState(() {});
                 },
-                decoration: const InputDecoration(
-                  hintText: 'ابحث بالاسم أو الباركود أو SKU...',
+                decoration: InputDecoration(
+                  hintText: width >= 500 ? 'بحث بالاسم أو الباركود' : 'بحث',
+                  hintMaxLines: 1,
                   isDense: true,
-                  prefixIcon: Icon(Icons.search, size: 18),
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  prefixIconConstraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                    maxWidth: 32,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
                 ),
               ),
             ),
@@ -1162,12 +1381,6 @@ class _ProductsPanelState extends ConsumerState<_ProductsPanel> {
               }).toList();
 
               if (filtered.isEmpty) {
-                final offline = OfflineStore.instance.readCatalog(
-                  workspaceId: ref.read(workspaceIdProvider),
-                );
-                if (list.isEmpty && offline.isNotEmpty) {
-                  return _grid(ref, offline, crossAxis);
-                }
                 return HsEmpty(
                   title: 'لا توجد منتجات في هذا التصنيف.',
                   actionLabel: 'عرض الكل',
@@ -1182,14 +1395,14 @@ class _ProductsPanelState extends ConsumerState<_ProductsPanel> {
                 list,
                 workspaceId: ref.read(workspaceIdProvider),
               );
-              return _grid(ref, filtered, crossAxis);
+              return _grid(ref, filtered);
             },
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) {
               final offline = OfflineStore.instance.readCatalog(
                 workspaceId: ref.read(workspaceIdProvider),
               );
-              if (offline.isNotEmpty) return _grid(ref, offline, crossAxis);
+              if (offline.isNotEmpty) return _grid(ref, offline);
               return HsEmpty(title: 'تعذر تحميل المنتجات', subtitle: '$e');
             },
           ),
@@ -1204,12 +1417,20 @@ class _ProductsPanelState extends ConsumerState<_ProductsPanel> {
     return null;
   }
 
-  Widget _grid(WidgetRef ref, List<Map<String, dynamic>> items, int crossAxis) {
+  Widget _grid(WidgetRef ref, List<Map<String, dynamic>> items) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final cellW = constraints.maxWidth.isFinite && constraints.maxWidth > 0
-            ? (constraints.maxWidth - (10 * (crossAxis - 1))) / crossAxis
-            : 140.0;
+        final maxW = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? constraints.maxWidth
+            : 360.0;
+        final crossAxis = maxW >= 1100
+            ? 5
+            : maxW >= 900
+            ? 4
+            : maxW >= 560
+            ? 3
+            : 2;
+        final cellW = (maxW - (10 * (crossAxis - 1))) / crossAxis;
         final ratio = cellW >= 180 ? 0.72 : 0.78;
         return GridView.builder(
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -1315,7 +1536,11 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
               children: [
                 const Text(
                   'طلب جديد',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: HasimColors.ink,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 const Text(
@@ -1414,6 +1639,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                                 Expanded(
                                   child: Text(
                                     cart.lines[index].name,
+                                    maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                       fontSize: 11,
@@ -1421,6 +1647,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                                     ),
                                   ),
                                 ),
+                                const SizedBox(width: 6),
                                 Text(
                                   cart.lines[index].unitPrice.toStringAsFixed(
                                     2,
@@ -1436,7 +1663,7 @@ class _CartPanelState extends ConsumerState<_CartPanel> {
                                   ),
                                   child: const Padding(
                                     padding: EdgeInsets.symmetric(
-                                      horizontal: 8,
+                                      horizontal: 6,
                                       vertical: 4,
                                     ),
                                     child: Text(
@@ -1719,18 +1946,31 @@ class _TablePickerField extends StatelessWidget {
   Widget build(BuildContext context) {
     return PosTap(
       onTap: () => _open(context),
-      child: InputDecorator(
-        decoration: const InputDecoration(
-          labelText: 'الطاولة',
-          isDense: true,
-          border: OutlineInputBorder(),
-          suffixIcon: Icon(Icons.keyboard_arrow_down),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: HasimColors.surfaceSoft,
+          borderRadius: BorderRadius.circular(HasimRadius.md),
+          border: Border.all(color: HasimColors.border),
         ),
-        child: Text(
-          _label,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: selectedId == null ? HasimColors.muted : HasimColors.ink,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: selectedId == null
+                        ? HasimColors.muted
+                        : HasimColors.ink,
+                  ),
+                ),
+              ),
+              const Icon(Icons.keyboard_arrow_down, size: 20),
+            ],
           ),
         ),
       ),

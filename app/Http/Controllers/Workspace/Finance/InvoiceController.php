@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Workspace\Finance;
 
+use App\Exceptions\Api\ApiApplicationException;
 use App\Models\AuditLog;
 use App\Models\Contract\Contract;
 use App\Models\Customer;
@@ -16,11 +17,17 @@ use App\Models\Finance\FinanceTaxRate;
 use App\Models\Finance\FinanceTreasuryAccount;
 use App\Models\Product;
 use App\Models\Projects\FinanceProject;
+use App\Services\Finance\EInvoiceArtifactService;
 use App\Services\Finance\FinanceBootstrapService;
+use App\Services\Finance\InvoiceCheckoutService;
+use App\Services\Finance\InvoiceEmailService;
 use App\Services\Finance\InvoiceInboxService;
 use App\Services\Finance\InvoicePaymentService;
+use App\Services\Finance\InvoiceReminderEmailService;
 use App\Services\Finance\InvoiceService;
+use App\Services\Finance\Api\InvoiceDocumentReadService;
 use App\Services\Finance\PdfInvoiceService;
+use App\Services\Finance\PriceListService;
 use App\Services\Finance\Tax\TaxCalculationService;
 use App\Services\Notification\DomainNotificationService;
 use Illuminate\Http\RedirectResponse;
@@ -42,6 +49,12 @@ class InvoiceController extends FinanceBaseController
         private readonly PdfInvoiceService $pdfInvoiceService,
         private readonly DomainNotificationService $domainNotificationService,
         private readonly InvoiceInboxService $invoiceInboxService,
+        private readonly InvoiceEmailService $invoiceEmailService,
+        private readonly InvoiceReminderEmailService $invoiceReminderEmailService,
+        private readonly InvoiceCheckoutService $invoiceCheckoutService,
+        private readonly PriceListService $priceListService,
+        private readonly InvoiceDocumentReadService $invoiceDocumentReadService,
+        private readonly EInvoiceArtifactService $eInvoiceArtifactService,
     ) {}
 
     public function index(Request $request): View
@@ -117,6 +130,9 @@ class InvoiceController extends FinanceBaseController
         $this->financeBootstrapService->ensureWorkspaceFinanceSetup($workspace);
 
         $validated = $this->validatedInvoicePayload($request, $workspace->id);
+        if (((string) ($validated['invoice_status'] ?? 'issued')) === 'issued') {
+            $this->authorizeFinance($request, 'invoices.issue');
+        }
 
         try {
             $invoice = $this->invoiceService->create($workspace, $validated, (int) $request->user()?->id);
@@ -167,6 +183,20 @@ class InvoiceController extends FinanceBaseController
         }
 
         return redirect()->route('workspace.finance.invoices.show', $updated)->with('success', 'تم تحديث مسودة الفاتورة.');
+    }
+
+    public function destroy(Request $request, FinanceInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'invoices.delete');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        try {
+            $this->invoiceService->deleteDraft($invoice);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return redirect()->route('workspace.finance.invoices.index')->with('success', 'تم حذف مسودة الفاتورة.');
     }
 
     public function show(Request $request, FinanceInvoice $invoice): View
@@ -239,22 +269,26 @@ class InvoiceController extends FinanceBaseController
                 'payments.treasuryAccount',
                 'payments.creator',
                 'payments.reversedBy',
+                'payments.receipt',
                 'attachments',
                 'creditNotes.items',
                 'contract',
                 'creator',
                 'issuer',
+                'deliveries.sender',
             ]),
             'treasuryAccounts' => FinanceTreasuryAccount::query()->where('is_active', true)->orderBy('type')->get(),
             'journalEntries' => $journalEntries,
             'auditLogs' => $auditLogs,
             'canViewAccounting' => $request->user()?->can('accounting.view') ?? false,
+            'checkout' => $this->invoiceCheckoutService->availability($invoice),
+            'zatcaArtifacts' => $this->eInvoiceArtifactService->availabilityForInvoice($invoice),
         ]);
     }
 
     public function issue(Request $request, FinanceInvoice $invoice): RedirectResponse
     {
-        $this->authorizeFinance($request, 'invoices.edit');
+        $this->authorizeFinance($request, 'invoices.issue');
         $this->assertSameWorkspace($invoice->workspace_id);
 
         try {
@@ -271,6 +305,102 @@ class InvoiceController extends FinanceBaseController
         );
 
         return redirect()->route('workspace.finance.invoices.show', $issued)->with('success', 'تم إصدار الفاتورة وترحيل القيد المحاسبي.');
+    }
+
+    public function send(Request $request, FinanceInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'invoices.send');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        $validated = $request->validate([
+            'email' => ['required', 'email:filter', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:32'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'message' => ['nullable', 'string', 'max:15000'],
+            'attach_pdf' => ['nullable', 'boolean'],
+        ], [
+            'email.required' => 'لا يوجد بريد إلكتروني للعميل.',
+            'email.email' => 'البريد الإلكتروني غير صالح.',
+        ]);
+
+        try {
+            $delivery = $this->invoiceEmailService->send(
+                $invoice,
+                [
+                    'email' => $validated['email'],
+                    'phone' => $validated['phone'] ?? null,
+                    'subject' => $validated['subject'] ?? null,
+                    'message' => $validated['message'] ?? null,
+                    'attach_pdf' => $request->boolean('attach_pdf', true),
+                ],
+                (int) $request->user()?->id,
+            );
+        } catch (RuntimeException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('workspace.finance.invoices.show', $invoice)
+            ->with('success', 'تم إرسال الفاتورة إلى '.$delivery->recipient);
+    }
+
+    public function remind(Request $request, FinanceInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'invoices.remind');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        $validated = $request->validate([
+            'email' => ['required', 'email:filter', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:32'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'message' => ['nullable', 'string', 'max:15000'],
+            'attach_pdf' => ['nullable', 'boolean'],
+        ], [
+            'email.required' => 'لا يوجد بريد إلكتروني للعميل.',
+            'email.email' => 'البريد الإلكتروني غير صالح.',
+        ]);
+
+        try {
+            $delivery = $this->invoiceReminderEmailService->send(
+                $invoice,
+                [
+                    'email' => $validated['email'],
+                    'phone' => $validated['phone'] ?? null,
+                    'subject' => $validated['subject'] ?? null,
+                    'message' => $validated['message'] ?? null,
+                    'attach_pdf' => $request->boolean('attach_pdf', true),
+                    'source' => 'manual',
+                ],
+                (int) $request->user()?->id,
+            );
+        } catch (RuntimeException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
+
+        return redirect()
+            ->route('workspace.finance.invoices.show', $invoice)
+            ->with('success', 'تم إرسال تذكير إلى '.$delivery->recipient);
+    }
+
+    public function createCheckout(Request $request, FinanceInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeFinance($request, 'payments.manage');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        $result = $this->invoiceCheckoutService->createCheckout($invoice);
+
+        if (! $result->hasCheckoutUrl()) {
+            return back()->with('error', $result->message !== '' ? $result->message : 'تعذر إنشاء رابط الدفع الإلكتروني.');
+        }
+
+        $invoice->refresh();
+        if ((float) $invoice->amount_due <= 0.009 || (string) $invoice->payment_status === 'paid') {
+            return back()->with('error', 'إنشاء رابط الدفع لا يجوز أن يغيّر حالة الفاتورة إلى مدفوعة.');
+        }
+
+        return redirect()
+            ->route('workspace.finance.invoices.show', $invoice)
+            ->with('success', 'تم إنشاء رابط الدفع الإلكتروني. التأكيد يتم عبر بوابة الدفع المشتركة وليس من إنشاء الرابط.');
     }
 
     public function cancel(Request $request, FinanceInvoice $invoice): RedirectResponse
@@ -325,7 +455,7 @@ class InvoiceController extends FinanceBaseController
 
     public function reversePayment(Request $request, FinanceInvoice $invoice, FinanceInvoicePayment $payment): RedirectResponse
     {
-        $this->authorizeFinance($request, 'invoices.cancel');
+        $this->authorizeFinance($request, 'invoices.reverse_payment');
         $this->assertSameWorkspace($invoice->workspace_id);
         abort_unless((int) $payment->invoice_id === (int) $invoice->id, 404);
 
@@ -400,6 +530,43 @@ class InvoiceController extends FinanceBaseController
         }
     }
 
+    public function downloadXml(Request $request, FinanceInvoice $invoice)
+    {
+        $this->authorizeFinance($request, 'invoices.view');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        try {
+            $dto = $this->invoiceDocumentReadService->xmlForFinance($invoice);
+        } catch (ApiApplicationException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        $filename = ($invoice->invoice_number ?: 'invoice-'.$invoice->id).'.xml';
+
+        return response($dto->xml, 200, [
+            'Content-Type' => 'application/xml; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+        ]);
+    }
+
+    public function showQr(Request $request, FinanceInvoice $invoice): View|RedirectResponse
+    {
+        $this->authorizeFinance($request, 'invoices.view');
+        $this->assertSameWorkspace($invoice->workspace_id);
+
+        try {
+            $dto = $this->invoiceDocumentReadService->qrForFinance($invoice);
+        } catch (ApiApplicationException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return view('workspace.finance.invoices.qr', [
+            'invoice' => $invoice,
+            'qr' => $dto->toArray(),
+            'zatcaArtifacts' => $this->eInvoiceArtifactService->availabilityForInvoice($invoice),
+        ]);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -421,6 +588,7 @@ class InvoiceController extends FinanceBaseController
                 : collect(),
             'allowManualInvoiceNumbers' => $setting?->allowsManualInvoiceNumbers() ?? false,
             'defaultTaxRate' => (float) ($setting?->default_vat_rate ?? TaxCalculationService::FALLBACK_STANDARD_RATE),
+            'listPrices' => $this->priceListService->effectivePricesByProductId((int) $workspace->id),
         ];
     }
 
@@ -451,6 +619,7 @@ class InvoiceController extends FinanceBaseController
             'zatca_requirement' => ['nullable', 'in:not_required,required'],
             'issue_date' => ['required', 'date'],
             'due_date' => ['nullable', 'date', 'after_or_equal:issue_date'],
+            'supply_date' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'size:3'],
             'invoice_status' => ['nullable', 'in:draft,issued'],
             'status' => ['nullable', 'in:draft,sent,unpaid,partial,paid,overdue,cancelled'],
@@ -496,6 +665,20 @@ class InvoiceController extends FinanceBaseController
                 'items_json' => 'يجب إدخال عنصر واحد على الأقل في الفاتورة.',
             ]);
         }
+
+        $items = array_map(function ($item) {
+            if (! is_array($item)) {
+                return $item;
+            }
+
+            unset($item['total'], $item['tax_amount'], $item['taxable_amount'], $item['subtotal']);
+
+            $productId = (int) ($item['product_id'] ?? 0);
+            $item['product_id'] = $productId > 0 ? $productId : null;
+            $item['unit'] = mb_substr(trim((string) ($item['unit'] ?? '')), 0, 32);
+
+            return $item;
+        }, $items);
 
         $payload = Arr::except($validated, ['items_json', 'attachments']);
         if (! isset($payload['invoice_status']) && isset($payload['status'])) {

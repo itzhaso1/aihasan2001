@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\PosItemCategory;
 use App\Models\PosMenuItem;
+use App\Models\TableSession;
 use App\Services\Pos\PosSyncChangeRecorder;
 use Illuminate\Database\Eloquent\Model;
 
@@ -56,6 +57,12 @@ class PosSyncChangeObserver
             return;
         }
 
+        if ($model instanceof TableSession) {
+            $this->writeTableSession($model);
+
+            return;
+        }
+
         $entity = $this->entityType($model);
         if ($entity === null) {
             return;
@@ -63,6 +70,17 @@ class PosSyncChangeObserver
 
         if (! $model->getAttribute('workspace_id')) {
             return;
+        }
+
+        // Order::create runs before line items exist. An empty create snapshot
+        // is useless to kitchen pull; OrderItem observers write the full order.
+        if ($model instanceof Order && $operation === 'create') {
+            if (! $model->relationLoaded('items')) {
+                $model->load('items');
+            }
+            if ($model->items->isEmpty()) {
+                return;
+            }
         }
 
         $this->recorder->record($entity, $operation, $model, $this->originDeviceId());
@@ -83,6 +101,31 @@ class PosSyncChangeObserver
             ? 'update'
             : 'update';
         $this->recorder->recordOrderSnapshot($order, $op, $this->originDeviceId());
+    }
+
+    /**
+     * A sitting opening or closing changes what the cashier must show for the
+     * table even when the dining_tables row itself did not change (empty QR
+     * visit, close of a sitting with no orders, reopen while already
+     * occupied). Surface it as a table snapshot so pull carries session_id /
+     * opened_at.
+     */
+    private function writeTableSession(TableSession $session): void
+    {
+        $table = $session->relationLoaded('table')
+            ? $session->table
+            : DiningTable::withoutGlobalScopes()->find($session->dining_table_id);
+
+        if (! $table || ! $table->getAttribute('workspace_id')) {
+            return;
+        }
+
+        $this->recorder->record(
+            PosSyncChangeRecorder::ENTITY_TABLE,
+            'update',
+            $table,
+            $this->originDeviceId(),
+        );
     }
 
     private function originDeviceId(): ?string

@@ -1,11 +1,10 @@
 @php
     $workspace = request()->attributes->get('workspace');
     $navLinks = [
-        ['label' => 'الكاشير', 'route' => 'workspace.pos.cashier.index', 'active' => ['workspace.pos.cashier.*']],
-        ['label' => 'الطاولات', 'route' => 'workspace.pos.tables.index', 'active' => ['workspace.pos.dashboard', 'workspace.pos.tables.*']],
+        ['label' => 'الطاولات / QR', 'route' => 'workspace.pos.tables.index', 'active' => ['workspace.pos.dashboard', 'workspace.pos.tables.*']],
+        ['label' => 'طلبات QR', 'route' => 'workspace.pos.qr-orders.index', 'active' => ['workspace.pos.qr-orders.*', 'workspace.pos.orders.running']],
         ['label' => 'Menu', 'route' => 'workspace.pos.menu.index', 'active' => 'workspace.pos.menu.*'],
         ['label' => 'إدارة الأصناف', 'route' => 'workspace.pos.items.index', 'active' => 'workspace.pos.items.*'],
-        ['label' => 'المطبخ', 'route' => 'workspace.pos.kitchen.index', 'active' => 'workspace.pos.kitchen.*'],
         ['label' => 'الفواتير', 'route' => 'workspace.pos.invoices.index', 'active' => 'workspace.pos.invoices.*'],
         ['label' => 'التقارير اليومية', 'route' => 'workspace.pos.reports.daily', 'active' => 'workspace.pos.reports.*'],
     ];

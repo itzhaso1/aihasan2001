@@ -153,6 +153,7 @@ void main() {
         '/channels',
         '/plans',
         '/settings',
+        '/contact-groups',
         '/more/security',
         '/profile',
         '/stories/create',

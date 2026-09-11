@@ -24,18 +24,23 @@ class WorkspaceModulesNavigationTest extends TestCase
             ->get(route('workspace.dashboard'));
 
         $response->assertOk()
-            ->assertSee('Products & Inventory')
-            ->assertSee('POS / Cashier')
-            ->assertSee('Communication')
-            ->assertSee('Payments & Subscriptions')
-            ->assertSee('Finance')
+            ->assertSee('المنتجات والمخزون')
+            ->assertSee('POS / الإدارة')
+            ->assertSee('التواصل')
+            ->assertSee('المدفوعات والاشتراكات')
+            ->assertSee('الفوترة والحسابات')
+            ->assertSee('الإعدادات')
+            ->assertSee('نظرة عامة على أعمالك')
             ->assertSee(route('workspace.categories.index'), false)
             ->assertSee(route('workspace.products.index'), false)
             ->assertSee(route('workspace.inventory.index'), false)
             ->assertSee(route('workspace.channels.index'), false)
             ->assertSee(route('workspace.finance.dashboard'), false)
             ->assertSee(route('workspace.finance.contracts.index'), false)
-            ->assertSee(route('workspace.appointments.dashboard'), false);
+            ->assertSee(route('workspace.appointments.dashboard'), false)
+            ->assertDontSee('Products & Inventory')
+            ->assertDontSee('Quick Actions')
+            ->assertDontSee('مبيعات خلال آخر 7 أيام');
     }
 
     public function test_contracts_module_respects_workspace_customer_isolation(): void

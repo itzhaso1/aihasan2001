@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
@@ -7,6 +8,7 @@ import '../api/cashier_api.dart';
 import '../config/app_config.dart';
 import '../local_db/app_database.dart';
 import '../pos/domain/pricing_service.dart';
+import '../pos/pos_mode.dart';
 import '../pos/table_session_orders.dart';
 import '../local_db/local_ids.dart';
 import '../util/json_numbers.dart';
@@ -31,18 +33,30 @@ class TablesRepository {
 
   Future<List<Map<String, dynamic>>> listTables(int workspaceId) async {
     if (workspaceId <= 0) return const [];
-    await _backfillMissingServerIds(workspaceId);
+    await _ensureLocalBoardIds(workspaceId);
     final rows =
         await (_db.select(_db.localTables)
               ..where((t) => t.workspaceId.equals(workspaceId))
               ..orderBy([(t) => OrderingTerm.asc(t.name)]))
             .get();
     final sessionOrders = await _nonCancelledOrdersInWorkspace(workspaceId);
+    final openByTable = await _openSessionIdsByTable(workspaceId);
     return [
       for (final row in rows)
         _rowToBoardMap(
           row,
-          sessionOrders: _sessionOrdersMatchingTable(row, sessionOrders),
+          sessionOrders: _sessionOrdersMatchingTable(
+            row,
+            sessionOrders,
+            currentSessionLocalId: _resolvedOperationalSessionId(
+              row,
+              openByTable[row.localId],
+            ),
+          ),
+          currentSessionLocalId: _resolvedOperationalSessionId(
+            row,
+            openByTable[row.localId],
+          ),
         ),
     ];
   }
@@ -53,9 +67,21 @@ class TablesRepository {
   ) async {
     final row = await _findTable(workspaceId, serverId: tableServerId);
     if (row == null) return null;
-    final live = await _liveSessionOrdersForTable(row);
+    final currentSession = _resolvedOperationalSessionId(
+      row,
+      await _openSessionLocalId(row),
+    );
+    final live = await _liveSessionOrdersForTable(
+      row,
+      currentSessionLocalId: currentSession,
+    );
     final liveMaps = await _mapsForOrders(live);
-    return _rowToDetailMap(row, liveOrders: live, liveOrderMaps: liveMaps);
+    return _rowToDetailMap(
+      row,
+      liveOrders: live,
+      liveOrderMaps: liveMaps,
+      currentSessionLocalId: currentSession,
+    );
   }
 
   /// Workspace-scoped local PK so the same server table id can exist in A and B.
@@ -87,12 +113,20 @@ class TablesRepository {
               ))
               .getSingleOrNull();
       if (byServer != null) return byServer;
-      return (_db.select(_db.localTables)..where(
-            (t) =>
-                t.localId.equals(tableLocalId(workspaceId, serverId)) &
-                t.workspaceId.equals(workspaceId),
-          ))
-          .getSingleOrNull();
+      final scoped =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(tableLocalId(workspaceId, serverId)) &
+                    t.workspaceId.equals(workspaceId),
+              ))
+              .getSingleOrNull();
+      if (scoped != null) return scoped;
+      final rows = await (_db.select(
+        _db.localTables,
+      )..where((t) => t.workspaceId.equals(workspaceId))).get();
+      for (final row in rows) {
+        if (boardNumericId(row) == serverId) return row;
+      }
     }
     return null;
   }
@@ -108,36 +142,46 @@ class TablesRepository {
     return table;
   }
 
-  Future<void> _backfillMissingServerIds(int workspaceId) async {
+  Future<void> _ensureLocalBoardIds(int workspaceId) async {
     final rows = await (_db.select(
       _db.localTables,
     )..where((t) => t.workspaceId.equals(workspaceId))).get();
     final missing = [
       for (final row in rows)
-        if (row.serverId == null) row,
+        if (row.serverId == null && boardNumericId(row) == null) row,
     ];
     if (missing.isEmpty) return;
     var next = 0;
     for (final row in rows) {
-      final sid = row.serverId;
-      if (sid != null && sid > next) next = sid;
+      final board = boardNumericId(row);
+      if (board != null && board > next) next = board;
     }
     for (final row in missing) {
       next += 1;
       final payload = _safeMap(row.payloadJson);
-      payload['id'] = next;
+      payload['board_id'] = next;
       payload['name'] = row.name;
       payload['status'] = row.status;
       await (_db.update(
         _db.localTables,
       )..where((t) => t.localId.equals(row.localId))).write(
         LocalTablesCompanion(
-          serverId: Value(next),
           payloadJson: Value(jsonEncode(payload)),
           updatedAt: Value(DateTime.now()),
         ),
       );
     }
+  }
+
+  static int? boardNumericId(LocalTable row) {
+    if (row.serverId != null && row.serverId! > 0) return row.serverId;
+    try {
+      final decoded = jsonDecode(row.payloadJson);
+      if (decoded is Map) {
+        return asInt(decoded['board_id']) ?? asInt(decoded['id']);
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<void> replaceBoard(
@@ -175,21 +219,44 @@ class TablesRepository {
         final prevMap = previous == null
             ? const <String, dynamic>{}
             : _safeMap(previous.payloadJson);
+        final remoteSessionId = asInt(table['session_id']);
+        final remoteSessionOpen = remoteSessionId != null && remoteSessionId > 0;
+        // Only an offline sitting Laravel has not acknowledged yet (no server
+        // session id) survives a snapshot that says the table is free. Once
+        // acknowledged, the snapshot is authoritative — same rule as pull.
+        final prevAcked =
+            previous?.sessionServerId != null && previous!.sessionServerId! > 0;
         final offlineOpen =
             prevMap['session_client_id'] != null &&
             previous?.status == 'occupied' &&
+            !prevAcked &&
+            !remoteSessionOpen &&
             (table['status'] == 'available' || table['session_id'] == null);
-        final status = offlineOpen
+        // Occupancy follows the open session, not the status flag alone
+        // (QR guest visit keeps dining_tables.status = available).
+        final status = (offlineOpen || remoteSessionOpen)
             ? 'occupied'
             : '${table['status'] ?? previous?.status ?? 'available'}';
         final sessionServerId = offlineOpen
             ? previous?.sessionServerId
-            : asInt(table['session_id']) ?? previous?.sessionServerId;
+            : (remoteSessionOpen ? remoteSessionId : null);
         if (offlineOpen && prevMap['session_client_id'] != null) {
           mergedPayload['session_client_id'] = prevMap['session_client_id'];
           mergedPayload['session_open'] = true;
           if (prevMap['opened_at'] != null) {
             mergedPayload['opened_at'] = prevMap['opened_at'];
+          }
+        } else if (remoteSessionOpen) {
+          mergedPayload['status'] = 'occupied';
+          mergedPayload['session_open'] = true;
+          mergedPayload['session_id'] = remoteSessionId;
+        } else if (!table.containsKey('session_id') || table['session_id'] == null) {
+          if (status == 'available') {
+            mergedPayload['session_open'] = false;
+            mergedPayload['session_id'] = null;
+            mergedPayload['session_client_id'] = null;
+            mergedPayload['opened_at'] = null;
+            mergedPayload['orders'] = const [];
           }
         }
         await _db
@@ -278,8 +345,13 @@ class TablesRepository {
     }
     final localId = existing.localId;
     final payload = _safeMap(existing.payloadJson);
-    final existingClient = '${payload['session_client_id'] ?? ''}';
-    if (existing.status == 'occupied' && existingClient.isNotEmpty) {
+    final existingClient = '${payload['session_client_id'] ?? ''}'.trim();
+    final openId = await _openSessionLocalId(existing);
+    if (await _isCurrentOpenSitting(
+      table: existing,
+      payloadSessionId: existingClient,
+      openSessionId: openId,
+    )) {
       return await getTable(workspaceId, tableServerId) ??
           _rowToDetailMap(existing);
     }
@@ -298,6 +370,9 @@ class TablesRepository {
       'orders': const [],
       'last_sale_items': const [],
       'last_sale_total': 0,
+      'last_invoice_local_id': null,
+      'last_invoice_number': null,
+      'last_local_invoice': null,
       'subtotal': 0,
       'tax_amount': 0,
       'discount_amount': 0,
@@ -305,6 +380,14 @@ class TablesRepository {
     };
 
     await _db.transaction(() async {
+      await _closeOpenLocalSessions(localId, now);
+      await _insertOpenLocalSession(
+        sessionLocalId: sessionClientId,
+        workspaceId: workspaceId,
+        tableLocalId: localId,
+        now: now,
+        openedAt: parseOpenedAt(openedAt) ?? now,
+      );
       await (_db.update(_db.localTables)..where(
             (t) =>
                 t.localId.equals(localId) & t.workspaceId.equals(workspaceId),
@@ -362,8 +445,12 @@ class TablesRepository {
     final payload = _safeMap(existing.payloadJson);
     final existingClient = '${payload['session_client_id'] ?? ''}'.trim();
     final existingOpened = '${payload['opened_at'] ?? ''}'.trim();
-    final alreadyOpen =
-        existing.status == 'occupied' && existingClient.isNotEmpty;
+    final openId = await _openSessionLocalId(existing);
+    final alreadyOpen = await _isCurrentOpenSitting(
+      table: existing,
+      payloadSessionId: existingClient,
+      openSessionId: openId,
+    );
     final sessionClientId = alreadyOpen ? existingClient : _newId();
     final openedAt = alreadyOpen && existingOpened.isNotEmpty
         ? payload['opened_at']
@@ -376,9 +463,15 @@ class TablesRepository {
       orderLocalId: orderLocalId,
       total: total,
       items: items,
+      sessionClientId: sessionClientId,
+      createdAt: openedAt,
     );
     final previousOrders = alreadyOpen
-        ? _normalizeActiveOrders(payload['orders'])
+        ? filterOrdersForOpenTableSession(
+            orders: _normalizeActiveOrders(payload['orders']),
+            openedAt: parseOpenedAt(openedAt),
+            currentSessionLocalId: sessionClientId,
+          )
         : const <Map<String, dynamic>>[];
     final nextPayload = {
       ...payload,
@@ -397,6 +490,14 @@ class TablesRepository {
 
     await _db.transaction(() async {
       if (!alreadyOpen) {
+        await _closeOpenLocalSessions(existing.localId, now);
+        await _insertOpenLocalSession(
+          sessionLocalId: sessionClientId,
+          workspaceId: workspaceId,
+          tableLocalId: existing.localId,
+          now: now,
+          openedAt: parseOpenedAt(openedAt) ?? now,
+        );
         final leftovers = await _unpaidOrdersForTable(existing);
         for (final order in leftovers) {
           await (_db.update(_db.localOrders)..where(
@@ -411,6 +512,28 @@ class TablesRepository {
                 ),
               );
         }
+      } else {
+        await _insertOpenLocalSession(
+          sessionLocalId: sessionClientId,
+          workspaceId: workspaceId,
+          tableLocalId: existing.localId,
+          now: now,
+          openedAt: parseOpenedAt(openedAt) ?? now,
+        );
+      }
+      final occupyOrderId = orderLocalId?.trim() ?? '';
+      if (occupyOrderId.isNotEmpty) {
+        await (_db.update(_db.localOrders)..where(
+              (t) =>
+                  t.localId.equals(occupyOrderId) &
+                  t.workspaceId.equals(workspaceId),
+            ))
+            .write(
+              LocalOrdersCompanion(
+                sessionLocalId: Value(sessionClientId),
+                updatedAt: Value(now),
+              ),
+            );
       }
       await (_db.update(_db.localTables)..where(
             (t) =>
@@ -453,6 +576,39 @@ class TablesRepository {
           ..where((t) => t.workspaceId.equals(workspaceId)))
         .watch()
         .asyncMap((_) => listTables(workspaceId));
+  }
+
+  /// Emits whenever the table row, its sessions, or any order attached to it
+  /// changes in SQLite (local action or sync pull). Consumers reload the
+  /// detail snapshot so pulled QR orders / remote closes show without leaving
+  /// the screen.
+  Stream<void> watchTableActivity(int workspaceId, int tableServerId) {
+    // One drift stream keyed on all three tables (same mechanics as
+    // [watchBoard]); a hand-rolled merge controller does not close cleanly
+    // under the widget-test fake async zone.
+    return _db
+        .customSelect(
+          'SELECT '
+          '(SELECT COUNT(*) FROM local_tables WHERE workspace_id = ?1 '
+          '   AND server_id = ?2) AS tables_n, '
+          '(SELECT MAX(updated_at) FROM local_tables WHERE workspace_id = ?1 '
+          '   AND server_id = ?2) AS tables_at, '
+          '(SELECT COUNT(*) FROM local_orders WHERE workspace_id = ?1 '
+          '   AND table_server_id = ?2) AS orders_n, '
+          '(SELECT MAX(updated_at) FROM local_orders WHERE workspace_id = ?1 '
+          '   AND table_server_id = ?2) AS orders_at, '
+          '(SELECT COUNT(*) FROM local_sessions WHERE workspace_id = ?1) '
+          '   AS sessions_n, '
+          '(SELECT MAX(updated_at) FROM local_sessions WHERE workspace_id = ?1) '
+          '   AS sessions_at',
+          variables: [
+            Variable.withInt(workspaceId),
+            Variable.withInt(tableServerId),
+          ],
+          readsFrom: {_db.localTables, _db.localOrders, _db.localSessions},
+        )
+        .watch()
+        .map((_) {});
   }
 
   /// Local-first close + payment + invoice draft. Queues sync; no online required.
@@ -621,6 +777,29 @@ class TablesRepository {
         lastInvoice: invoicePayload,
       );
       await _closeOpenLocalSessions(localId, now);
+      if (activeOrders.length == 1) {
+        await (_db.update(
+          _db.localInvoices,
+        )..where((t) => t.localId.equals(invoiceLocalId))).write(
+          LocalInvoicesCompanion(
+            orderLocalId: Value(activeOrders.first.localId),
+          ),
+        );
+      }
+      for (final order in activeOrders) {
+        await _enqueuePaidTableInvoice(
+          workspaceId: workspaceId,
+          deviceId: deviceId.trim(),
+          order: order,
+          invoiceLocalId: activeOrders.length == 1
+              ? invoiceLocalId
+              : '${invoiceLocalId}-${order.localId}',
+          invoiceNumber: activeOrders.length == 1
+              ? invoiceNumber
+              : invoiceNumber,
+          paymentMethod: method,
+        );
+      }
       await _queue.enqueue(
         workspaceId: workspaceId,
         deviceId: deviceId.trim(),
@@ -644,6 +823,120 @@ class TablesRepository {
       'invoice': invoicePayload,
       'table': await getTable(workspaceId, tableServerId),
     };
+  }
+
+  Future<void> _enqueuePaidTableInvoice({
+    required int workspaceId,
+    required String deviceId,
+    required LocalOrder order,
+    required String invoiceLocalId,
+    required String invoiceNumber,
+    required String paymentMethod,
+  }) async {
+    if (PosMode.isReservedStandaloneWorkspace(workspaceId)) return;
+    final items =
+        await (_db.select(_db.localOrderItems)..where(
+              (t) =>
+                  t.orderLocalId.equals(order.localId) &
+                  t.isRemoved.equals(false),
+            ))
+            .get();
+    if (items.isEmpty) return;
+    for (final item in items) {
+      final serverId = item.productServerId;
+      if (serverId == null || serverId <= 0 || item.quantity < 1) return;
+    }
+    String? tableName;
+    if (order.tableLocalId != null && order.tableLocalId!.trim().isNotEmpty) {
+      final named = await (_db.select(_db.localTables)
+            ..where((t) => t.localId.equals(order.tableLocalId!)))
+          .getSingleOrNull();
+      final name = named?.name.trim() ?? '';
+      if (name.isNotEmpty) tableName = name;
+    }
+    final orderPayload = {
+      'order_type': 'table',
+      'offline_sale': true,
+      if (order.tableServerId != null) 'dining_table_id': order.tableServerId,
+      if (order.tableLocalId != null && order.tableLocalId!.trim().isNotEmpty)
+        'table_local_id': order.tableLocalId!.trim(),
+      if (order.sessionLocalId != null &&
+          order.sessionLocalId!.trim().isNotEmpty)
+        'session_local_id': order.sessionLocalId!.trim(),
+      if (tableName != null) 'table_name': tableName,
+      'client_reference': order.clientReference,
+      'placed_at': order.createdAt.toUtc().toIso8601String(),
+      'currency': 'SAR',
+      'subtotal_amount': Money.fromCents(order.subtotal),
+      'discount_amount': Money.fromCents(order.discountAmount),
+      'tax_amount': Money.fromCents(order.taxAmount),
+      'total_amount': Money.fromCents(order.totalAmount),
+      'items': [
+        for (final item in items)
+          {
+            'pos_menu_item_id': item.productServerId,
+            'quantity': item.quantity,
+            'unit_price': Money.fromCents(item.unitPrice),
+            'tax_amount': Money.fromCents(item.taxAmount),
+            'name': item.name,
+            'product_name': item.name,
+          },
+      ],
+    };
+    if (order.serverId == null || order.serverId! <= 0) {
+      final existingOrder = await _queue.findOpenOp(
+        workspaceId: workspaceId,
+        entityType: 'order',
+        entityId: order.localId,
+        operation: 'create',
+      );
+      if (existingOrder == null) {
+        await _queue.enqueue(
+          workspaceId: workspaceId,
+          deviceId: deviceId,
+          entityType: 'order',
+          entityId: order.localId,
+          operation: 'create',
+          payload: orderPayload,
+          clientReference: order.clientReference,
+        );
+      } else {
+        await _queue.updateOpenPayload(
+          workspaceId: workspaceId,
+          entityType: 'order',
+          entityId: order.localId,
+          operation: 'create',
+          payload: orderPayload,
+        );
+      }
+    }
+    final existingInvoice = await _queue.findOpenOp(
+      workspaceId: workspaceId,
+      entityType: 'invoice',
+      entityId: invoiceLocalId,
+      operation: 'create',
+    );
+    if (existingInvoice != null) return;
+    await _queue.enqueue(
+      workspaceId: workspaceId,
+      deviceId: deviceId,
+      entityType: 'invoice',
+      entityId: invoiceLocalId,
+      operation: 'create',
+      payload: {
+        'order_type': 'table',
+        'order_local_id': order.localId,
+        'local_invoice_number': invoiceNumber,
+        'closed_at': DateTime.now().toUtc().toIso8601String(),
+        'currency': 'SAR',
+        'subtotal_amount': Money.fromCents(order.subtotal),
+        'discount_amount': Money.fromCents(order.discountAmount),
+        'tax_amount': Money.fromCents(order.taxAmount),
+        'total_amount': Money.fromCents(order.totalAmount),
+        'payment_method': paymentMethod,
+      },
+      clientReference: invoiceLocalId,
+    );
   }
 
   Future<void> _freeTableRow({
@@ -697,6 +990,114 @@ class TablesRepository {
             updatedAt: Value(now),
           ),
         );
+  }
+
+  Future<void> _insertOpenLocalSession({
+    required String sessionLocalId,
+    required int workspaceId,
+    required String tableLocalId,
+    required DateTime now,
+    required DateTime openedAt,
+  }) async {
+    final id = sessionLocalId.trim();
+    if (id.isEmpty || tableLocalId.trim().isEmpty) return;
+    final existing = await (_db.select(
+      _db.localSessions,
+    )..where((t) => t.localId.equals(id))).getSingleOrNull();
+    if (existing != null) {
+      if (existing.status == 'open') return;
+      await (_db.update(
+        _db.localSessions,
+      )..where((t) => t.localId.equals(id))).write(
+        LocalSessionsCompanion(
+          status: const Value('open'),
+          openedAt: Value(openedAt),
+          closedAt: const Value(null),
+          updatedAt: Value(now),
+        ),
+      );
+      return;
+    }
+    await _db
+        .into(_db.localSessions)
+        .insert(
+          LocalSessionsCompanion.insert(
+            localId: id,
+            workspaceId: workspaceId,
+            tableLocalId: tableLocalId,
+            status: const Value('open'),
+            openedAt: openedAt,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+  }
+
+  Future<String?> _openSessionLocalId(LocalTable table) async {
+    final preferred =
+        '${_safeMap(table.payloadJson)['session_client_id'] ?? ''}'.trim();
+    if (preferred.isNotEmpty) {
+      final byId = await (_db.select(
+        _db.localSessions,
+      )..where((t) => t.localId.equals(preferred))).getSingleOrNull();
+      if (byId != null && byId.status == 'open') return byId.localId;
+      if (byId == null && table.status == 'occupied') return preferred;
+    }
+    final open =
+        await (_db.select(_db.localSessions)
+              ..where(
+                (t) =>
+                    t.workspaceId.equals(table.workspaceId) &
+                    t.tableLocalId.equals(table.localId) &
+                    t.status.equals('open'),
+              )
+              ..orderBy([(t) => OrderingTerm.desc(t.openedAt)])
+              ..limit(1))
+            .getSingleOrNull();
+    return open?.localId;
+  }
+
+  String _resolvedOperationalSessionId(LocalTable row, String? openSessionId) {
+    final open = (openSessionId ?? '').trim();
+    if (open.isNotEmpty) return open;
+    final payload = _safeMap(row.payloadJson);
+    if (row.status != 'occupied' && !_payloadSessionOpen(payload)) return '';
+    final client = '${payload['session_client_id'] ?? ''}'.trim();
+    if (client.isNotEmpty) return client;
+    return '__payload__';
+  }
+
+  Future<bool> _isCurrentOpenSitting({
+    required LocalTable table,
+    required String payloadSessionId,
+    required String? openSessionId,
+  }) async {
+    if (table.status != 'occupied' || payloadSessionId.isEmpty) return false;
+    if (openSessionId == payloadSessionId) return true;
+    if (openSessionId != null) return false;
+    final row = await (_db.select(
+      _db.localSessions,
+    )..where((t) => t.localId.equals(payloadSessionId))).getSingleOrNull();
+    return row == null;
+  }
+
+  Future<Map<String, String>> _openSessionIdsByTable(int workspaceId) async {
+    final rows =
+        await (_db.select(_db.localSessions)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) & t.status.equals('open'),
+            ))
+            .get();
+    final out = <String, String>{};
+    final openedAt = <String, DateTime>{};
+    for (final row in rows) {
+      final previous = openedAt[row.tableLocalId];
+      if (previous == null || row.openedAt.isAfter(previous)) {
+        out[row.tableLocalId] = row.localId;
+        openedAt[row.tableLocalId] = row.openedAt;
+      }
+    }
+    return out;
   }
 
   /// Cancel session + unpaid orders locally (no network required).
@@ -948,6 +1349,17 @@ class TablesRepository {
           updatedAt: Value(now),
         ),
       );
+      await (_db.update(_db.localSessions)
+            ..where(
+              (t) =>
+                  t.tableLocalId.equals(fromLocalId) & t.status.equals('open'),
+            ))
+          .write(
+            LocalSessionsCompanion(
+              tableLocalId: Value(toLocalId),
+              updatedAt: Value(now),
+            ),
+          );
       await _queue.enqueue(
         workspaceId: workspaceId,
         deviceId: deviceId.trim(),
@@ -1056,6 +1468,7 @@ class TablesRepository {
           updatedAt: Value(now),
         ),
       );
+      await _closeOpenLocalSessions(fromLocalId, now);
       await _queue.enqueue(
         workspaceId: workspaceId,
         deviceId: deviceId.trim(),
@@ -1286,19 +1699,48 @@ class TablesRepository {
     return '${payload['session_client_id'] ?? ''}'.trim().isNotEmpty;
   }
 
+  /// Open [LocalSessions] is the source of truth. Legacy occupied rows
+  /// without a session row stay occupied for compatibility.
+  bool _isOccupiedFromSession({
+    required LocalTable row,
+    required Map<String, dynamic> payload,
+    required String currentSessionLocalId,
+    required bool hasLiveOrders,
+  }) {
+    if (currentSessionLocalId.trim().isNotEmpty) return true;
+    if (hasLiveOrders) return true;
+    if (row.status == 'occupied' && _payloadSessionOpen(payload)) return true;
+    if (row.status == 'occupied' &&
+        '${payload['session_id'] ?? ''}'.trim().isNotEmpty) {
+      return true;
+    }
+    return false;
+  }
+
   Map<String, dynamic> _rowToBoardMap(
     LocalTable row, {
     List<LocalOrder> sessionOrders = const [],
+    String currentSessionLocalId = '',
   }) {
     final payload = _safeMap(row.payloadJson);
-    final occupied =
-        sessionOrders.isNotEmpty ||
-        row.status == 'occupied' ||
-        _payloadSessionOpen(payload);
+    final occupied = _isOccupiedFromSession(
+      row: row,
+      payload: payload,
+      currentSessionLocalId: currentSessionLocalId,
+      hasLiveOrders: sessionOrders.isNotEmpty,
+    );
+    final sessionClientId = currentSessionLocalId.trim().isNotEmpty
+        ? currentSessionLocalId.trim()
+        : '${payload['session_client_id'] ?? ''}'.trim();
+    final openedAt = parseOpenedAt(payload['opened_at']);
     final activeOrders = !occupied
         ? const <Map<String, dynamic>>[]
         : mergeTableSessionOrders(
-            sessionOrders: _normalizeActiveOrders(payload['orders']),
+            sessionOrders: filterOrdersForOpenTableSession(
+              orders: _normalizeActiveOrders(payload['orders']),
+              openedAt: openedAt,
+              currentSessionLocalId: currentSessionLocalId,
+            ),
             liveOrders: [
               for (final order in sessionOrders) _orderIdentityMap(order),
             ],
@@ -1307,7 +1749,6 @@ class TablesRepository {
       0,
       (sum, order) => sum + order.totalAmount,
     );
-    final sessionClientId = '${payload['session_client_id'] ?? ''}'.trim();
     final lastSale = asDouble(payload['last_sale_total'] ?? payload['total']);
     final mergedTotal = activeOrders.fold<double>(
       0,
@@ -1315,7 +1756,7 @@ class TablesRepository {
     );
     return {
       ...payload,
-      'id': row.serverId ?? row.localId,
+      'id': row.serverId ?? boardNumericId(row) ?? row.localId,
       'local_id': row.localId,
       'name': row.name,
       'status': occupied ? 'occupied' : 'available',
@@ -1330,16 +1771,19 @@ class TablesRepository {
       'session_open': occupied,
       'opened_at': payload['opened_at'],
       'workspace_id': row.workspaceId,
-      if (activeOrders.isNotEmpty) ...{
-        'orders_count': activeOrders.length,
-        'open_orders_count': activeOrders.length,
+      'orders_count': activeOrders.length,
+      'open_orders_count': activeOrders.length,
+      'items_count': tableSessionItemsCount(activeOrders),
+      if (activeOrders.isNotEmpty)
         'total': mergedTotal > 0
             ? mergedTotal
             : (totalCents > 0
                   ? Money.fromCents(totalCents)
-                  : (lastSale ?? payload['total'])),
-      } else if (occupied && lastSale != null && lastSale > 0)
-        'total': lastSale,
+                  : (lastSale ?? payload['total']))
+      else if (occupied && lastSale != null && lastSale > 0)
+        'total': lastSale
+      else
+        'total': 0,
     };
   }
 
@@ -1347,18 +1791,28 @@ class TablesRepository {
     LocalTable row, {
     List<LocalOrder> liveOrders = const [],
     List<Map<String, dynamic>> liveOrderMaps = const [],
+    String currentSessionLocalId = '',
   }) {
     final payload = _safeMap(row.payloadJson);
-    final occupied =
-        liveOrders.isNotEmpty ||
-        row.status == 'occupied' ||
-        _payloadSessionOpen(payload);
-    final sessionClientId = '${payload['session_client_id'] ?? ''}'.trim();
+    final occupied = _isOccupiedFromSession(
+      row: row,
+      payload: payload,
+      currentSessionLocalId: currentSessionLocalId,
+      hasLiveOrders: liveOrders.isNotEmpty,
+    );
+    final sessionClientId = currentSessionLocalId.trim().isNotEmpty
+        ? currentSessionLocalId.trim()
+        : '${payload['session_client_id'] ?? ''}'.trim();
     final lastSale = asDouble(payload['last_sale_total'] ?? payload['total']);
+    final openedAt = parseOpenedAt(payload['opened_at']);
     final activeOrders = !occupied
         ? const <Map<String, dynamic>>[]
         : mergeTableSessionOrders(
-            sessionOrders: _normalizeActiveOrders(payload['orders']),
+            sessionOrders: filterOrdersForOpenTableSession(
+              orders: _normalizeActiveOrders(payload['orders']),
+              openedAt: openedAt,
+              currentSessionLocalId: currentSessionLocalId,
+            ),
             liveOrders: liveOrderMaps,
           );
     final totalCents = liveOrders.fold<int>(
@@ -1371,7 +1825,7 @@ class TablesRepository {
     );
     return {
       ...payload,
-      'id': row.serverId ?? row.localId,
+      'id': row.serverId ?? boardNumericId(row) ?? row.localId,
       'local_id': row.localId,
       'name': row.name.isNotEmpty ? row.name : '${payload['name'] ?? ''}',
       'status': occupied ? 'occupied' : 'available',
@@ -1386,15 +1840,18 @@ class TablesRepository {
       'session_open': occupied,
       'opened_at': payload['opened_at'],
       'workspace_id': row.workspaceId,
-      if (activeOrders.isNotEmpty) ...{
-        'orders_count': activeOrders.length,
-        'open_orders_count': activeOrders.length,
+      'orders_count': activeOrders.length,
+      'open_orders_count': activeOrders.length,
+      'items_count': tableSessionItemsCount(activeOrders),
+      if (activeOrders.isNotEmpty)
         'total': mergedTotal > 0
             ? mergedTotal
             : (payload['total'] ??
-                  (totalCents > 0 ? Money.fromCents(totalCents) : lastSale)),
-      } else if (occupied && lastSale != null && lastSale > 0)
-        'total': lastSale,
+                  (totalCents > 0 ? Money.fromCents(totalCents) : lastSale))
+      else if (occupied && lastSale != null && lastSale > 0)
+        'total': lastSale
+      else
+        'total': 0,
       'orders': activeOrders,
     };
   }
@@ -1417,6 +1874,8 @@ class TablesRepository {
         'order_number': order.orderNumber ?? order.localId,
         'pos_status': order.posStatus,
         'payment_status': order.paymentStatus,
+        'session_local_id': order.sessionLocalId,
+        'created_at': order.createdAt.toUtc().toIso8601String(),
         'discount_amount': Money.fromCents(order.discountAmount),
         'tax_amount': Money.fromCents(order.taxAmount),
         'total_amount': Money.fromCents(order.totalAmount),
@@ -1441,6 +1900,8 @@ class TablesRepository {
     String? orderLocalId,
     required double total,
     required List<Map<String, dynamic>> items,
+    required String sessionClientId,
+    required Object? createdAt,
   }) {
     final lines = [for (final item in items) _lineSnapshot(item)];
     final lineTotal = lines.fold<double>(
@@ -1454,6 +1915,8 @@ class TablesRepository {
       'order_number': invoiceNumber,
       'pos_status': 'completed',
       'payment_status': 'paid',
+      'session_client_id': sessionClientId,
+      'created_at': createdAt,
       'total_amount': total > 0 ? total : lineTotal,
       'items': lines,
     };
@@ -1533,15 +1996,24 @@ class TablesRepository {
     return _ordersMatchingTable(table, all);
   }
 
-  Future<List<LocalOrder>> _liveSessionOrdersForTable(LocalTable table) async {
+  Future<List<LocalOrder>> _liveSessionOrdersForTable(
+    LocalTable table, {
+    String? currentSessionLocalId,
+  }) async {
     final all = await _nonCancelledOrdersInWorkspace(table.workspaceId);
-    return _sessionOrdersMatchingTable(table, all);
+    return _sessionOrdersMatchingTable(
+      table,
+      all,
+      currentSessionLocalId:
+          currentSessionLocalId ?? await _openSessionLocalId(table) ?? '',
+    );
   }
 
   List<LocalOrder> _sessionOrdersMatchingTable(
     LocalTable table,
-    List<LocalOrder> orders,
-  ) {
+    List<LocalOrder> orders, {
+    required String currentSessionLocalId,
+  }) {
     final payload = _safeMap(table.payloadJson);
     final openedAt = parseOpenedAt(payload['opened_at']);
     return [
@@ -1551,6 +2023,9 @@ class TablesRepository {
           paymentStatus: order.paymentStatus,
           createdAt: order.createdAt,
           openedAt: openedAt,
+          completedAt: order.completedAt,
+          orderSessionLocalId: order.sessionLocalId,
+          currentSessionLocalId: currentSessionLocalId,
         ))
           order,
     ];
@@ -1562,6 +2037,8 @@ class TablesRepository {
     'order_number': order.orderNumber ?? order.localId,
     'pos_status': order.posStatus,
     'payment_status': order.paymentStatus,
+    'session_local_id': order.sessionLocalId,
+    'created_at': order.createdAt.toUtc().toIso8601String(),
     'total_amount': Money.fromCents(order.totalAmount),
   };
 
@@ -1591,7 +2068,8 @@ class TablesRepository {
     if (boardRow['orders'] == null && previous['orders'] != null) {
       final incomingStatus =
           '${boardRow['status'] ?? previous['status'] ?? ''}';
-      merged['orders'] = incomingStatus == 'available'
+      final incomingSessionOpen = (asInt(boardRow['session_id']) ?? 0) > 0;
+      merged['orders'] = incomingStatus == 'available' && !incomingSessionOpen
           ? const []
           : previous['orders'];
     }

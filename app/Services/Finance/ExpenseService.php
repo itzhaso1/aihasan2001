@@ -122,6 +122,116 @@ class ExpenseService
         });
     }
 
+    /**
+     * @param  array<string,mixed>  $payload
+     */
+    public function updateDraft(FinanceExpense $expense, array $payload, int $actorUserId): FinanceExpense
+    {
+        return DB::transaction(function () use ($expense, $payload): FinanceExpense {
+            $locked = FinanceExpense::withoutGlobalScopes()
+                ->whereKey($expense->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->status !== 'draft') {
+                throw new RuntimeException('يمكن تعديل مسودات المصروفات غير المرحّلة فقط.');
+            }
+
+            $amount = round((float) ($payload['amount'] ?? $locked->amount), 2);
+            if ($amount <= 0) {
+                throw new RuntimeException('Expense amount must be greater than zero.');
+            }
+
+            $taxType = (string) ($payload['tax_profile_type'] ?? 'standard');
+            $taxRate = (float) ($payload['tax_rate'] ?? $locked->tax_rate);
+            $calc = $this->taxService->calculateAmount($amount, $taxType, $taxRate);
+
+            $attachmentPath = $locked->attachment_path;
+            if (($payload['attachment_file'] ?? null) instanceof UploadedFile) {
+                if ($attachmentPath) {
+                    app(SecureUpload::class)->delete($attachmentPath);
+                }
+                $attachmentPath = app(SecureUpload::class)->store(
+                    $payload['attachment_file'],
+                    'workspaces/'.$locked->workspace_id.'/finance/expenses',
+                    'public',
+                    4096
+                );
+            }
+
+            $supplierId = $locked->supplier_id;
+            if (array_key_exists('supplier_id', $payload)) {
+                $supplierId = $payload['supplier_id'] ?: null;
+                if ($supplierId) {
+                    $supplier = FinanceSupplier::withoutGlobalScopes()
+                        ->where('workspace_id', $locked->workspace_id)
+                        ->whereKey((int) $supplierId)
+                        ->first();
+                    if (! $supplier) {
+                        throw new RuntimeException('Supplier is invalid for this workspace.');
+                    }
+                    $supplierId = $supplier->id;
+                }
+            }
+
+            $categoryId = $locked->category_id;
+            if (array_key_exists('category_id', $payload)) {
+                $categoryId = $payload['category_id'] ?: null;
+                if ($categoryId) {
+                    $category = FinanceExpenseCategory::withoutGlobalScopes()
+                        ->where('workspace_id', $locked->workspace_id)
+                        ->whereKey((int) $categoryId)
+                        ->first();
+                    if (! $category) {
+                        throw new RuntimeException('Expense category is invalid for this workspace.');
+                    }
+                    $categoryId = $category->id;
+                }
+            }
+
+            $treasuryId = $locked->treasury_account_id;
+            if (array_key_exists('treasury_account_id', $payload)) {
+                $treasuryId = $payload['treasury_account_id'] ?: null;
+                if ($treasuryId) {
+                    $treasury = FinanceTreasuryAccount::withoutGlobalScopes()
+                        ->where('workspace_id', $locked->workspace_id)
+                        ->whereKey((int) $treasuryId)
+                        ->first();
+                    if (! $treasury) {
+                        throw new RuntimeException('Treasury account is invalid for this workspace.');
+                    }
+                    $treasuryId = $treasury->id;
+                }
+            }
+
+            $locked->update([
+                'supplier_id' => $supplierId,
+                'category_id' => $categoryId,
+                'treasury_account_id' => $treasuryId,
+                'expense_date' => (string) ($payload['expense_date'] ?? $locked->expense_date?->toDateString()),
+                'description' => $payload['description'] ?? $locked->description,
+                'amount' => $amount,
+                'tax_rate' => $taxRate,
+                'tax_amount' => $calc['tax_amount'],
+                'total' => $calc['total'],
+                'currency' => (string) ($payload['currency'] ?? $locked->currency ?: 'SAR'),
+                'payment_method' => (string) ($payload['payment_method'] ?? $locked->payment_method),
+                'is_recurring' => array_key_exists('is_recurring', $payload)
+                    ? (bool) $payload['is_recurring']
+                    : (bool) $locked->is_recurring,
+                'recurring_frequency' => array_key_exists('recurring_frequency', $payload)
+                    ? ($payload['recurring_frequency'] ?: null)
+                    : $locked->recurring_frequency,
+                'next_due_date' => array_key_exists('next_due_date', $payload)
+                    ? ($payload['next_due_date'] ?: null)
+                    : $locked->next_due_date,
+                'attachment_path' => $attachmentPath,
+            ]);
+
+            return $locked->fresh();
+        });
+    }
+
     public function delete(FinanceExpense $expense, ?int $actorUserId = null): void
     {
         DB::transaction(function () use ($expense, $actorUserId): void {

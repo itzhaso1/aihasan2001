@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hasim_cashier/core/api/cashier_api.dart';
+import 'package:hasim_cashier/core/audio/menu_sound_service.dart';
 import 'package:hasim_cashier/core/auth/auth_controller.dart';
 import 'package:hasim_cashier/core/local_db/app_database.dart';
 import 'package:hasim_cashier/core/local_db/local_db_providers.dart';
@@ -21,9 +22,12 @@ import 'package:hasim_cashier/core/permissions/permissions_provider.dart';
 import 'package:hasim_cashier/core/widgets/pos_tap.dart';
 import 'package:hasim_cashier/features/auth/login_screen.dart';
 import 'package:hasim_cashier/features/kitchen/kitchen_board.dart';
+import 'package:hasim_cashier/features/kitchen/kitchen_station_screen.dart';
 import 'package:hasim_cashier/features/orders/orders_list.dart';
 import 'package:hasim_cashier/features/reports/daily_reports_panel.dart';
 import 'package:hasim_cashier/features/reports/reports_station_screen.dart';
+import 'package:hasim_cashier/router/app_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   late AppDatabase db;
@@ -89,6 +93,7 @@ void main() {
     expect(LocalAuthService.permissionsFor('cashier')['invoices.delete'], isNot(true));
     expect(LocalAuthService.permissionsFor('cashier')['tables.create'], isNot(true));
     expect(LocalAuthService.permissionsFor('cashier')['reports.view'], isNot(true));
+    expect(LocalAuthService.permissionsFor('chef')['reports.view'], isNot(true));
   });
 
   test('per-user ACL overlays role defaults and is enforced in services', () async {
@@ -182,8 +187,24 @@ void main() {
     );
     expect(chef.landingRoute, '/kitchen');
     expect(chef.canUsePos, isFalse);
+    expect(chef.canViewReports, isFalse);
     expect(cashier.landingRoute, '/home');
+    expect(cashier.canViewReports, isFalse);
     expect(reportsOnly.landingRoute, '/reports');
+    expect(reportsOnly.canViewReports, isTrue);
+
+    final chefWithReports = AuthSession(
+      token: 'standalone:chef-acl',
+      user: {'name': 'سامي', 'role': 'chef'},
+      workspaces: [],
+      permissions: {
+        ...LocalAuthService.permissionsFor('chef'),
+        'reports.view': true,
+      },
+      isLocalMode: true,
+    );
+    expect(chefWithReports.canViewReports, isTrue);
+    expect(chefWithReports.landingRoute, '/kitchen');
   });
 
   test('kitchen watch includes table name without a cashier session', () async {
@@ -364,6 +385,7 @@ void main() {
     expect(find.text('دخول الكاشير'), findsOneWidget);
     expect(find.text('دخول المطبخ'), findsOneWidget);
     expect(find.text('دخول التقارير'), findsOneWidget);
+    expect(find.text('إعداد مستقل بدون حساب حاسم'), findsNothing);
 
     await tester.tap(find.text('دخول المطبخ'));
     await tester.pumpAndSettle();
@@ -559,6 +581,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('طاولة 9'), findsOneWidget);
+    expect(find.text('مزامنة الآن'), findsOneWidget);
     expect(find.textContaining('شاي'), findsOneWidget);
     expect(find.text('جديد'), findsWidgets);
     expect(find.text('مقبول'), findsWidgets);
@@ -774,4 +797,321 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     },
   );
+
+  testWidgets('unauthenticated kitchen station hides reports', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await seedStore();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appDatabaseProvider.overrideWith((ref) => db),
+          authControllerProvider.overrideWith(
+            (ref) => AuthController.ready(ref, null),
+          ),
+        ],
+        child: const MaterialApp(
+          locale: Locale('ar'),
+          supportedLocales: [Locale('ar'), Locale('en')],
+          localizationsDelegates: [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: KitchenStationScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('التقارير'), findsNothing);
+    expect(find.text('خروج'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('kitchen station hides reports without reports.view',
+      (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await seedStore();
+    final chef = AuthSession(
+      token: 'standalone:chef',
+      user: {'name': 'سامي', 'role': 'chef'},
+      workspaces: [],
+      permissions: LocalAuthService.permissionsFor('chef'),
+      isLocalMode: true,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appDatabaseProvider.overrideWith((ref) => db),
+          authControllerProvider.overrideWith(
+            (ref) => AuthController.ready(ref, chef),
+          ),
+        ],
+        child: const MaterialApp(
+          locale: Locale('ar'),
+          supportedLocales: [Locale('ar'), Locale('en')],
+          localizationsDelegates: [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: KitchenStationScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('التقارير'), findsNothing);
+    expect(find.text('الكاشير'), findsNothing);
+    expect(find.textContaining('شيف: سامي'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('kitchen station shows reports when ACL grants reports.view',
+      (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await seedStore();
+    final chef = AuthSession(
+      token: 'standalone:chef',
+      user: {'name': 'سامي', 'role': 'chef'},
+      workspaces: [],
+      permissions: {
+        ...LocalAuthService.permissionsFor('chef'),
+        'reports.view': true,
+      },
+      isLocalMode: true,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appDatabaseProvider.overrideWith((ref) => db),
+          authControllerProvider.overrideWith(
+            (ref) => AuthController.ready(ref, chef),
+          ),
+        ],
+        child: const MaterialApp(
+          locale: Locale('ar'),
+          supportedLocales: [Locale('ar'), Locale('en')],
+          localizationsDelegates: [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: KitchenStationScreen(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('التقارير'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('chef session cannot load daily reports without reports.view',
+      (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await seedStore();
+    final chef = AuthSession(
+      token: 'standalone:chef',
+      user: {'name': 'سامي', 'role': 'chef'},
+      workspaces: [],
+      permissions: LocalAuthService.permissionsFor('chef'),
+      isLocalMode: true,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appDatabaseProvider.overrideWith((ref) => db),
+          workspaceIdProvider.overrideWith((ref) => ws),
+          authControllerProvider.overrideWith(
+            (ref) => AuthController.ready(ref, chef),
+          ),
+        ],
+        child: const MaterialApp(
+          locale: Locale('ar'),
+          supportedLocales: [Locale('ar'), Locale('en')],
+          localizationsDelegates: [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: Scaffold(body: DailyReportsPanel()),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('غير مصرح بعرض التقارير'), findsOneWidget);
+    expect(find.text('التقارير اليومية'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('logged-in chef is redirected away from /reports', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await seedStore();
+    final chef = AuthSession(
+      token: 'standalone:chef',
+      user: {'name': 'سامي', 'role': 'chef'},
+      workspaces: [],
+      permissions: LocalAuthService.permissionsFor('chef'),
+      isLocalMode: true,
+    );
+    late GoRouter router;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appDatabaseProvider.overrideWith((ref) => db),
+          authControllerProvider.overrideWith(
+            (ref) => AuthController.ready(ref, chef),
+          ),
+        ],
+        child: Consumer(
+          builder: (context, ref, _) {
+            router = ref.watch(appRouterProvider);
+            return MaterialApp.router(
+              locale: const Locale('ar'),
+              supportedLocales: const [Locale('ar'), Locale('en')],
+              localizationsDelegates: const [
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              routerConfig: router,
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    router.go('/reports');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('التقارير اليومية'), findsNothing);
+    expect(find.textContaining('شيف: سامي'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('kitchen board plays sound only for newly arrived tickets',
+      (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+
+    await seedStore();
+    final now = DateTime.now();
+    await db.into(db.localOrders).insert(
+          LocalOrdersCompanion.insert(
+            localId: 'ord-sound-1',
+            workspaceId: ws,
+            deviceId: 'dev-1',
+            clientReference: 'ord-sound-1',
+            orderNumber: const Value('S-1'),
+            orderType: 'takeaway',
+            posStatus: const Value('new'),
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+
+    final sound = _CountingSound();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appDatabaseProvider.overrideWith((ref) => db),
+          workspaceIdProvider.overrideWith((ref) => ws),
+          menuSoundServiceProvider.overrideWith((ref) => sound),
+        ],
+        child: const MaterialApp(
+          locale: Locale('ar'),
+          supportedLocales: [Locale('ar'), Locale('en')],
+          localizationsDelegates: [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: Scaffold(body: KitchenBoard()),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(const ValueKey('kitchen-ord-sound-1')), findsOneWidget);
+    expect(sound.plays, 0);
+
+    await db.into(db.localOrders).insert(
+          LocalOrdersCompanion.insert(
+            localId: 'ord-sound-2',
+            workspaceId: ws,
+            deviceId: 'dev-1',
+            clientReference: 'ord-sound-2',
+            orderNumber: const Value('S-2'),
+            orderType: 'takeaway',
+            posStatus: const Value('accepted'),
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
+        );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(const ValueKey('kitchen-ord-sound-2')), findsOneWidget);
+    expect(sound.plays, 1);
+
+    await (db.update(db.localOrders)
+          ..where((t) => t.localId.equals('ord-sound-2')))
+        .write(
+      LocalOrdersCompanion(
+        posStatus: const Value('preparing'),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(sound.plays, 1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+}
+
+class _CountingSound extends MenuSoundService {
+  var plays = 0;
+
+  @override
+  Future<void> playNewOrder() async {
+    plays++;
+  }
 }

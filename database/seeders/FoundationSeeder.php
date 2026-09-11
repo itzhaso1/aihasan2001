@@ -19,7 +19,9 @@ class FoundationSeeder extends Seeder
      */
     public function run(): void
     {
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $registrar = app(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId(null);
+        $registrar->forgetCachedPermissions();
 
         $permissions = [
             'workspace.view',
@@ -54,8 +56,23 @@ class FoundationSeeder extends Seeder
             'invoices.cancel',
             'invoices.delete',
             'invoices.issue',
+            'invoices.send',
             'invoices.credit',
             'invoices.reverse_payment',
+            'invoices.remind',
+            'quotes.view',
+            'quotes.create',
+            'quotes.edit',
+            'quotes.issue',
+            'quotes.send',
+            'quotes.accept',
+            'quotes.reject',
+            'quotes.convert',
+            'quotes.cancel',
+            'quotes.delete',
+            'payments.view',
+            'receipts.view',
+            'receipts.send',
             'expenses.view',
             'expenses.create',
             'expenses.edit',
@@ -96,10 +113,7 @@ class FoundationSeeder extends Seeder
         }
 
         foreach (['owner', 'admin', 'manager', 'agent', 'receptionist', 'staff_doctor', 'accountant'] as $roleName) {
-            Role::query()->firstOrCreate([
-                'name' => $roleName,
-                'guard_name' => 'web',
-            ]);
+            Role::findOrCreate($roleName, 'web');
         }
 
         $ownerRole = Role::findByName('owner', 'web');
@@ -134,7 +148,21 @@ class FoundationSeeder extends Seeder
             'invoices.create',
             'invoices.edit',
             'invoices.issue',
+            'invoices.send',
             'invoices.credit',
+            'invoices.reverse_payment',
+            'invoices.remind',
+            'quotes.view',
+            'quotes.create',
+            'quotes.edit',
+            'quotes.issue',
+            'quotes.send',
+            'quotes.accept',
+            'quotes.reject',
+            'quotes.convert',
+            'payments.view',
+            'receipts.view',
+            'receipts.send',
             'expenses.view',
             'expenses.create',
             'expenses.edit',
@@ -168,6 +196,9 @@ class FoundationSeeder extends Seeder
             'finance.salary_advances.view',
             'finance.fiscal_years.view',
             'invoices.view',
+            'quotes.view',
+            'payments.view',
+            'receipts.view',
             'expenses.view',
             'reports.view',
             'contracts.view',
@@ -191,7 +222,9 @@ class FoundationSeeder extends Seeder
             'appointments.website.manage',
             'appointments.domains.manage',
             'invoices.view',
+            'payments.view',
             'payments.manage',
+            'receipts.view',
         ]);
         $staffDoctorRole->syncPermissions([
             'workspace.view',
@@ -206,10 +239,27 @@ class FoundationSeeder extends Seeder
             'invoices.create',
             'invoices.edit',
             'invoices.issue',
+            'invoices.send',
             'invoices.credit',
             'invoices.cancel',
             'invoices.reverse_payment',
+            'invoices.remind',
+            'quotes.view',
+            'quotes.create',
+            'quotes.edit',
+            'quotes.issue',
+            'quotes.send',
+            'quotes.accept',
+            'quotes.reject',
+            'quotes.convert',
+            'quotes.cancel',
+            'payments.view',
             'payments.manage',
+            'receipts.view',
+            'receipts.send',
+            'expenses.view',
+            'expenses.create',
+            'expenses.edit',
             'accounting.view',
             'reports.view',
             'contracts.view',
@@ -572,8 +622,23 @@ class FoundationSeeder extends Seeder
             'invoices.edit',
             'invoices.cancel',
             'invoices.issue',
+            'invoices.send',
             'invoices.credit',
             'invoices.reverse_payment',
+            'invoices.remind',
+            'quotes.view',
+            'quotes.create',
+            'quotes.edit',
+            'quotes.issue',
+            'quotes.send',
+            'quotes.accept',
+            'quotes.reject',
+            'quotes.convert',
+            'quotes.cancel',
+            'quotes.delete',
+            'payments.view',
+            'receipts.view',
+            'receipts.send',
             'expenses.view',
             'expenses.create',
             'expenses.edit',

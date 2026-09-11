@@ -37,16 +37,20 @@ use App\Http\Controllers\Workspace\Finance\CreditNoteController as FinanceCredit
 use App\Http\Controllers\Workspace\Finance\CustomerStatementController as FinanceCustomerStatementController;
 use App\Http\Controllers\Workspace\Finance\DashboardController as FinanceDashboardController;
 use App\Http\Controllers\Workspace\Finance\ExpenseController as FinanceExpenseController;
+use App\Http\Controllers\Workspace\Finance\ExportController as FinanceExportController;
 use App\Http\Controllers\Workspace\Finance\FinanceEmployeeController;
 use App\Http\Controllers\Workspace\Finance\FiscalYearController as FinanceFiscalYearController;
 use App\Http\Controllers\Workspace\Finance\IntelligenceController as FinanceIntelligenceController;
 use App\Http\Controllers\Workspace\Finance\InvoiceController as FinanceInvoiceController;
 use App\Http\Controllers\Workspace\Finance\LeadController as FinanceLeadController;
 use App\Http\Controllers\Workspace\Finance\ModulePageController as FinanceModulePageController;
+use App\Http\Controllers\Workspace\Finance\PaymentController as FinancePaymentController;
 use App\Http\Controllers\Workspace\Finance\PayrollAdjustmentController as FinancePayrollAdjustmentController;
 use App\Http\Controllers\Workspace\Finance\PriceListController as FinancePriceListController;
 use App\Http\Controllers\Workspace\Finance\ProjectController as FinanceProjectController;
 use App\Http\Controllers\Workspace\Finance\PurchaseOrderController as FinancePurchaseOrderController;
+use App\Http\Controllers\Workspace\Finance\QuoteController as FinanceQuoteController;
+use App\Http\Controllers\Workspace\Finance\ReceiptController as FinanceReceiptController;
 use App\Http\Controllers\Workspace\Finance\ReportController as FinanceReportController;
 use App\Http\Controllers\Workspace\Finance\SalaryAdvanceController as FinanceSalaryAdvanceController;
 use App\Http\Controllers\Workspace\Finance\SalesController as FinanceSalesController;
@@ -215,10 +219,14 @@ Route::middleware(['guest'])->group(function (): void {
     Route::get('/auth/{provider}/redirect', [SocialLoginController::class, 'redirect'])
         ->whereIn('provider', ['google', 'facebook'])
         ->name('social.redirect');
-    Route::get('/auth/{provider}/callback', [SocialLoginController::class, 'callback'])
-        ->whereIn('provider', ['google', 'facebook'])
-        ->name('social.callback');
 });
+
+// Cashier desktop Google login reuses this callback with state=ticket.
+// Keep it outside `guest` so a website session in the same browser cannot
+// swallow the OAuth code before the cashier ticket is marked ready.
+Route::get('/auth/{provider}/callback', [SocialLoginController::class, 'callback'])
+    ->whereIn('provider', ['google', 'facebook'])
+    ->name('social.callback');
 
 Route::middleware(['auth'])->group(function (): void {
     Route::get('/dashboard', fn () => redirect()->route('workspace.subscriptions.index'))->name('dashboard');
@@ -372,8 +380,14 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::get('invoices/{invoice}', [FinanceInvoiceController::class, 'show'])->name('invoices.show');
             Route::get('invoices/{invoice}/edit', [FinanceInvoiceController::class, 'edit'])->name('invoices.edit');
             Route::put('invoices/{invoice}', [FinanceInvoiceController::class, 'update'])->name('invoices.update');
+            Route::delete('invoices/{invoice}', [FinanceInvoiceController::class, 'destroy'])->name('invoices.destroy');
             Route::get('invoices/{invoice}/pdf', [FinanceInvoiceController::class, 'downloadPdf'])->name('invoices.pdf');
+            Route::get('invoices/{invoice}/xml', [FinanceInvoiceController::class, 'downloadXml'])->name('invoices.xml');
+            Route::get('invoices/{invoice}/qr', [FinanceInvoiceController::class, 'showQr'])->name('invoices.qr');
             Route::post('invoices/{invoice}/issue', [FinanceInvoiceController::class, 'issue'])->name('invoices.issue');
+            Route::post('invoices/{invoice}/send', [FinanceInvoiceController::class, 'send'])->name('invoices.send');
+            Route::post('invoices/{invoice}/remind', [FinanceInvoiceController::class, 'remind'])->name('invoices.remind');
+            Route::post('invoices/{invoice}/checkout', [FinanceInvoiceController::class, 'createCheckout'])->name('invoices.checkout');
             Route::post('invoices/{invoice}/cancel', [FinanceInvoiceController::class, 'cancel'])->name('invoices.cancel');
             Route::post('invoices/{invoice}/payments', [FinanceInvoiceController::class, 'storePayment'])->name('invoices.payments.store');
             Route::post('invoices/{invoice}/payments/{payment}/reverse', [FinanceInvoiceController::class, 'reversePayment'])->name('invoices.payments.reverse');
@@ -382,8 +396,36 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::delete('invoices/{invoice}/attachments/{attachment}', [FinanceInvoiceController::class, 'destroyAttachment'])->name('invoices.attachments.destroy');
             Route::get('invoices/{invoice}/credit-notes/create', [FinanceCreditNoteController::class, 'create'])->name('invoices.credit-notes.create');
             Route::post('invoices/{invoice}/credit-notes', [FinanceCreditNoteController::class, 'store'])->name('invoices.credit-notes.store');
+            Route::get('invoices/{invoice}/credit-notes/{creditNote}/pdf', [FinanceCreditNoteController::class, 'downloadPdf'])->name('invoices.credit-notes.pdf');
             Route::post('invoices/{invoice}/credit-notes/{creditNote}/issue', [FinanceCreditNoteController::class, 'issue'])->name('invoices.credit-notes.issue');
             Route::post('invoices/{invoice}/credit-notes/{creditNote}/cancel', [FinanceCreditNoteController::class, 'cancel'])->name('invoices.credit-notes.cancel');
+
+            Route::get('payments', [FinancePaymentController::class, 'index'])->name('payments.index');
+            Route::get('receipts', [FinanceReceiptController::class, 'index'])->name('receipts.index');
+            Route::get('receipts/{receipt}', [FinanceReceiptController::class, 'show'])->name('receipts.show');
+            Route::get('receipts/{receipt}/pdf', [FinanceReceiptController::class, 'downloadPdf'])->name('receipts.pdf');
+            Route::post('receipts/{receipt}/send', [FinanceReceiptController::class, 'send'])->name('receipts.send');
+            Route::get('exports', [FinanceExportController::class, 'index'])->name('exports.index');
+            Route::get('exports/{dataset}', [FinanceExportController::class, 'download'])->name('exports.download');
+
+            Route::get('quotes', [FinanceQuoteController::class, 'index'])->name('quotes.index');
+            Route::get('quotes/create', [FinanceQuoteController::class, 'create'])->name('quotes.create');
+            Route::post('quotes', [FinanceQuoteController::class, 'store'])->name('quotes.store');
+            Route::get('quotes/{quote}', [FinanceQuoteController::class, 'show'])->name('quotes.show');
+            Route::get('quotes/{quote}/edit', [FinanceQuoteController::class, 'edit'])->name('quotes.edit');
+            Route::put('quotes/{quote}', [FinanceQuoteController::class, 'update'])->name('quotes.update');
+            Route::delete('quotes/{quote}', [FinanceQuoteController::class, 'destroy'])->name('quotes.destroy');
+            Route::get('quotes/{quote}/pdf', [FinanceQuoteController::class, 'downloadPdf'])->name('quotes.pdf');
+            Route::post('quotes/{quote}/issue', [FinanceQuoteController::class, 'issue'])->name('quotes.issue');
+            Route::post('quotes/{quote}/cancel', [FinanceQuoteController::class, 'cancel'])->name('quotes.cancel');
+            Route::post('quotes/{quote}/send', [FinanceQuoteController::class, 'send'])->name('quotes.send');
+            Route::post('quotes/{quote}/accept', [FinanceQuoteController::class, 'accept'])->name('quotes.accept');
+            Route::post('quotes/{quote}/reject', [FinanceQuoteController::class, 'reject'])->name('quotes.reject');
+            Route::post('quotes/{quote}/convert', [FinanceQuoteController::class, 'convert'])->name('quotes.convert');
+            Route::post('quotes/{quote}/attachments', [FinanceQuoteController::class, 'storeAttachment'])->name('quotes.attachments.store');
+            Route::get('quotes/{quote}/attachments/{attachment}', [FinanceQuoteController::class, 'downloadAttachment'])->name('quotes.attachments.download');
+            Route::delete('quotes/{quote}/attachments/{attachment}', [FinanceQuoteController::class, 'destroyAttachment'])->name('quotes.attachments.destroy');
+
             Route::post('contracts/{contract}/billing-schedules', [FinanceBillingScheduleController::class, 'store'])->name('contracts.billing-schedules.store');
             Route::post('contracts/{contract}/billing-schedules/{schedule}/activate', [FinanceBillingScheduleController::class, 'activate'])->name('contracts.billing-schedules.activate');
             Route::post('contracts/{contract}/billing-schedules/{schedule}/pause', [FinanceBillingScheduleController::class, 'pause'])->name('contracts.billing-schedules.pause');
@@ -396,6 +438,9 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
 
             Route::get('expenses', [FinanceExpenseController::class, 'index'])->name('expenses.index');
             Route::post('expenses', [FinanceExpenseController::class, 'store'])->name('expenses.store');
+            Route::get('expenses/{expense}/edit', [FinanceExpenseController::class, 'edit'])->name('expenses.edit');
+            Route::put('expenses/{expense}', [FinanceExpenseController::class, 'update'])->name('expenses.update');
+            Route::get('expenses/{expense}/attachment', [FinanceExpenseController::class, 'downloadAttachment'])->name('expenses.attachment');
             Route::delete('expenses/{expense}', [FinanceExpenseController::class, 'destroy'])->name('expenses.destroy');
 
             Route::get('accounting', [FinanceAccountingController::class, 'dashboard'])->name('accounting.dashboard');
@@ -551,6 +596,7 @@ Route::middleware(['auth', 'workspace.selected', 'workspace.member'])
             Route::get('cashier', [PosCashierController::class, 'index'])->name('cashier.index');
             Route::get('menu', [PosMenuPageController::class, 'index'])->name('menu.index');
 
+            Route::get('qr-orders', [PosOrderController::class, 'qrOrders'])->name('qr-orders.index');
             Route::get('orders/recent-menu', [PosCashierController::class, 'recentMenuOrders'])->name('orders.recent-menu');
             Route::get('orders/channel-stats', [PosCashierController::class, 'channelStats'])->name('orders.channel-stats');
             Route::post('orders', [PosCashierController::class, 'storeOrder'])->name('orders.store');

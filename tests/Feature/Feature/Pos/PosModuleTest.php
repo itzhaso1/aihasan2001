@@ -103,34 +103,23 @@ class PosModuleTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.store'), [
-                'dining_table_id' => $table->id,
-                'items' => [
-                    ['pos_menu_item_id' => $item->id, 'quantity' => 2],
-                ],
-            ])->assertRedirect();
-
-        $order = Order::query()->where('source', 'pos')->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $table->id,
+            'items' => [
+                ['pos_menu_item_id' => $item->id, 'quantity' => 2],
+            ],
+        ]);
         $this->assertNotNull($order->table_session_id);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.status', $order), [
-                'pos_status' => 'preparing',
-            ])->assertRedirect();
+        $pos = app(\App\Services\Pos\PosOrderService::class);
+        $pos->updatePosStatus($order, 'preparing', $owner);
 
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
             'pos_status' => 'preparing',
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.status', $order), [
-                'pos_status' => 'completed',
-            ])->assertRedirect();
+        $pos->updatePosStatus($order->fresh(), 'completed', $owner);
 
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
@@ -141,10 +130,7 @@ class PosModuleTest extends TestCase
         $session = $order->fresh()->tableSession;
         $this->assertNotNull($session);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.close', [$table, $session]))
-            ->assertRedirect();
+        $pos->closeSession($session, (int) $owner->id);
 
         $cashierInvoiceId = $order->fresh()->pos_cashier_invoice_id;
         $this->assertNotNull($cashierInvoiceId);
@@ -178,21 +164,12 @@ class PosModuleTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.store'), [
-                'items' => [
-                    ['pos_menu_item_id' => $usdItem->id, 'quantity' => 1],
-                    ['pos_menu_item_id' => $eurItem->id, 'quantity' => 2],
-                ],
-            ])
-            ->assertRedirect();
-
-        $order = Order::query()
-            ->where('workspace_id', $workspace->id)
-            ->where('source', 'pos')
-            ->latest('id')
-            ->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'items' => [
+                ['pos_menu_item_id' => $usdItem->id, 'quantity' => 1],
+                ['pos_menu_item_id' => $eurItem->id, 'quantity' => 2],
+            ],
+        ]);
 
         $this->assertSame('MIX', $order->currency);
         $this->assertSame(8.0, (float) $order->subtotal);
@@ -233,8 +210,7 @@ class PosModuleTest extends TestCase
                 ],
             ]);
 
-        $response->assertRedirect();
-        $response->assertSessionHasErrors('items.0.pos_menu_item_id');
+        $response->assertForbidden();
         $this->assertDatabaseCount('orders', 0);
         $this->assertDatabaseCount('table_sessions', 0);
     }
@@ -279,28 +255,20 @@ class PosModuleTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.store'), [
-                'dining_table_id' => $table->id,
-                'items' => [
-                    ['pos_menu_item_id' => $item->id, 'quantity' => 1],
-                ],
-            ])
-            ->assertRedirect();
-
-        $order = Order::query()->where('source', 'pos')->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $table->id,
+            'items' => [
+                ['pos_menu_item_id' => $item->id, 'quantity' => 1],
+            ],
+        ]);
         $line = $order->items()->firstOrFail();
-
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.update-items', $order), [
-                'discount_amount' => 1.00,
-                'items' => [
-                    ['id' => $line->id, 'quantity' => 3, 'unit_price' => 8.00],
-                ],
-            ])
-            ->assertRedirect();
+        $pos = app(\App\Services\Pos\PosOrderService::class);
+        $pos->updateOrderItems($order, [
+            'discount_amount' => 1.00,
+            'items' => [
+                ['id' => $line->id, 'quantity' => 3, 'unit_price' => 8.00],
+            ],
+        ]);
 
         $this->assertDatabaseHas('order_items', [
             'id' => $line->id,
@@ -316,11 +284,8 @@ class PosModuleTest extends TestCase
         ]);
 
         $sessionId = (int) $order->table_session_id;
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.close', ['table' => $table, 'session' => $sessionId]))
-            ->assertRedirect()
-            ->assertSessionHas('success');
+        $session = \App\Models\TableSession::query()->findOrFail($sessionId);
+        $pos->closeSession($session, (int) $owner->id);
 
         $invoice = PosCashierInvoice::query()->latest('id')->first();
         $this->assertNotNull($invoice);
@@ -351,24 +316,15 @@ class PosModuleTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.store'), [
-                'dining_table_id' => $table->id,
-                'items' => [
-                    ['pos_menu_item_id' => $item->id, 'quantity' => 2],
-                ],
-            ])
-            ->assertRedirect();
-
-        $order = Order::query()->where('source', 'pos')->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $table->id,
+            'items' => [
+                ['pos_menu_item_id' => $item->id, 'quantity' => 2],
+            ],
+        ]);
         $sessionId = (int) $order->table_session_id;
-
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.cancel', ['table' => $table, 'session' => $sessionId]))
-            ->assertRedirect()
-            ->assertSessionHas('success');
+        $session = \App\Models\TableSession::query()->findOrFail($sessionId);
+        app(\App\Services\Pos\PosOrderService::class)->cancelSession($session, $owner);
 
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
@@ -407,26 +363,15 @@ class PosModuleTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.store'), [
-                'dining_table_id' => $table->id,
-                'items' => [
-                    ['pos_menu_item_id' => $item->id, 'quantity' => 1],
-                ],
-            ])
-            ->assertRedirect();
-
-        $order = Order::query()->where('source', 'pos')->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $table->id,
+            'items' => [
+                ['pos_menu_item_id' => $item->id, 'quantity' => 1],
+            ],
+        ]);
         $sessionId = (int) $order->table_session_id;
-
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.discount', ['table' => $table, 'session' => $sessionId]), [
-                'discount_amount' => 5,
-            ])
-            ->assertRedirect()
-            ->assertSessionHas('success');
+        $session = \App\Models\TableSession::query()->findOrFail($sessionId);
+        app(\App\Services\Pos\PosOrderService::class)->applySessionDiscount($session, 5);
 
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
@@ -467,7 +412,14 @@ class PosModuleTest extends TestCase
                     ['pos_menu_item_id' => $menuItem->id, 'quantity' => 2],
                 ],
             ])
-            ->assertRedirect();
+            ->assertForbidden();
+
+        $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $table->id,
+            'items' => [
+                ['pos_menu_item_id' => $menuItem->id, 'quantity' => 2],
+            ],
+        ]);
 
         $this->assertDatabaseHas('orders', [
             'workspace_id' => $workspace->id,
@@ -496,10 +448,12 @@ class PosModuleTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.store'), [
-                'dining_table_id' => $table->id,
+        $this->get(route('menu.table', ['workspace' => $workspace->slug, 'token' => $table->qr_token]))
+            ->assertOk();
+        $guest = \App\Models\PosCustomerSession::query()->where('dining_table_id', $table->id)->firstOrFail();
+        $this->withUnencryptedCookie('pos_guest_'.$table->id, $guest->token)
+            ->post(route('menu.table.order', ['workspace' => $workspace->slug, 'token' => $table->qr_token]), [
+                'guest_session_token' => $guest->token,
                 'items' => [
                     ['pos_menu_item_id' => $item->id, 'quantity' => 1],
                 ],
@@ -509,6 +463,11 @@ class PosModuleTest extends TestCase
         $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
             ->get(route('workspace.pos.kitchen.index'))
+            ->assertRedirect(route('workspace.pos.qr-orders.index'));
+
+        $this->actingAs($owner)
+            ->withSession(['current_workspace_id' => $workspace->id])
+            ->get(route('workspace.pos.qr-orders.index'))
             ->assertOk()
             ->assertSee('Table Kitchen')
             ->assertSee('Burger');

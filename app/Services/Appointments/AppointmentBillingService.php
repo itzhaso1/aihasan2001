@@ -169,6 +169,10 @@ class AppointmentBillingService
 
     public function syncAfterPaymentConfirmed(Payment $payment): void
     {
+        if (! $payment->order_id) {
+            return;
+        }
+
         $booking = AppointmentBooking::withoutGlobalScopes()
             ->where('order_id', $payment->order_id)
             ->first();

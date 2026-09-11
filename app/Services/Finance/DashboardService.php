@@ -15,6 +15,7 @@ use App\Models\Finance\FinanceTreasuryAccount;
 use App\Support\Tenancy\WorkspaceContext;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardService
 {
@@ -27,16 +28,17 @@ class DashboardService
      */
     public function metrics(): array
     {
-        $salesInvoices = FinanceInvoice::query()->where('type', 'sales');
-        $purchaseInvoices = FinanceInvoice::query()->where('type', 'purchase');
+        $salesInvoices = FinanceInvoice::query()->where('type', 'sales')->whereIssued();
+        $purchaseInvoices = FinanceInvoice::query()->where('type', 'purchase')->whereIssued();
+        $postedExpenses = FinanceExpense::query()->whereNotIn('status', ['draft', 'cancelled']);
 
         $totalSales = (float) (clone $salesInvoices)->sum('total');
         $totalPurchases = (float) (clone $purchaseInvoices)->sum('total');
-        $totalExpenses = (float) FinanceExpense::query()->sum('total');
+        $totalExpenses = (float) (clone $postedExpenses)->sum('total');
         $outputVat = (float) (clone $salesInvoices)->sum('tax_amount');
         $inputVat = (float) (
             (clone $purchaseInvoices)->sum('tax_amount')
-            + FinanceExpense::query()->sum('tax_amount')
+            + (clone $postedExpenses)->sum('tax_amount')
         );
 
         $receivables = (float) (clone $salesInvoices)->sum('amount_due');
@@ -106,18 +108,16 @@ class DashboardService
                 'active_contracts_count' => $activeContractsCount,
             ],
             'charts' => [
-                'sales' => $this->monthlySeries('finance_invoices', 'total', [
-                    ['type', '=', 'sales'],
-                ]),
-                'expenses' => $this->monthlySeries('finance_expenses', 'total', []),
+                'sales' => $this->monthlyIssuedInvoiceSeries('total', 'sales'),
+                'expenses' => $this->monthlyPostedExpenseSeries('total'),
                 'profit' => $this->profitSeries(),
                 'vat' => $this->vatSeries(),
                 'cash_flow' => $this->cashFlowSeries(),
             ],
             'latest' => [
                 'invoices' => FinanceInvoice::query()->with(['customer', 'supplier'])->latest('id')->limit(10)->get(),
-                'payments' => FinanceInvoicePayment::query()->with('invoice')->latest('id')->limit(10)->get(),
-                'expenses' => FinanceExpense::query()->with(['supplier', 'category'])->latest('id')->limit(10)->get(),
+                'payments' => FinanceInvoicePayment::query()->with(['invoice.customer', 'receipt', 'treasuryAccount'])->latest('id')->limit(10)->get(),
+                'expenses' => FinanceExpense::query()->with(['supplier', 'category', 'treasuryAccount'])->latest('id')->limit(10)->get(),
                 'overdue_invoices' => FinanceInvoice::query()
                     ->with('customer')
                     ->where('type', 'sales')
@@ -132,35 +132,99 @@ class DashboardService
     }
 
     /**
-     * @param  array<int, array{0:string,1:string,2:string}>  $filters
      * @return array<int, array{month:string,value:float}>
      */
-    private function monthlySeries(string $table, string $sumColumn, array $filters): array
+    private function monthlyIssuedInvoiceSeries(string $sumColumn, string $type): array
     {
         $workspaceId = $this->workspaceContext->workspaceId();
         if (! $workspaceId) {
             return [];
         }
 
-        $monthExpr = DB::getDriverName() === 'sqlite'
-            ? "strftime('%Y-%m', created_at)"
-            : "DATE_FORMAT(created_at, '%Y-%m')";
+        $dateColumn = Schema::hasColumn('finance_invoices', 'issue_date') ? 'issue_date' : 'created_at';
+        $monthExpr = $this->monthExpression($dateColumn);
 
-        $query = DB::table($table)
+        $query = DB::table('finance_invoices')
             ->selectRaw($monthExpr.' as month, SUM('.$sumColumn.') as value')
             ->where('workspace_id', $workspaceId)
-            ->whereDate('created_at', '>=', now()->subMonths(11)->startOfMonth()->toDateString());
+            ->where('type', $type)
+            ->whereDate($dateColumn, '>=', now()->subMonths(11)->startOfMonth()->toDateString());
 
-        foreach ($filters as $filter) {
-            $query->where($filter[0], $filter[1], $filter[2]);
+        if (Schema::hasColumn('finance_invoices', 'invoice_status')) {
+            $query->where('invoice_status', 'issued');
+        } else {
+            $query->whereNotIn('status', ['draft', 'cancelled']);
         }
 
-        $rows = $query
-            ->groupBy('month')
-            ->orderBy('month')
-            ->get();
+        if (Schema::hasColumn('finance_invoices', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
 
-        return $this->filledMonths($rows);
+        return $this->filledMonths(
+            $query->groupBy('month')->orderBy('month')->get()
+        );
+    }
+
+    /**
+     * @return array<int, array{month:string,value:float}>
+     */
+    private function monthlyPostedExpenseSeries(string $sumColumn): array
+    {
+        $workspaceId = $this->workspaceContext->workspaceId();
+        if (! $workspaceId) {
+            return [];
+        }
+
+        $dateColumn = Schema::hasColumn('finance_expenses', 'expense_date') ? 'expense_date' : 'created_at';
+        $monthExpr = $this->monthExpression($dateColumn);
+
+        $query = DB::table('finance_expenses')
+            ->selectRaw($monthExpr.' as month, SUM('.$sumColumn.') as value')
+            ->where('workspace_id', $workspaceId)
+            ->whereNotIn('status', ['draft', 'cancelled'])
+            ->whereDate($dateColumn, '>=', now()->subMonths(11)->startOfMonth()->toDateString());
+
+        return $this->filledMonths(
+            $query->groupBy('month')->orderBy('month')->get()
+        );
+    }
+
+    /**
+     * @return array<int, array{month:string,value:float}>
+     */
+    private function monthlyPostedPaymentSeries(): array
+    {
+        $workspaceId = $this->workspaceContext->workspaceId();
+        if (! $workspaceId) {
+            return [];
+        }
+
+        $dateColumn = Schema::hasColumn('finance_invoice_payments', 'payment_date') ? 'payment_date' : 'created_at';
+        $monthExpr = $this->monthExpression($dateColumn);
+
+        $query = DB::table('finance_invoice_payments')
+            ->selectRaw($monthExpr.' as month, SUM(amount) as value')
+            ->where('workspace_id', $workspaceId)
+            ->whereDate($dateColumn, '>=', now()->subMonths(11)->startOfMonth()->toDateString());
+
+        if (Schema::hasColumn('finance_invoice_payments', 'status')) {
+            $query->where(function ($inner): void {
+                $inner->where('status', FinanceInvoicePayment::STATUS_POSTED)
+                    ->orWhereNull('status')
+                    ->orWhere('status', '');
+            });
+        }
+
+        return $this->filledMonths(
+            $query->groupBy('month')->orderBy('month')->get()
+        );
+    }
+
+    private function monthExpression(string $column): string
+    {
+        return DB::getDriverName() === 'sqlite'
+            ? "strftime('%Y-%m', {$column})"
+            : "DATE_FORMAT({$column}, '%Y-%m')";
     }
 
     /**
@@ -168,11 +232,11 @@ class DashboardService
      */
     private function profitSeries(): array
     {
-        $sales = collect($this->monthlySeries('finance_invoices', 'taxable_amount', [['type', '=', 'sales']]))
+        $sales = collect($this->monthlyIssuedInvoiceSeries('taxable_amount', 'sales'))
             ->keyBy('month');
-        $purchases = collect($this->monthlySeries('finance_invoices', 'taxable_amount', [['type', '=', 'purchase']]))
+        $purchases = collect($this->monthlyIssuedInvoiceSeries('taxable_amount', 'purchase'))
             ->keyBy('month');
-        $expenses = collect($this->monthlySeries('finance_expenses', 'total', []))
+        $expenses = collect($this->monthlyPostedExpenseSeries('total'))
             ->keyBy('month');
 
         $months = $this->last12Months();
@@ -194,11 +258,11 @@ class DashboardService
      */
     private function vatSeries(): array
     {
-        $output = collect($this->monthlySeries('finance_invoices', 'tax_amount', [['type', '=', 'sales']]))
+        $output = collect($this->monthlyIssuedInvoiceSeries('tax_amount', 'sales'))
             ->keyBy('month');
-        $inputFromPurchase = collect($this->monthlySeries('finance_invoices', 'tax_amount', [['type', '=', 'purchase']]))
+        $inputFromPurchase = collect($this->monthlyIssuedInvoiceSeries('tax_amount', 'purchase'))
             ->keyBy('month');
-        $inputFromExpense = collect($this->monthlySeries('finance_expenses', 'tax_amount', []))
+        $inputFromExpense = collect($this->monthlyPostedExpenseSeries('tax_amount'))
             ->keyBy('month');
         $months = $this->last12Months();
 
@@ -218,8 +282,8 @@ class DashboardService
      */
     private function cashFlowSeries(): array
     {
-        $inflow = collect($this->monthlySeries('finance_invoice_payments', 'amount', []))->keyBy('month');
-        $outflow = collect($this->monthlySeries('finance_expenses', 'total', []))->keyBy('month');
+        $inflow = collect($this->monthlyPostedPaymentSeries())->keyBy('month');
+        $outflow = collect($this->monthlyPostedExpenseSeries('total'))->keyBy('month');
         $months = $this->last12Months();
 
         return collect($months)->map(function (string $month) use ($inflow, $outflow): array {

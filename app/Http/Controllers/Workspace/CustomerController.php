@@ -54,6 +54,10 @@ class CustomerController extends Controller
 
         $payload = $request->validated();
         $payload['metadata'] = $this->parseJsonField($request, 'metadata_json');
+        $payload['party_type'] = $payload['party_type'] ?? Customer::PARTY_TYPE_INDIVIDUAL;
+        if (! empty($payload['country_code'])) {
+            $payload['country_code'] = strtoupper((string) $payload['country_code']);
+        }
 
         Customer::query()->create($payload);
 
@@ -76,6 +80,9 @@ class CustomerController extends Controller
 
         $payload = $request->validated();
         $payload['metadata'] = $this->parseJsonField($request, 'metadata_json', $customer->metadata ?? []);
+        if (! empty($payload['country_code'])) {
+            $payload['country_code'] = strtoupper((string) $payload['country_code']);
+        }
         $customer->update($payload);
 
         return redirect()->route('workspace.customers.index')->with('success', 'تم تحديث العميل.');

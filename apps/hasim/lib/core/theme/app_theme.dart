@@ -20,7 +20,7 @@ class AppTheme {
       brightness: Brightness.light,
       colorScheme: scheme,
       textTheme: textTheme,
-      scaffoldBackgroundColor: const Color(0xFFF5FAF8),
+      scaffoldBackgroundColor: const Color(0xFFF3FCFA),
       appBarTheme: AppBarTheme(
         centerTitle: true,
         backgroundColor: Colors.white.withValues(alpha: 0.92),
@@ -54,10 +54,27 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        indicatorColor: base.withValues(alpha: 0.15),
-        labelTextStyle: WidgetStatePropertyAll(
-          GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        indicatorColor: base.withValues(alpha: 0.16),
+        indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            size: 24,
+            color: selected ? base : const Color(0xFF8A9A96),
+          );
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return GoogleFonts.cairo(
+            fontSize: 11,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? base : const Color(0xFF8A9A96),
+          );
+        }),
       ),
     );
   }
@@ -107,10 +124,25 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         indicatorColor: base.withValues(alpha: 0.22),
-        backgroundColor: const Color(0xFF111A18),
-        labelTextStyle: WidgetStatePropertyAll(
-          GoogleFonts.cairo(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
+        backgroundColor: const Color(0xFF15201D),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            size: 24,
+            color: selected ? base : const Color(0xFF8A9A96),
+          );
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return GoogleFonts.cairo(
+            fontSize: 11,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? base : const Color(0xFF8A9A96),
+          );
+        }),
       ),
     );
   }

@@ -754,4 +754,120 @@ void main() {
       );
     },
   );
+
+  test(
+    'closing then opening a new sitting hides completed cashier occupy orders',
+    () async {
+      await seedTable();
+      await tables.occupyFromCheckout(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableServerId: 4,
+        invoiceLocalId: 'inv-old-sit',
+        invoiceNumber: 'POS-00000003',
+        orderLocalId: 'ord-old-sit',
+        total: 90,
+        items: [
+          {
+            'item_name': 'قهوه كولد برو',
+            'quantity': 6,
+            'unit_price': 15,
+            'total_amount': 90,
+          },
+        ],
+      );
+      expect(itemNamesOnTable(await tables.getTable(1, 4)), ['قهوه كولد برو']);
+
+      await tables.closeSessionLocal(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableServerId: 4,
+      );
+      final reopened = await tables.openSessionLocal(
+        workspaceId: 1,
+        deviceId: 'dev-1',
+        tableServerId: 4,
+      );
+      expect(itemNamesOnTable(reopened), isEmpty);
+      expect(asMapList(reopened['orders']), isEmpty);
+      expect(asDoubleOr(reopened['total']), 0);
+    },
+  );
+
+  test(
+    'checkout occupy then a new session does not revive the paid SQLite order',
+    () async {
+      final auth = LocalAuthService(db);
+      final catalogShift = ShiftService(db);
+      final created = await auth.bootstrapStore(
+        storeName: 'متجر جلسة جديدة',
+        adminName: 'مدير',
+        username: 'admin-session',
+        pin: '1234',
+        taxRate: 0,
+      );
+      final ws = PosMode.standaloneWorkspaceId;
+      await seedTable(workspaceId: ws, tableId: 9, localId: 'table-9');
+      await db
+          .into(db.localProducts)
+          .insert(
+            LocalProductsCompanion.insert(
+              localId: 'prod-coffee',
+              workspaceId: ws,
+              name: 'قهوه بارده',
+              price: const Value(1500),
+              updatedAt: DateTime.now(),
+            ),
+          );
+      final shiftId = await catalogShift.open(
+        workspaceId: ws,
+        userId: created.user.localId,
+        openingCash: 100,
+        permissions: LocalAuthService.adminPermissions,
+      );
+      final checkout = CheckoutService(
+        db,
+        StockEngine(db),
+        DocumentNumberService(db),
+        queue,
+        tables: tables,
+      );
+      await checkout.execute(
+        CheckoutCommand(
+          workspaceId: ws,
+          deviceId: 'dev-1',
+          storeId: created.store.localId,
+          clientReference: 'sale-old-sit',
+          orderType: 'table',
+          tableLocalId: 'table-9',
+          tableServerId: 9,
+          shiftLocalId: shiftId,
+          permissions: LocalAuthService.adminPermissions,
+          lines: const [
+            PricedLine(
+              productLocalId: 'prod-coffee',
+              name: 'قهوه بارده',
+              quantity: 1,
+              unitPrice: 15,
+            ),
+          ],
+          payments: const [PaymentTender(method: 'cash', amount: 15)],
+        ),
+      );
+      expect(itemNamesOnTable(await tables.getTable(ws, 9)), ['قهوه بارده']);
+
+      await tables.closeSessionLocal(
+        workspaceId: ws,
+        deviceId: 'dev-1',
+        tableServerId: 9,
+      );
+      final reopened = await tables.openSessionLocal(
+        workspaceId: ws,
+        deviceId: 'dev-1',
+        tableServerId: 9,
+      );
+      expect(itemNamesOnTable(reopened), isEmpty);
+      expect(asMapList(reopened['orders']), isEmpty);
+    },
+  );
 }

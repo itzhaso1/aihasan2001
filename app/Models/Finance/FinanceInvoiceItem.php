@@ -17,6 +17,8 @@ use RuntimeException;
     'product_name',
     'description',
     'quantity',
+    'unit_code',
+    'unit',
     'unit_price',
     'discount',
     'tax_profile_type',
@@ -86,5 +88,35 @@ class FinanceInvoiceItem extends WorkspaceScopedModel
     {
         return Schema::hasColumn('finance_invoice_items', 'exemption_reason')
             && Schema::hasColumn('finance_invoice_items', 'exemption_code');
+    }
+
+    public static function hasUnitColumn(): bool
+    {
+        return Schema::hasColumn('finance_invoice_items', 'unit');
+    }
+
+    public static function hasUnitCodeColumn(): bool
+    {
+        return Schema::hasColumn('finance_invoice_items', 'unit_code');
+    }
+
+    public function lineTitle(): string
+    {
+        $name = trim((string) $this->product_name);
+        if ($name !== '') {
+            return $name;
+        }
+
+        return trim((string) $this->description);
+    }
+
+    public function displayUnit(): string
+    {
+        $unit = trim((string) ($this->unit ?? ''));
+        if ($unit !== '') {
+            return $unit;
+        }
+
+        return trim((string) ($this->unit_code ?? ''));
     }
 }

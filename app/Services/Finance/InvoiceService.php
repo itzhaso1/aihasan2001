@@ -12,6 +12,7 @@ use App\Models\Finance\FinanceSetting;
 use App\Models\Finance\FinanceSupplier;
 use App\Models\Product;
 use App\Models\Workspace;
+use App\Services\EInvoicing\InvoiceIssueService;
 use App\Services\Finance\Tax\TaxCalculationResult;
 use App\Services\Finance\Tax\TaxCalculationService;
 use App\Support\Money\Money;
@@ -31,6 +32,8 @@ class InvoiceService
         private readonly InvoiceStateService $invoiceStateService,
         private readonly FinancialPeriodGuardService $financialPeriodGuardService,
         private readonly InventoryAccountingService $inventoryAccountingService,
+        private readonly IssuedSnapshotBuilder $issuedSnapshotBuilder,
+        private readonly InvoiceIssueService $invoiceIssueService,
     ) {}
 
     /**
@@ -146,6 +149,10 @@ class InvoiceService
                 'notes' => ($payload['notes'] ?? null) ?: null,
                 'created_by' => $actorUserId,
             ];
+
+            if (Schema::hasColumn('finance_invoices', 'supply_date')) {
+                $attributes['supply_date'] = $this->nullableDate($payload['supply_date'] ?? null);
+            }
 
             if (FinanceInvoice::hasClassificationColumns()) {
                 $attributes['tax_document_subtype'] = $classification->taxDocumentSubtype->value;
@@ -337,6 +344,10 @@ class InvoiceService
                 'notes' => ($payload['notes'] ?? null) ?: null,
             ];
 
+            if (Schema::hasColumn('finance_invoices', 'supply_date') && array_key_exists('supply_date', $payload)) {
+                $updates['supply_date'] = $this->nullableDate($payload['supply_date']);
+            }
+
             if (FinanceInvoice::hasSnapshotColumns()) {
                 $updates['company_snapshot'] = $snapshots['company'];
                 $updates['recipient_snapshot'] = $snapshots['recipient'];
@@ -393,7 +404,10 @@ class InvoiceService
                 ?? $this->invoiceStateService->resolveInvoiceStatus($locked->status);
 
             if ($currentInvoiceStatus === 'issued') {
-                return $locked;
+                $issued = $locked->fresh(['items', 'customer', 'supplier', 'attachments', 'contract']);
+                $this->connectIssuedInvoice($issued);
+
+                return $issued;
             }
             if ($currentInvoiceStatus === 'cancelled') {
                 throw new RuntimeException('لا يمكن إصدار فاتورة ملغاة.');
@@ -465,7 +479,32 @@ class InvoiceService
 
             $this->postInvoiceEntry($locked->fresh(), $actorUserId, $skipInventory);
 
-            return $locked->fresh(['items', 'customer', 'supplier', 'attachments']);
+            $issued = $locked->fresh(['items', 'customer', 'supplier', 'attachments', 'contract']);
+            $this->connectIssuedInvoice($issued);
+
+            return $issued;
+        });
+    }
+
+    private function connectIssuedInvoice(FinanceInvoice $invoice): void
+    {
+        $snapshot = $this->issuedSnapshotBuilder->captureInvoice($invoice);
+        $this->invoiceIssueService->prepareFromSnapshot($snapshot);
+    }
+
+    public function deleteDraft(FinanceInvoice $invoice): void
+    {
+        DB::transaction(function () use ($invoice): void {
+            $locked = FinanceInvoice::withoutGlobalScopes()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($locked->isFinanciallyLocked()) {
+                throw new RuntimeException('لا يمكن حذف فاتورة معتمدة أو ملغاة. استخدم الإلغاء أو إشعار دائن.');
+            }
+
+            $locked->delete();
         });
     }
 
@@ -533,6 +572,8 @@ class InvoiceService
                 'total' => $line->total,
                 'exemption_reason' => $line->exemptionReason,
                 'exemption_code' => $line->exemptionCode,
+                'unit_code' => $source['unit_code'] ?? null,
+                'unit' => $source['unit'] ?? null,
                 'metadata' => $source['metadata'],
             ];
         }
@@ -554,15 +595,26 @@ class InvoiceService
             }
 
             $productName = trim((string) ($rawItem['product_name'] ?? ''));
+            $description = trim((string) ($rawItem['description'] ?? ''));
             $quantity = (float) ($rawItem['quantity'] ?? 0);
             $unitPrice = (float) ($rawItem['unit_price'] ?? 0);
             $discount = (float) ($rawItem['discount'] ?? 0);
+            $unit = $this->nullableDisplayUnit($rawItem['unit'] ?? null);
 
-            if ($productName === '' && $quantity <= 0 && $unitPrice <= 0) {
+            if ($productName === '' && $description === '' && $quantity <= 0 && $unitPrice <= 0) {
                 continue;
             }
 
-            $productId = isset($rawItem['product_id']) ? (int) $rawItem['product_id'] : null;
+            if ($productName === '' && $description !== '') {
+                $productName = $description;
+            }
+
+            if ($productName === '') {
+                throw new RuntimeException('يجب إدخال وصف أو اسم للبند.');
+            }
+
+            $productId = isset($rawItem['product_id']) ? (int) $rawItem['product_id'] : 0;
+            $productId = $productId > 0 ? $productId : null;
             if ($productId) {
                 $validProduct = Product::withoutGlobalScopes()
                     ->where('workspace_id', $workspaceId)
@@ -576,7 +628,7 @@ class InvoiceService
             $line = [
                 'product_id' => $productId,
                 'product_name' => $productName,
-                'description' => $rawItem['description'] ?? null,
+                'description' => $description !== '' ? $description : null,
                 'quantity' => $quantity,
                 'unit_price' => $unitPrice,
                 'discount' => $discount,
@@ -584,6 +636,8 @@ class InvoiceService
                 'tax_profile_type' => $rawItem['tax_profile_type'] ?? $rawItem['tax_type'] ?? null,
                 'exemption_reason' => $rawItem['exemption_reason'] ?? null,
                 'exemption_code' => $rawItem['exemption_code'] ?? null,
+                'unit_code' => $this->nullableCode($rawItem['unit_code'] ?? null),
+                'unit' => $unit,
                 'metadata' => is_array($rawItem['metadata'] ?? null) ? $rawItem['metadata'] : null,
             ];
 
@@ -951,6 +1005,14 @@ class InvoiceService
             $attributes['exemption_code'] = $item['exemption_code'] ?? null;
         }
 
+        if (FinanceInvoiceItem::hasUnitCodeColumn()) {
+            $attributes['unit_code'] = $this->nullableCode($item['unit_code'] ?? null);
+        }
+
+        if (FinanceInvoiceItem::hasUnitColumn()) {
+            $attributes['unit'] = $item['unit'] ?? null;
+        }
+
         FinanceInvoiceItem::withoutGlobalScopes()->create($attributes);
     }
 
@@ -1030,6 +1092,36 @@ class InvoiceService
         return Money::round($value);
     }
 
+    private function nullableDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (string) $value;
+    }
+
+    private function nullableCode(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $code = is_string($value) || is_numeric($value) ? (string) $value : null;
+
+        return $code === '' ? null : $code;
+    }
+
+    private function nullableDisplayUnit(mixed $value): ?string
+    {
+        $unit = trim((string) ($value ?? ''));
+        if ($unit === '') {
+            return null;
+        }
+
+        return mb_substr($unit, 0, 32);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -1086,6 +1178,13 @@ class InvoiceService
             'vat_number' => $customer?->vat_number,
             'commercial_registration' => $customer?->commercial_registration,
             'address' => $customer?->address,
+            'building_number' => $customer?->building_number,
+            'street' => $customer?->street,
+            'district' => $customer?->district,
+            'city' => $customer?->city,
+            'postal_code' => $customer?->postal_code,
+            'country_code' => $customer?->country_code,
+            'additional_number' => $customer?->additional_number,
             'phone' => $customer?->phone,
             'email' => $customer?->email,
             'payment_terms' => $customer?->payment_terms,

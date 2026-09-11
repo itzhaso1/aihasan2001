@@ -6,10 +6,12 @@ import '../core/auth/auth_controller.dart';
 import '../core/config/app_config.dart';
 import '../core/theme/hasim_colors.dart';
 import '../core/theme/hasim_theme.dart';
+import '../core/widgets/hasim_brand_logo.dart';
+import '../features/auth/local_unlock_pin_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/pin_login_screen.dart';
 import '../features/auth/pos_blocked_screen.dart';
-import '../features/auth/standalone_setup_screen.dart';
+import '../features/auth/workspace_picker_screen.dart';
 import '../features/home/shell_screen.dart';
 import '../features/kitchen/kitchen_station_screen.dart';
 import '../features/reports/reports_station_screen.dart';
@@ -32,32 +34,50 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final blocked = state.matchedLocation == '/pos-blocked';
       final kitchen = state.matchedLocation == '/kitchen';
       final reports = state.matchedLocation == '/reports';
+      final workspacesRoute = state.matchedLocation == '/workspaces';
+      final localPin = state.matchedLocation == '/local-unlock-pin';
 
-      // Offline-only: cloud auth routes are dead ends.
-      if (AppConfig.offlineOnly) {
-        final cloud = state.matchedLocation == '/forgot-password' ||
-            state.matchedLocation == '/reset-password' ||
-            state.matchedLocation == '/workspaces';
-        if (cloud) return '/login';
-      }
+      if (setup) return loggingIn ? null : '/login';
 
       if (auth.isLoading) {
         return splash ? null : '/splash';
       }
 
       final session = auth.valueOrNull;
+      if (session?.isCloudSetup == true) {
+        if (session!.needsLocalUnlockPin) {
+          return localPin ? null : '/local-unlock-pin';
+        }
+        if (workspacesRoute || blocked) return null;
+        return '/workspaces';
+      }
+
+      // Offline-only: cloud auth routes are dead ends except during setup.
+      if (AppConfig.offlineOnly) {
+        final cloud =
+            state.matchedLocation == '/forgot-password' ||
+            state.matchedLocation == '/reset-password' ||
+            workspacesRoute;
+        if (cloud) return '/login';
+      }
+
       if (session == null) {
-        if (loggingIn || pin || setup || kitchen || reports) return null;
+        if (loggingIn || pin || kitchen || reports || localPin) {
+          return null;
+        }
         return '/login';
       }
 
       if (AppConfig.offlineOnly) {
-        if (loggingIn || splash || pin || setup || blocked) {
+        if (loggingIn || splash || pin || blocked || localPin) {
           return session.landingRoute;
         }
         if (state.matchedLocation == '/home' &&
             !session.canUsePos &&
             session.landingRoute != '/home') {
+          return session.landingRoute;
+        }
+        if (reports && !session.canViewReports) {
           return session.landingRoute;
         }
         return null;
@@ -66,21 +86,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final needsPick =
           session.workspace == null && session.workspaces.length > 1;
       if (needsPick) {
-        return state.matchedLocation == '/workspaces' ? null : '/workspaces';
+        return workspacesRoute ? null : '/workspaces';
       }
 
-      if (loggingIn || splash || pin || setup) {
+      if (loggingIn || splash || pin) {
         return '/home';
+      }
+      if (reports && !session.canViewReports) {
+        return session.landingRoute;
       }
       return null;
     },
     routes: [
       GoRoute(path: '/splash', builder: (_, __) => const _Splash()),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/pin', builder: (_, __) => const PinLoginScreen()),
       GoRoute(
-        path: '/standalone-setup',
-        builder: (_, __) => const StandaloneSetupScreen(),
+        path: '/local-unlock-pin',
+        builder: (_, __) => const LocalUnlockPinScreen(),
+      ),
+      GoRoute(path: '/pin', builder: (_, __) => const PinLoginScreen()),
+      GoRoute(path: '/standalone-setup', redirect: (_, __) => '/login'),
+      GoRoute(
+        path: '/workspaces',
+        builder: (_, __) => const WorkspacePickerScreen(),
       ),
       GoRoute(
         path: '/pos-blocked',
@@ -125,37 +153,13 @@ class _Splash extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 88,
-                height: 88,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: HasimColors.border),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x1406C2A4),
-                      blurRadius: 24,
-                      offset: Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: const Text(
-                  'ح',
-                  style: TextStyle(
-                    fontSize: 42,
-                    fontWeight: FontWeight.w900,
-                    color: HasimColors.brand,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
+              const HasimBrandLogo(width: 220),
+              const SizedBox(height: 12),
               const Text(
                 'كاشير حاسم',
                 style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
                   color: HasimColors.ink,
                 ),
               ),

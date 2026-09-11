@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -358,6 +359,27 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
               .createCategory(
                 workspaceId: workspaceId,
                 name: payload['name'] as String,
+                sortOrder: asIntOr(payload['sort_order']),
+                isActive: payload['is_active'] != false,
+                permissions: session?.permissions ?? _perms,
+              );
+        } else {
+          final localId = '${existing['local_id'] ?? ''}';
+          if (localId.isEmpty) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('تعذر تحديد التصنيف المحلي.')),
+            );
+            return;
+          }
+          await ref
+              .read(catalogAdminServiceProvider)
+              .updateCategory(
+                workspaceId: workspaceId,
+                localId: localId,
+                name: payload['name'] as String,
+                sortOrder: asIntOr(payload['sort_order']),
+                isActive: payload['is_active'] != false,
                 permissions: session?.permissions ?? _perms,
               );
         }
@@ -401,20 +423,44 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
     );
     if (ok != true) return;
     try {
-      await ref
-          .read(cashierApiProvider)
-          .delete('/catalog/categories/${category['id']}');
-      await _load();
+      final session = ref.read(authControllerProvider).valueOrNull;
+      final workspaceId = ref.read(workspaceIdProvider);
+      final localId = '${category['local_id'] ?? ''}';
+      if (workspaceId != null && localId.isNotEmpty) {
+        await ref
+            .read(catalogAdminServiceProvider)
+            .deleteCategory(
+              workspaceId: workspaceId,
+              localId: localId,
+              permissions: session?.permissions ?? _perms,
+            );
+        await _load();
+        return;
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر تحديد التصنيف المحلي للحذف.')),
+      );
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(catalogRevisionProvider, (prev, next) {
+      if (prev != next) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_load());
+        });
+      }
+    });
     final perms = CashierPermissions.resolve(
       ref.watch(cashierPermissionsProvider),
       ref.watch(authControllerProvider).valueOrNull?.permissions,
@@ -439,23 +485,14 @@ class _ItemsAdminPanelState extends ConsumerState<ItemsAdminPanel> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'إدارة الأصناف',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-                ),
-              ),
-            ],
+          HsPageHeader(
+            icon: Icons.category_outlined,
+            title: 'التصنيفات',
+            subtitle: canManage
+                ? 'إدارة التصنيفات والمنتجات المعروضة في الكاشير.'
+                : 'عرض فقط — تحتاج صلاحية menu.manage للتعديل.',
           ),
-          if (!canManage) ...[
-            const SizedBox(height: 8),
-            const Text(
-              'عرض فقط — تحتاج صلاحية menu.manage للتعديل.',
-              style: TextStyle(fontSize: 12, color: HasimColors.muted),
-            ),
-          ] else ...[
+          if (canManage) ...[
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,

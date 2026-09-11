@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -393,10 +395,7 @@ class _OrdersListState extends ConsumerState<OrdersList> {
           ),
           Text(
             'الوقت: ${order['placed_at'] ?? order['created_at'] ?? '—'} · المصدر: ${(order['source'] as String?)?.toUpperCase() ?? '—'}',
-            style: const TextStyle(
-              fontSize: 11,
-              color: HasimColors.muted,
-            ),
+            style: const TextStyle(fontSize: 11, color: HasimColors.muted),
           ),
           if (items.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -416,10 +415,7 @@ class _OrdersListState extends ConsumerState<OrdersList> {
             const SizedBox(height: 6),
             Text(
               'ملاحظات: ${order['notes']}',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ],
           const SizedBox(height: 10),
@@ -435,9 +431,7 @@ class _OrdersListState extends ConsumerState<OrdersList> {
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       isExpanded: true,
-                      value: _statusOptions.contains(current)
-                          ? current
-                          : 'new',
+                      value: _statusOptions.contains(current) ? current : 'new',
                       items: [
                         for (final s in _statusOptions)
                           DropdownMenuItem(
@@ -495,6 +489,13 @@ class _OrdersListState extends ConsumerState<OrdersList> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(ordersRevisionProvider, (prev, next) {
+      if (prev != next) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_load());
+        });
+      }
+    });
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -519,9 +520,10 @@ class _OrdersListState extends ConsumerState<OrdersList> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'طلبات POS / QR الجارية',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+              HsPageHeader(
+                icon: Icons.receipt_long_outlined,
+                title: 'طلبات POS / QR الجارية',
+                subtitle: 'متابعة الطلبات المفتوحة وتحديث حالتها من هنا.',
               ),
               const SizedBox(height: 8),
               TextField(
@@ -529,8 +531,14 @@ class _OrdersListState extends ConsumerState<OrdersList> {
                 onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
                   hintText: 'ابحث برقم الطلب / الطاولة / العميل…',
+                  hintMaxLines: 1,
                   isDense: true,
                   prefixIcon: Icon(Icons.search, size: 18),
+                  prefixIconConstraints: BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 32,
+                    maxWidth: 36,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),

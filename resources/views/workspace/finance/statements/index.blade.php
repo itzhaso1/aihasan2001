@@ -33,6 +33,7 @@
         @if($statement)
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('workspace.finance.statements.show', ['customer_id' => $statement['customer']->id, 'from' => $statement['from'], 'to' => $statement['to'], 'pdf' => 1]) }}" class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">PDF</a>
+                <a href="{{ route('workspace.finance.statements.show', ['customer_id' => $statement['customer']->id, 'from' => $statement['from'], 'to' => $statement['to'], 'csv' => 1]) }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">CSV</a>
                 <button type="button" onclick="window.print()" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">طباعة</button>
             </div>
 

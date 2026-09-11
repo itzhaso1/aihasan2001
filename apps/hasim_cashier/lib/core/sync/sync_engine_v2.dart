@@ -8,7 +8,9 @@ import '../local_db/app_database.dart';
 import '../pos/domain/pricing_service.dart';
 import '../local_db/workspace_scope.dart';
 import '../repositories/sync_queue_repository.dart';
+import '../repositories/sync_conflict_repository.dart';
 import 'sync_pull_applier.dart';
+import 'sync_queue_classifier.dart';
 
 /// Sync Engine v2 — push SQLite sync_queue, then pull incremental changes.
 /// Primary POS sync path (Hive outbox is legacy migration only).
@@ -21,43 +23,48 @@ class SyncEngineV2 {
     Future<Map<String, dynamic>> Function(
       Map<String, dynamic> payload,
       String idempotencyKey,
-    )? postOrder,
+    )?
+    postOrder,
     Future<Map<String, dynamic>> Function(
       int serverOrderId,
       Map<String, dynamic> payload,
-    )? postOrderItems,
+    )?
+    postOrderItems,
     Future<void> Function(int serverOrderId)? deleteOrder,
     Future<Map<String, dynamic>> Function(int since, int limit)? fetchChanges,
     Future<Map<String, dynamic>> Function(
       int tableServerId,
       String idempotencyKey,
-    )? postSessionOpen,
+    )?
+    postSessionOpen,
     Future<Map<String, dynamic>> Function(
       int tableServerId,
       int sessionServerId,
       Map<String, dynamic> payload,
       String idempotencyKey,
-    )? postSessionClose,
+    )?
+    postSessionClose,
     Future<Map<String, dynamic>> Function(
       int orderServerId,
       String idempotencyKey,
-    )? postInvoice,
+    )?
+    postInvoice,
     Future<Map<String, dynamic>> Function(int tableServerId)? getTable,
     Future<Map<String, dynamic>> Function(Map<String, dynamic> body)?
-        postPushBatch,
+    postPushBatch,
     Future<Map<String, dynamic>> Function(Map<String, dynamic> body)? postPull,
-  })  : _api = api,
-        _pullApplier = pullApplier ?? SyncPullApplier(_db),
-        _postOrder = postOrder,
-        _postOrderItems = postOrderItems,
-        _deleteOrder = deleteOrder,
-        _fetchChanges = fetchChanges,
-        _postSessionOpen = postSessionOpen,
-        _postSessionClose = postSessionClose,
-        _postInvoice = postInvoice,
-        _getTable = getTable,
-        _postPushBatch = postPushBatch,
-        _postPull = postPull;
+  }) : _api = api,
+       _pullApplier = pullApplier ?? SyncPullApplier(_db),
+       _postOrder = postOrder,
+       _postOrderItems = postOrderItems,
+       _deleteOrder = deleteOrder,
+       _fetchChanges = fetchChanges,
+       _postSessionOpen = postSessionOpen,
+       _postSessionClose = postSessionClose,
+       _postInvoice = postInvoice,
+       _getTable = getTable,
+       _postPushBatch = postPushBatch,
+       _postPull = postPull;
 
   final AppDatabase _db;
   final SyncQueueRepository _queue;
@@ -66,39 +73,46 @@ class SyncEngineV2 {
   final Future<Map<String, dynamic>> Function(
     Map<String, dynamic> payload,
     String idempotencyKey,
-  )? _postOrder;
+  )?
+  _postOrder;
   final Future<Map<String, dynamic>> Function(
     int serverOrderId,
     Map<String, dynamic> payload,
-  )? _postOrderItems;
+  )?
+  _postOrderItems;
   final Future<void> Function(int serverOrderId)? _deleteOrder;
   final Future<Map<String, dynamic>> Function(int since, int limit)?
-      _fetchChanges;
+  _fetchChanges;
   final Future<Map<String, dynamic>> Function(
     int tableServerId,
     String idempotencyKey,
-  )? _postSessionOpen;
+  )?
+  _postSessionOpen;
   final Future<Map<String, dynamic>> Function(
     int tableServerId,
     int sessionServerId,
     Map<String, dynamic> payload,
     String idempotencyKey,
-  )? _postSessionClose;
+  )?
+  _postSessionClose;
   final Future<Map<String, dynamic>> Function(
     int orderServerId,
     String idempotencyKey,
-  )? _postInvoice;
+  )?
+  _postInvoice;
   final Future<Map<String, dynamic>> Function(int tableServerId)? _getTable;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> body)?
-      _postPushBatch;
+  _postPushBatch;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> body)?
-      _postPull;
+  _postPull;
 
   var _flushing = false;
   bool get isFlushing => _flushing;
 
   /// Push pending local ops, then pull server deltas. Pull failure never
-  /// drops the local sync_queue or pending orders.
+  /// drops the local sync_queue or pending orders. A second push after pull
+  /// drains ops that were enqueued while the first cycle was already running
+  /// (first invoice / first table close after startup).
   Future<SyncEngineV2Result> syncBidirectional({
     required int workspaceId,
     String? deviceId,
@@ -109,15 +123,28 @@ class SyncEngineV2 {
         workspaceId: workspaceId,
         deviceId: deviceId,
       );
+      final catchUp = await pushPending(workspaceId: workspaceId);
+      return SyncEngineV2Result(
+        synced: push.synced + catchUp.synced,
+        failed: push.failed + catchUp.failed,
+        keptPending: catchUp.keptPending,
+        authRequired: push.authRequired || pull.authRequired || catchUp.authRequired,
+        skippedInFlight: push.skippedInFlight && catchUp.skippedInFlight,
+        pulled: pull.pulled,
+        cursor: pull.cursor,
+        pullFailed: pull.pullFailed,
+      );
+    } on ApiException catch (e) {
+      // Keep pending local ops + existing cursor intact.
       return SyncEngineV2Result(
         synced: push.synced,
         failed: push.failed,
         keptPending: push.keptPending,
-        authRequired: push.authRequired || pull.authRequired,
+        authRequired: push.authRequired || e.isUnauthorized,
         skippedInFlight: push.skippedInFlight,
-        pulled: pull.pulled,
-        cursor: pull.cursor,
-        pullFailed: pull.pullFailed,
+        pullFailed: true,
+        networkError: e.isNetwork || e.isUnavailable,
+        pullError: e.message,
       );
     } catch (e) {
       // Keep pending local ops + existing cursor intact.
@@ -140,7 +167,8 @@ class SyncEngineV2 {
     String? deviceId,
   }) async {
     final data = await _loadChanges(since: 0, limit: 0, deviceId: deviceId);
-    final serverCursor = (data['server_cursor'] as num?)?.toInt() ??
+    final serverCursor =
+        (data['server_cursor'] as num?)?.toInt() ??
         (data['cursor'] as num?)?.toInt() ??
         0;
     await _db.writeCursor(workspaceId, '$serverCursor', deviceId: deviceId);
@@ -219,7 +247,8 @@ class SyncEngineV2 {
         }
       }
       final rows = await _queue.pendingForWorkspace(workspaceId);
-      final ordered = [...rows]..sort((a, b) {
+      final ordered = [...rows]
+        ..sort((a, b) {
           final pa = _pushPriority(a);
           final pb = _pushPriority(b);
           if (pa != pb) return pa.compareTo(pb);
@@ -237,17 +266,29 @@ class SyncEngineV2 {
           kept++;
           continue;
         }
-        final supported = row.entityType == 'order' ||
+        final supported =
+            row.entityType == 'order' ||
             row.entityType == 'customer' ||
-            row.entityType == 'table_session' ||
-            row.entityType == 'invoice';
+            row.entityType == 'invoice' ||
+            (row.entityType == 'table_session' && _hasRowInjectors);
         if (!supported) {
           kept++;
           continue;
         }
 
         // Close / takeaway invoice wait until dependent orders are pushed.
+        if (row.entityType == 'order' &&
+            row.operation == 'create' &&
+            !_hasRowInjectors &&
+            !await _saleCreateReady(row)) {
+          kept++;
+          continue;
+        }
         if (row.entityType == 'table_session' && row.operation == 'close') {
+          if (await _hasPendingSessionOpen(row)) {
+            kept++;
+            continue;
+          }
           final payload = _decode(row.payloadJson);
           final tableId = (payload['table_server_id'] as num?)?.toInt();
           if (tableId != null &&
@@ -391,6 +432,16 @@ class SyncEngineV2 {
     }
     if (row.entityType == 'customer') return 'customer.created';
     if (row.entityType == 'invoice') return 'invoice.created';
+    if (row.entityType == 'category' ||
+        row.entityType == 'product' ||
+        row.entityType == 'table') {
+      return switch (row.operation) {
+        'create' => '${row.entityType}.created',
+        'update' => '${row.entityType}.updated',
+        'delete' => '${row.entityType}.deleted',
+        _ => '${row.entityType}.${row.operation}',
+      };
+    }
     if (row.entityType == 'table_session') {
       return 'table_session.${row.operation}';
     }
@@ -400,16 +451,20 @@ class SyncEngineV2 {
     return '${row.entityType}.${row.operation}';
   }
 
-  Future<({SyncEngineV2Result result, bool fellBackToRow, int synced, int failed})>
-      _pushPendingBatch(int workspaceId) async {
+  Future<
+    ({SyncEngineV2Result result, bool fellBackToRow, int synced, int failed})
+  >
+  _pushPendingBatch(int workspaceId) async {
     var synced = 0;
     var failed = 0;
     var kept = 0;
     var authRequired = false;
+    synced += await _reconcileAlreadyApplied(workspaceId);
 
     for (var round = 0; round < 6; round++) {
       final rows = await _queue.pendingForWorkspace(workspaceId);
-      final ordered = [...rows]..sort((a, b) {
+      final ordered = [...rows]
+        ..sort((a, b) {
           final pa = _pushPriority(a);
           final pb = _pushPriority(b);
           if (pa != pb) return pa.compareTo(pb);
@@ -446,15 +501,15 @@ class SyncEngineV2 {
         );
         sentAny = true;
         final deviceId = chunk.first.deviceId;
-        final operations = [
-          for (final row in chunk)
-            {
-              'id': _operationUuid(row),
-              'type': _operationType(row),
-              'created_at': row.createdAt.toUtc().toIso8601String(),
-              'data': _decode(row.payloadJson),
-            },
-        ];
+        final operations = <Map<String, dynamic>>[];
+        for (final row in chunk) {
+          operations.add({
+            'id': _operationUuid(row),
+            'type': _operationType(row),
+            'created_at': row.createdAt.toUtc().toIso8601String(),
+            'data': await _pushData(row),
+          });
+        }
         for (final row in chunk) {
           await _queue.markSyncing(row.id);
         }
@@ -519,6 +574,16 @@ class SyncEngineV2 {
             kept += chunk.length;
             break;
           }
+          if (e.statusCode == 403) {
+            for (final row in chunk) {
+              await _queue.markFailed(row.id, e.message, retryable: false);
+              if (row.entityType == 'order') {
+                await _markOrderFailed(row.entityId, e.message);
+              }
+            }
+            failed += chunk.length;
+            break;
+          }
           for (final row in chunk) {
             await _queue.markFailed(row.id, e.message, retryable: true);
           }
@@ -546,36 +611,431 @@ class SyncEngineV2 {
     );
   }
 
-  Future<bool> _rowReadyForPush(SyncQueueItem row) async {
-    final supported = row.entityType == 'order' ||
-        row.entityType == 'customer' ||
-        row.entityType == 'table_session' ||
-        row.entityType == 'invoice' ||
-        row.entityType == 'stock' ||
-        row.entityType == 'stock_movement';
-    if (!supported) return false;
-    if (row.entityType == 'table_session' && row.operation == 'close') {
-      final payload = _decode(row.payloadJson);
-      final tableId = (payload['table_server_id'] as num?)?.toInt();
-      if (tableId != null &&
-          await _hasUnsyncedOrdersForTable(row.workspaceId, tableId)) {
-        return false;
-      }
+  Future<int> _reconcileAlreadyApplied(int workspaceId) async {
+    final classifier = SyncQueueClassifier(_db);
+    final items = await classifier.classifyWorkspace(workspaceId);
+    var marked = 0;
+    for (final item in items) {
+      if (item.bucket != SyncQueueBucket.alreadyApplied) continue;
+      await _queue.markSynced(item.row.id);
+      marked++;
     }
-    if (row.entityType == 'table_session' &&
-        _isSessionAction(row.operation) &&
-        !await _sessionActionReady(row)) {
-      return false;
+    return marked;
+  }
+
+  Future<bool> _rowReadyForPush(SyncQueueItem row) async {
+    // Scoped batch: kitchen/sale orders + invoices + menu + table master
+    // + table sessions. Sale stock.movement stays out (alreadyApplied).
+    if (!_isScopedBatchOp(row)) return false;
+    if (row.entityType == 'table_session') {
+      if (row.operation == 'close') {
+        if (await _hasPendingSessionOpen(row)) {
+          return false;
+        }
+        final payload = _decode(row.payloadJson);
+        final tableId = (payload['table_server_id'] as num?)?.toInt();
+        if (tableId != null &&
+            await _hasUnsyncedOrdersForTable(row.workspaceId, tableId)) {
+          return false;
+        }
+      }
+      if (_isSessionAction(row.operation)) {
+        return _sessionActionReady(row);
+      }
+      return true;
+    }
+    if (row.entityType == 'stock' || row.entityType == 'stock_movement') {
+      return true;
+    }
+    if (row.entityType == 'order' && row.operation == 'update') {
+      return _kitchenStatusReady(row);
+    }
+    if (row.entityType == 'order') {
+      return _saleCreateReady(row);
+    }
+    if (row.entityType == 'invoice') {
+      return _saleInvoiceReady(row);
+    }
+    if (row.entityType == 'product') {
+      return _productReady(row);
+    }
+    if (row.entityType == 'category' && row.operation != 'create') {
+      return _catalogHasServerId('category', row);
+    }
+    if (row.entityType == 'table' && row.operation != 'create') {
+      return _tableMasterReady(row);
+    }
+    return true;
+  }
+
+  bool _isScopedBatchOp(SyncQueueItem row) {
+    if (row.entityType == 'customer' && row.operation == 'create') {
+      return true;
+    }
+    if (row.entityType == 'order' && row.operation == 'create') {
+      return SyncQueueClassifier.saleTypes.contains(
+        SyncQueueClassifier.saleTypeOf(row),
+      );
+    }
+    if (row.entityType == 'order' && row.operation == 'update') {
+      return SyncQueueClassifier.isKitchenStatusOp(row);
     }
     if (row.entityType == 'invoice' && row.operation == 'create') {
-      final payload = _decode(row.payloadJson);
-      final orderLocalId = '${payload['order_local_id'] ?? ''}';
-      if (orderLocalId.isNotEmpty &&
-          await _orderNeedsServerId(row.workspaceId, orderLocalId)) {
-        return false;
+      final type = SyncQueueClassifier.saleTypeOf(row);
+      return type == null || SyncQueueClassifier.saleTypes.contains(type);
+    }
+    if (SyncQueueClassifier.menuTypes.contains(row.entityType) &&
+        (row.operation == 'create' ||
+            row.operation == 'update' ||
+            row.operation == 'delete')) {
+      return true;
+    }
+    if (row.entityType == SyncQueueClassifier.tableMasterType &&
+        (row.operation == 'create' ||
+            row.operation == 'update' ||
+            row.operation == 'delete')) {
+      return true;
+    }
+    if (row.entityType == 'table_session') {
+      return row.operation == 'open' ||
+          row.operation == 'close' ||
+          row.operation == 'cancel' ||
+          row.operation == 'note' ||
+          row.operation == 'discount' ||
+          row.operation == 'transfer' ||
+          row.operation == 'merge' ||
+          row.operation == 'split';
+    }
+    if (row.entityType == 'stock' || row.entityType == 'stock_movement') {
+      final payload = SyncQueueClassifier.decodePayload(row.payloadJson);
+      final kind =
+          '${payload['kind'] ?? payload['type'] ?? ''}'.trim().toLowerCase();
+      return kind.isNotEmpty && kind != 'sale' && kind != 'remove';
+    }
+    return false;
+  }
+
+  Future<bool> _kitchenStatusReady(SyncQueueItem row) async {
+    if (!SyncQueueClassifier.isKitchenStatusOp(row)) return false;
+    final payload = await _pushData(row);
+    final serverId = (payload['order_server_id'] as num?)?.toInt() ??
+        (payload['server_order_id'] as num?)?.toInt() ??
+        0;
+    return serverId > 0;
+  }
+
+  Future<bool> _saleCreateReady(SyncQueueItem row) async {
+    if (row.clientReference.trim().isEmpty) return false;
+    final payload = await _pushData(row);
+    final type = '${payload['order_type'] ?? ''}'.trim().toLowerCase();
+    if (!SyncQueueClassifier.saleTypes.contains(type)) return false;
+    final items = payload['items'];
+    if (items is! List || items.isEmpty) return false;
+    for (final item in items) {
+      if (item is! Map) return false;
+      final menuId = (item['pos_menu_item_id'] as num?)?.toInt() ?? 0;
+      final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+      if (menuId <= 0 || qty < 1) return false;
+    }
+    final customerLocal = '${payload['customer_local_id'] ?? ''}'.trim();
+    final customerId = (payload['customer_id'] as num?)?.toInt() ?? 0;
+    if (customerLocal.isNotEmpty && customerId <= 0) {
+      return false;
+    }
+    if (type == 'table') {
+      final tableLocal = '${payload['table_local_id'] ?? ''}'.trim();
+      if (tableLocal.isNotEmpty) {
+        final table =
+            await (_db.select(_db.localTables)..where(
+                  (t) =>
+                      t.workspaceId.equals(row.workspaceId) &
+                      t.localId.equals(tableLocal),
+                ))
+                .getSingleOrNull();
+        if (table == null || table.serverId == null || table.serverId! <= 0) {
+          return false;
+        }
       }
     }
     return true;
+  }
+
+  Future<bool> _saleInvoiceReady(SyncQueueItem row) async {
+    final payload = _decode(row.payloadJson);
+    var type = '${payload['order_type'] ?? ''}'.trim().toLowerCase();
+    final orderLocalId = '${payload['order_local_id'] ?? ''}'.trim();
+    if (orderLocalId.isEmpty) return false;
+    final order =
+        await (_db.select(_db.localOrders)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.localId.equals(orderLocalId),
+            ))
+            .getSingleOrNull();
+    if (order == null) return false;
+    if (type.isEmpty) type = order.orderType.trim().toLowerCase();
+    if (!SyncQueueClassifier.saleTypes.contains(type)) return false;
+    return order.serverId != null && order.serverId! > 0;
+  }
+
+  Future<bool> _productReady(SyncQueueItem row) async {
+    if (row.operation != 'create' &&
+        !await _catalogHasServerId('product', row)) {
+      return false;
+    }
+    final payload = _decode(row.payloadJson);
+    final product =
+        await (_db.select(_db.localProducts)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.localId.equals(row.entityId),
+            ))
+            .getSingleOrNull();
+    final categoryLocal =
+        '${payload['category_local_id'] ?? product?.categoryLocalId ?? ''}'
+            .trim();
+    if (categoryLocal.isEmpty) return true;
+    final category =
+        await (_db.select(_db.localCategories)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.localId.equals(categoryLocal),
+            ))
+            .getSingleOrNull();
+    return category?.serverId != null && category!.serverId! > 0;
+  }
+
+  Future<bool> _catalogHasServerId(String entityType, SyncQueueItem row) async {
+    if (entityType == 'category') {
+      final category =
+          await (_db.select(_db.localCategories)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      return category?.serverId != null && category!.serverId! > 0;
+    }
+    if (entityType == 'product') {
+      final product =
+          await (_db.select(_db.localProducts)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      return product?.serverId != null && product!.serverId! > 0;
+    }
+    return false;
+  }
+
+  Future<bool> _tableMasterReady(SyncQueueItem row) async {
+    final payload = _decode(row.payloadJson);
+    final table =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.localId.equals(row.entityId),
+            ))
+            .getSingleOrNull();
+    final serverId = table?.serverId ??
+        (payload['server_id'] as num?)?.toInt() ??
+        (payload['table_server_id'] as num?)?.toInt();
+    return serverId != null && serverId > 0;
+  }
+
+  Future<Map<String, dynamic>> _pushData(SyncQueueItem row) async {
+    final payload = _decode(row.payloadJson);
+    if (row.entityType == 'invoice') {
+      final orderLocalId = '${payload['order_local_id'] ?? ''}'.trim();
+      if (orderLocalId.isNotEmpty) {
+        payload['client_reference'] = orderLocalId;
+        payload['order_local_id'] = orderLocalId;
+        final order =
+            await (_db.select(_db.localOrders)..where(
+                  (t) =>
+                      t.workspaceId.equals(row.workspaceId) &
+                      t.localId.equals(orderLocalId),
+                ))
+                .getSingleOrNull();
+        if (order?.serverId != null && order!.serverId! > 0) {
+          payload['order_server_id'] = order.serverId;
+        }
+      }
+      return payload;
+    }
+    payload['client_reference'] = row.clientReference;
+    if (row.entityType == 'table_session') {
+      payload['device_id'] = row.deviceId;
+      if ('${payload['session_client_id'] ?? ''}'.trim().isEmpty) {
+        payload['session_client_id'] = row.clientReference;
+      }
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .getSingleOrNull();
+      final sessionId = table?.sessionServerId ??
+          (payload['session_server_id'] as num?)?.toInt();
+      if (sessionId != null && sessionId > 0) {
+        payload['session_server_id'] = sessionId;
+        payload['session_id'] = sessionId;
+      }
+      final tableServerId = table?.serverId ??
+          (payload['table_server_id'] as num?)?.toInt();
+      if (tableServerId != null && tableServerId > 0) {
+        payload['table_server_id'] = tableServerId;
+      }
+    }
+    if (row.entityType == 'category' ||
+        row.entityType == 'product' ||
+        row.entityType == 'table') {
+      return _catalogPushData(row, payload);
+    }
+    if (row.entityType == 'order' && row.operation == 'update') {
+      final order =
+          await (_db.select(_db.localOrders)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      final serverId = order?.serverId ??
+          (payload['order_server_id'] as num?)?.toInt() ??
+          (payload['server_order_id'] as num?)?.toInt();
+      if (serverId != null && serverId > 0) {
+        payload['order_server_id'] = serverId;
+        payload['server_order_id'] = serverId;
+        payload['id'] = serverId;
+      }
+      payload['kitchen_status'] = true;
+      if ('${payload['pos_status'] ?? ''}'.trim().isEmpty) {
+        payload['pos_status'] = order?.posStatus ?? 'new';
+      }
+      return payload;
+    }
+    if (row.entityType == 'order' && row.operation == 'create') {
+      payload['offline_sale'] = true;
+      await _resolveOrderTableId(row, payload);
+    }
+    if (row.entityType != 'order' || row.operation != 'create') {
+      return payload;
+    }
+    final customerId = (payload['customer_id'] as num?)?.toInt() ?? 0;
+    if (customerId > 0) return payload;
+    final customerLocal = '${payload['customer_local_id'] ?? ''}'.trim();
+    if (customerLocal.isEmpty) return payload;
+    final customer =
+        await (_db.select(_db.localCustomers)..where(
+              (t) =>
+                  t.workspaceId.equals(row.workspaceId) &
+                  t.localId.equals(customerLocal),
+            ))
+            .getSingleOrNull();
+    if (customer?.serverId != null && customer!.serverId! > 0) {
+      payload['customer_id'] = customer.serverId;
+    }
+    return payload;
+  }
+
+  Future<Map<String, dynamic>> _catalogPushData(
+    SyncQueueItem row,
+    Map<String, dynamic> payload,
+  ) async {
+    if (row.entityType == 'product') {
+      final product =
+          await (_db.select(_db.localProducts)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      if (product?.serverId != null && product!.serverId! > 0) {
+        payload['server_id'] = product.serverId;
+      }
+      final categoryLocal =
+          '${payload['category_local_id'] ?? product?.categoryLocalId ?? ''}'
+              .trim();
+      if (categoryLocal.isNotEmpty) {
+        payload['category_local_id'] = categoryLocal;
+        final category =
+            await (_db.select(_db.localCategories)..where(
+                  (t) =>
+                      t.workspaceId.equals(row.workspaceId) &
+                      t.localId.equals(categoryLocal),
+                ))
+                .getSingleOrNull();
+        if (category?.serverId != null && category!.serverId! > 0) {
+          payload['pos_item_category_id'] = category.serverId;
+        }
+      }
+    }
+    if (row.entityType == 'category') {
+      final category =
+          await (_db.select(_db.localCategories)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      if (category?.serverId != null && category!.serverId! > 0) {
+        payload['server_id'] = category.serverId;
+      }
+    }
+    if (row.entityType == 'table') {
+      payload.remove('status');
+      payload.remove('session_id');
+      payload.remove('session_open');
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(row.entityId),
+              ))
+              .getSingleOrNull();
+      final serverId = table?.serverId ??
+          (payload['server_id'] as num?)?.toInt() ??
+          (payload['table_server_id'] as num?)?.toInt();
+      if (serverId != null && serverId > 0) {
+        payload['server_id'] = serverId;
+        payload['table_server_id'] = serverId;
+      }
+    }
+    return payload;
+  }
+
+  Future<void> _resolveOrderTableId(
+    SyncQueueItem row,
+    Map<String, dynamic> payload,
+  ) async {
+    final tableLocal = '${payload['table_local_id'] ?? ''}'.trim();
+    if (tableLocal.isNotEmpty) {
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(tableLocal),
+              ))
+              .getSingleOrNull();
+      if (table?.serverId != null && table!.serverId! > 0) {
+        payload['dining_table_id'] = table.serverId;
+        payload['table_server_id'] = table.serverId;
+        return;
+      }
+      payload.remove('dining_table_id');
+      payload.remove('table_server_id');
+      return;
+    }
+    final tableId = _numericId(
+      payload['table_server_id'] ??
+          payload['dining_table_id'] ??
+          payload['table_id'],
+    );
+    if (tableId != null) {
+      payload['dining_table_id'] = tableId;
+    }
   }
 
   Future<void> _applyAcceptedAck(
@@ -590,6 +1050,10 @@ class SyncEngineV2 {
     }
     if (row.entityType == 'customer') {
       await _finalizeCustomer(row, result);
+    } else if (row.entityType == 'category' ||
+        row.entityType == 'product' ||
+        row.entityType == 'table') {
+      await _finalizeCatalogMaster(row, result);
     } else if (row.entityType == 'table_session' && row.operation == 'open') {
       await _finalizeSessionOpen(row, result);
     } else if (row.entityType == 'table_session' && row.operation == 'close') {
@@ -628,14 +1092,20 @@ class SyncEngineV2 {
   }
 
   int _pushPriority(SyncQueueItem row) {
-    if (row.entityType == 'customer') return 0;
-    if (row.entityType == 'table_session' && row.operation == 'open') return 1;
+    if (row.entityType == 'category') return 0;
+    if (row.entityType == 'product') return 1;
+    if (row.entityType == 'table') return 1;
+    if (row.entityType == 'customer') return 2;
+    if (row.entityType == 'table_session' && row.operation == 'open') return 3;
     if (row.entityType == 'table_session' && _isSessionAction(row.operation)) {
-      return 2;
+      return 4;
     }
-    if (row.entityType == 'order') return 3;
-    if (row.entityType == 'invoice') return 4;
-    if (row.entityType == 'table_session' && row.operation == 'close') return 5;
+    if (row.entityType == 'order') return 5;
+    if (row.entityType == 'invoice') return 6;
+    if (row.entityType == 'table_session' && row.operation == 'close') return 7;
+    if (row.entityType == 'stock' || row.entityType == 'stock_movement') {
+      return 8;
+    }
     return 9;
   }
 
@@ -651,21 +1121,25 @@ class SyncEngineV2 {
     final payload = _decode(row.payloadJson);
     var sessionId = (payload['session_server_id'] as num?)?.toInt();
     if (sessionId != null && sessionId > 0) return true;
-    final table = await (_db.select(_db.localTables)
-          ..where((t) =>
-              t.localId.equals(row.entityId) &
-              t.workspaceId.equals(row.workspaceId)))
-        .getSingleOrNull();
+    final table =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.localId.equals(row.entityId) &
+                  t.workspaceId.equals(row.workspaceId),
+            ))
+            .getSingleOrNull();
     sessionId = table?.sessionServerId;
     if (sessionId != null && sessionId > 0) return true;
     // Transfer/merge may have moved session onto target table.
     final targetId = (payload['target_table_id'] as num?)?.toInt();
     if (targetId != null && targetId > 0) {
-      final target = await (_db.select(_db.localTables)
-            ..where((t) =>
-                t.workspaceId.equals(row.workspaceId) &
-                t.serverId.equals(targetId)))
-          .getSingleOrNull();
+      final target =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.serverId.equals(targetId),
+              ))
+              .getSingleOrNull();
       if (target?.sessionServerId != null && target!.sessionServerId! > 0) {
         return true;
       }
@@ -683,11 +1157,13 @@ class SyncEngineV2 {
     }
     var sessionId = (payload['session_server_id'] as num?)?.toInt();
     if (sessionId == null || sessionId <= 0) {
-      final table = await (_db.select(_db.localTables)
-            ..where((t) =>
-                t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
-          .getSingleOrNull();
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .getSingleOrNull();
       sessionId = table?.sessionServerId;
     }
     final api = _api;
@@ -752,25 +1228,46 @@ class SyncEngineV2 {
     await _queue.markSynced(row.id);
   }
 
+  Future<bool> _hasPendingSessionOpen(SyncQueueItem closeRow) async {
+    final rows = await _queue.pendingForWorkspace(closeRow.workspaceId);
+    for (final row in rows) {
+      if (row.id == closeRow.id) continue;
+      if (row.entityType != 'table_session' || row.operation != 'open') {
+        continue;
+      }
+      if (row.entityId != closeRow.entityId) continue;
+      if (row.status == 'pending' ||
+          row.status == 'failed' ||
+          row.status == 'syncing') {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<bool> _hasUnsyncedOrdersForTable(int workspaceId, int tableId) async {
-    final rows = await (_db.select(_db.localOrders)
-          ..where((t) =>
-              t.workspaceId.equals(workspaceId) &
-              t.tableServerId.equals(tableId) &
-              t.posStatus.isNotValue('cancelled') &
-              (t.syncStatus.equals('pending') |
-                  t.syncStatus.equals('syncing') |
-                  t.syncStatus.equals('failed'))))
-        .get();
+    final rows =
+        await (_db.select(_db.localOrders)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) &
+                  t.tableServerId.equals(tableId) &
+                  t.posStatus.isNotValue('cancelled') &
+                  (t.syncStatus.equals('pending') |
+                      t.syncStatus.equals('syncing') |
+                      t.syncStatus.equals('failed')),
+            ))
+            .get();
     return rows.isNotEmpty;
   }
 
   Future<bool> _orderNeedsServerId(int workspaceId, String orderLocalId) async {
-    final order = await (_db.select(_db.localOrders)
-          ..where((t) =>
-              t.workspaceId.equals(workspaceId) &
-              t.localId.equals(orderLocalId)))
-        .getSingleOrNull();
+    final order =
+        await (_db.select(_db.localOrders)..where(
+              (t) =>
+                  t.workspaceId.equals(workspaceId) &
+                  t.localId.equals(orderLocalId),
+            ))
+            .getSingleOrNull();
     if (order == null) return true;
     return order.serverId == null || order.serverId! <= 0;
   }
@@ -782,57 +1279,64 @@ class SyncEngineV2 {
     final serverId = data['id'] is num
         ? asIntOr(data['id'])
         : int.tryParse('${data['id']}');
+    final orderNumber = '${data['order_number'] ?? ''}'.trim();
     await _db.transaction(() async {
-      await (_db.update(_db.localOrders)
-            ..where((t) =>
+      await (_db.update(_db.localOrders)..where(
+            (t) =>
                 t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
+                t.workspaceId.equals(row.workspaceId),
+          ))
           .write(
-        LocalOrdersCompanion(
-          serverId: Value(serverId),
-          syncStatus: const Value('synced'),
-          lastError: const Value(null),
-          syncedAt: Value(DateTime.now()),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
+            LocalOrdersCompanion(
+              serverId: Value(serverId),
+              orderNumber: orderNumber.isEmpty
+                  ? const Value.absent()
+                  : Value(orderNumber),
+              syncStatus: const Value('synced'),
+              lastError: const Value(null),
+              syncedAt: Value(DateTime.now()),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
       await _queue.markSynced(row.id);
     });
   }
 
   Future<void> _finalizeOrderUpdate(SyncQueueItem row) async {
     await _db.transaction(() async {
-      await (_db.update(_db.localOrders)
-            ..where((t) =>
+      await (_db.update(_db.localOrders)..where(
+            (t) =>
                 t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
+                t.workspaceId.equals(row.workspaceId),
+          ))
           .write(
-        LocalOrdersCompanion(
-          syncStatus: const Value('synced'),
-          lastError: const Value(null),
-          syncedAt: Value(DateTime.now()),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
+            LocalOrdersCompanion(
+              syncStatus: const Value('synced'),
+              lastError: const Value(null),
+              syncedAt: Value(DateTime.now()),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
       await _queue.markSynced(row.id);
     });
   }
 
   Future<void> _finalizeOrderDelete(SyncQueueItem row) async {
     await _db.transaction(() async {
-      await (_db.update(_db.localOrders)
-            ..where((t) =>
+      await (_db.update(_db.localOrders)..where(
+            (t) =>
                 t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
+                t.workspaceId.equals(row.workspaceId),
+          ))
           .write(
-        LocalOrdersCompanion(
-          posStatus: const Value('cancelled'),
-          syncStatus: const Value('synced'),
-          lastError: const Value(null),
-          syncedAt: Value(DateTime.now()),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
+            LocalOrdersCompanion(
+              posStatus: const Value('cancelled'),
+              syncStatus: const Value('synced'),
+              lastError: const Value(null),
+              syncedAt: Value(DateTime.now()),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
       await _queue.markSynced(row.id);
     });
   }
@@ -846,19 +1350,127 @@ class SyncEngineV2 {
         ? asIntOr(data['id'])
         : int.tryParse('${data['id']}');
     await _db.transaction(() async {
-      await (_db.update(_db.localCustomers)
-            ..where((t) =>
+      await (_db.update(_db.localCustomers)..where(
+            (t) =>
                 t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
+                t.workspaceId.equals(row.workspaceId),
+          ))
           .write(
-        LocalCustomersCompanion(
-          serverId: Value(serverId),
-          syncStatus: const Value('synced'),
-          name: Value('${data['name'] ?? payload['name'] ?? ''}'),
-          phone: Value(data['phone'] as String? ?? payload['phone'] as String?),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
+            LocalCustomersCompanion(
+              serverId: Value(serverId),
+              syncStatus: const Value('synced'),
+              name: Value('${data['name'] ?? payload['name'] ?? ''}'),
+              phone: Value(
+                data['phone'] as String? ?? payload['phone'] as String?,
+              ),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
+      await _queue.markSynced(row.id);
+    });
+  }
+
+  Future<void> _finalizeCatalogMaster(
+    SyncQueueItem row,
+    Map<String, dynamic> data,
+  ) async {
+    final serverId = data['id'] is num
+        ? asInt(data['id'])
+        : int.tryParse('${data['id']}');
+    final now = DateTime.now();
+    await _db.transaction(() async {
+      if (row.entityType == 'category') {
+        if (row.operation == 'create' && serverId != null && serverId > 0) {
+          await (_db.update(_db.localCategories)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .write(
+                LocalCategoriesCompanion(
+                  serverId: Value(serverId),
+                  updatedAt: Value(now),
+                ),
+              );
+          await (_db.update(_db.localProducts)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.categoryLocalId.equals(row.entityId),
+              ))
+              .write(
+                LocalProductsCompanion(
+                  categoryServerId: Value(serverId),
+                  updatedAt: Value(now),
+                ),
+              );
+        }
+      } else if (row.entityType == 'product') {
+        if (row.operation == 'create' && serverId != null && serverId > 0) {
+          final categoryServerId =
+              (data['pos_item_category_id'] as num?)?.toInt();
+          await (_db.update(_db.localProducts)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .write(
+                LocalProductsCompanion(
+                  serverId: Value(serverId),
+                  categoryServerId: categoryServerId == null
+                      ? const Value.absent()
+                      : Value(categoryServerId),
+                  updatedAt: Value(now),
+                ),
+              );
+        }
+      } else if (row.entityType == 'table') {
+        if (row.operation == 'delete') {
+          await (_db.delete(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .go();
+        } else if (row.operation == 'create' &&
+            serverId != null &&
+            serverId > 0) {
+          final table =
+              await (_db.select(_db.localTables)..where(
+                    (t) =>
+                        t.localId.equals(row.entityId) &
+                        t.workspaceId.equals(row.workspaceId),
+                  ))
+                  .getSingleOrNull();
+          Map<String, dynamic> payload = const {};
+          if (table != null) {
+            payload = _decode(table.payloadJson);
+          }
+          payload['id'] = serverId;
+          await (_db.update(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .write(
+                LocalTablesCompanion(
+                  serverId: Value(serverId),
+                  payloadJson: Value(jsonEncode(payload)),
+                  updatedAt: Value(now),
+                ),
+              );
+          await (_db.update(_db.localOrders)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.tableLocalId.equals(row.entityId),
+              ))
+              .write(
+                LocalOrdersCompanion(
+                  tableServerId: Value(serverId),
+                  updatedAt: Value(now),
+                ),
+              );
+        }
+      }
       await _queue.markSynced(row.id);
     });
   }
@@ -867,36 +1479,98 @@ class SyncEngineV2 {
     SyncQueueItem row,
     Map<String, dynamic> data,
   ) async {
-    final sessionId = (data['session_id'] as num?)?.toInt();
+    final sessionId = (data['session_id'] as num?)?.toInt() ??
+        (data['accepted_session_id'] as num?)?.toInt() ??
+        (data['id'] as num?)?.toInt();
     final now = DateTime.now();
     await _db.transaction(() async {
-      final table = await (_db.select(_db.localTables)
-            ..where((t) =>
-                t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
-          .getSingleOrNull();
-      if (table != null) {
-        final prev = _decode(table.payloadJson);
-        final next = {
-          ...prev,
-          'session_id': sessionId,
-          'session_open': true,
-          'status': 'occupied',
-          if (data['opened_at'] != null) 'opened_at': data['opened_at'],
-        };
-        await (_db.update(_db.localTables)
-              ..where((t) => t.localId.equals(table.localId)))
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .getSingleOrNull();
+      // Bind the device sitting to its server id so pull recognises the same
+      // sitting instead of minting a second local row for it.
+      final sessionClientId = '${_decode(row.payloadJson)['session_client_id'] ?? row.clientReference ?? ''}'.trim();
+      if (sessionId != null && sessionId > 0 && sessionClientId.isNotEmpty) {
+        await (_db.update(_db.localSessions)..where(
+              (t) =>
+                  t.localId.equals(sessionClientId) &
+                  t.workspaceId.equals(row.workspaceId),
+            ))
             .write(
-          LocalTablesCompanion(
-            sessionServerId: Value(sessionId),
-            status: const Value('occupied'),
-            payloadJson: Value(jsonEncode(next)),
+          LocalSessionsCompanion(
+            serverId: Value(sessionId),
             updatedAt: Value(now),
           ),
         );
       }
+      if (table != null) {
+        final prev = _decode(table.payloadJson);
+        final pendingClose = await _queue.findOpenOp(
+          workspaceId: row.workspaceId,
+          entityType: 'table_session',
+          entityId: row.entityId,
+          operation: 'close',
+        );
+        final locallyClosed = table.status == 'available' &&
+            prev['session_open'] != true &&
+            '${prev['session_client_id'] ?? ''}'.trim().isEmpty;
+        if (pendingClose != null || locallyClosed) {
+          await (_db.update(
+            _db.localTables,
+          )..where((t) => t.localId.equals(table.localId))).write(
+            LocalTablesCompanion(
+              sessionServerId: Value(sessionId),
+              updatedAt: Value(now),
+            ),
+          );
+        } else {
+          final next = {
+            ...prev,
+            'session_id': sessionId,
+            'session_open': true,
+            'status': 'occupied',
+            if (data['opened_at'] != null) 'opened_at': data['opened_at'],
+          };
+          await (_db.update(
+            _db.localTables,
+          )..where((t) => t.localId.equals(table.localId))).write(
+            LocalTablesCompanion(
+              sessionServerId: Value(sessionId),
+              status: const Value('occupied'),
+              payloadJson: Value(jsonEncode(next)),
+              updatedAt: Value(now),
+            ),
+          );
+        }
+      }
       await _queue.markSynced(row.id);
     });
+    if (data['conflict'] == true || data['conflict_status'] == 'conflict') {
+      await SyncConflictRepository(_db).record(
+        workspaceId: row.workspaceId,
+        entityType: 'table_session',
+        entityId: row.clientReference,
+        strategy: 'detectAndRecord',
+        reason: '${data['reason'] ?? 'table_session_open_conflict_other_device'}',
+        deviceId: row.deviceId,
+        operation: 'open',
+        local: {
+          'local_session_id': data['local_session_id'] ?? row.clientReference,
+          'table_id': data['table_id'],
+          'device_id': data['device_id'] ?? row.deviceId,
+          'accepted_session_id': data['accepted_session_id'] ?? sessionId,
+        },
+        server: {
+          'server_session_id': data['server_session_id'],
+          'table_id': data['table_id'],
+          'conflict_status': data['conflict_status'] ?? 'conflict',
+        },
+      );
+    }
   }
 
   Future<void> _finalizeSessionClose(
@@ -915,33 +1589,34 @@ class SyncEngineV2 {
     Map<String, dynamic> data,
   ) async {
     final invoiceLocalId = row.entityId;
-    final existing = await (_db.select(_db.localInvoices)
-          ..where((t) => t.localId.equals(invoiceLocalId)))
-        .getSingleOrNull();
-    final prev =
-        existing == null ? <String, dynamic>{} : _decode(existing.payloadJson);
+    final existing = await (_db.select(
+      _db.localInvoices,
+    )..where((t) => t.localId.equals(invoiceLocalId))).getSingleOrNull();
+    final prev = existing == null
+        ? <String, dynamic>{}
+        : _decode(existing.payloadJson);
+    final serverNumber = data['invoice_number']?.toString();
+    final serverId =
+        (data['invoice_id'] as num?)?.toInt() ?? (data['id'] as num?)?.toInt();
     final merged = {
       ...prev,
       'id': data['invoice_id'] ?? data['id'],
-      'invoice_number': data['invoice_number'],
-      'total_amount': data['total_amount'],
-      'currency': data['currency'],
+      'server_id': serverId,
+      if (serverNumber != null && serverNumber.isNotEmpty)
+        'server_invoice_number': serverNumber,
+      'currency': data['currency'] ?? prev['currency'],
       'sync_status': 'synced',
     };
     await _db.transaction(() async {
-      await (_db.update(_db.localInvoices)
-            ..where((t) => t.localId.equals(invoiceLocalId)))
-          .write(
+      await (_db.update(
+        _db.localInvoices,
+      )..where((t) => t.localId.equals(invoiceLocalId))).write(
         LocalInvoicesCompanion(
-          serverId: Value(
-            (data['invoice_id'] as num?)?.toInt() ??
-                (data['id'] as num?)?.toInt(),
-          ),
-          invoiceNumber: Value(data['invoice_number']?.toString()),
-          totalAmount: Value(
-            data['total_amount'] is num
-                ? Money.toCents(data['total_amount'])
-                : (existing?.totalAmount ?? 0),
+          serverId: Value(serverId),
+          serverInvoiceNumber: Value(
+            (serverNumber != null && serverNumber.isNotEmpty)
+                ? serverNumber
+                : existing?.serverInvoiceNumber,
           ),
           syncStatus: const Value('synced'),
           payloadJson: Value(jsonEncode(merged)),
@@ -949,9 +1624,7 @@ class SyncEngineV2 {
       );
       await (_db.update(_db.localPayments)
             ..where((t) => t.invoiceLocalId.equals(invoiceLocalId)))
-          .write(
-        const LocalPaymentsCompanion(syncStatus: Value('synced')),
-      );
+          .write(const LocalPaymentsCompanion(syncStatus: Value('synced')));
       await _queue.markSynced(row.id);
     });
   }
@@ -988,11 +1661,13 @@ class SyncEngineV2 {
 
     var sessionId = (payload['session_server_id'] as num?)?.toInt();
     if (sessionId == null || sessionId <= 0) {
-      final table = await (_db.select(_db.localTables)
-            ..where((t) =>
-                t.localId.equals(row.entityId) &
-                t.workspaceId.equals(row.workspaceId)))
-          .getSingleOrNull();
+      final table =
+          await (_db.select(_db.localTables)..where(
+                (t) =>
+                    t.localId.equals(row.entityId) &
+                    t.workspaceId.equals(row.workspaceId),
+              ))
+              .getSingleOrNull();
       sessionId = table?.sessionServerId;
     }
     if (sessionId == null || sessionId <= 0) {
@@ -1009,6 +1684,9 @@ class SyncEngineV2 {
       }
     }
     if (sessionId == null || sessionId <= 0) {
+      if (await _hasPendingSessionOpen(row)) {
+        throw StateError('table_session close waits for session open sync');
+      }
       // Session may already be closed server-side (e.g. auto-open + empty).
       await _markInvoiceSyncedFromClose(row, null);
       await _queue.markSynced(row.id);
@@ -1050,9 +1728,9 @@ class SyncEngineV2 {
     final paymentLocalId = '${payload['payment_local_id'] ?? ''}';
     final now = DateTime.now();
     if (invoiceLocalId.isNotEmpty) {
-      final existing = await (_db.select(_db.localInvoices)
-            ..where((t) => t.localId.equals(invoiceLocalId)))
-          .getSingleOrNull();
+      final existing = await (_db.select(
+        _db.localInvoices,
+      )..where((t) => t.localId.equals(invoiceLocalId))).getSingleOrNull();
       final prev = existing == null
           ? <String, dynamic>{}
           : _decode(existing.payloadJson);
@@ -1061,9 +1739,9 @@ class SyncEngineV2 {
         if (invoice != null) ...invoice,
         'sync_status': 'synced',
       };
-      await (_db.update(_db.localInvoices)
-            ..where((t) => t.localId.equals(invoiceLocalId)))
-          .write(
+      await (_db.update(
+        _db.localInvoices,
+      )..where((t) => t.localId.equals(invoiceLocalId))).write(
         LocalInvoicesCompanion(
           serverId: Value((invoice?['id'] as num?)?.toInt()),
           invoiceNumber: Value(
@@ -1082,22 +1760,61 @@ class SyncEngineV2 {
     if (paymentLocalId.isNotEmpty) {
       await (_db.update(_db.localPayments)
             ..where((t) => t.localId.equals(paymentLocalId)))
-          .write(
-        const LocalPaymentsCompanion(syncStatus: Value('synced')),
-      );
+          .write(const LocalPaymentsCompanion(syncStatus: Value('synced')));
     }
     // Ensure table is available after successful close sync.
-    await (_db.update(_db.localTables)
-          ..where((t) =>
-              t.localId.equals(row.entityId) &
-              t.workspaceId.equals(row.workspaceId)))
-        .write(
-      LocalTablesCompanion(
-        status: const Value('available'),
-        sessionServerId: const Value(null),
-        updatedAt: Value(now),
-      ),
-    );
+    final table =
+        await (_db.select(_db.localTables)..where(
+              (t) =>
+                  t.localId.equals(row.entityId) &
+                  t.workspaceId.equals(row.workspaceId),
+            ))
+            .getSingleOrNull();
+    if (table != null) {
+      final prev = _decode(table.payloadJson);
+      final next = {
+        ...prev,
+        'id': table.serverId ?? prev['id'],
+        'status': 'available',
+        'session_open': false,
+        'session_id': null,
+        'session_client_id': null,
+        'opened_at': null,
+        'orders': const [],
+        'last_sale_items': const [],
+        'last_sale_total': 0,
+        'subtotal': 0,
+        'tax_amount': 0,
+        'discount_amount': 0,
+        'total': 0,
+      };
+      await (_db.update(_db.localTables)..where(
+            (t) =>
+                t.localId.equals(row.entityId) &
+                t.workspaceId.equals(row.workspaceId),
+          ))
+          .write(
+            LocalTablesCompanion(
+              status: const Value('available'),
+              sessionServerId: const Value(null),
+              payloadJson: Value(jsonEncode(next)),
+              updatedAt: Value(now),
+            ),
+          );
+    } else {
+      await (_db.update(_db.localTables)..where(
+            (t) =>
+                t.localId.equals(row.entityId) &
+                t.workspaceId.equals(row.workspaceId),
+          ))
+          .write(
+            LocalTablesCompanion(
+              status: const Value('available'),
+              sessionServerId: const Value(null),
+              updatedAt: Value(now),
+            ),
+          );
+    }
   }
 
   Future<void> _pushInvoice(SyncQueueItem row) async {
@@ -1106,11 +1823,13 @@ class SyncEngineV2 {
     final orderLocalId = '${payload['order_local_id'] ?? ''}';
     if ((orderServerId == null || orderServerId <= 0) &&
         orderLocalId.isNotEmpty) {
-      final order = await (_db.select(_db.localOrders)
-            ..where((t) =>
-                t.workspaceId.equals(row.workspaceId) &
-                t.localId.equals(orderLocalId)))
-          .getSingleOrNull();
+      final order =
+          await (_db.select(_db.localOrders)..where(
+                (t) =>
+                    t.workspaceId.equals(row.workspaceId) &
+                    t.localId.equals(orderLocalId),
+              ))
+              .getSingleOrNull();
       orderServerId = order?.serverId;
     }
     if (orderServerId == null || orderServerId <= 0) {
@@ -1130,43 +1849,7 @@ class SyncEngineV2 {
         idempotencyKey: row.clientReference,
       );
     }
-    final invoiceLocalId = row.entityId;
-    final existing = await (_db.select(_db.localInvoices)
-          ..where((t) => t.localId.equals(invoiceLocalId)))
-        .getSingleOrNull();
-    final prev =
-        existing == null ? <String, dynamic>{} : _decode(existing.payloadJson);
-    final merged = {
-      ...prev,
-      'id': data['invoice_id'],
-      'invoice_number': data['invoice_number'],
-      'total_amount': data['total_amount'],
-      'currency': data['currency'],
-      'sync_status': 'synced',
-    };
-    await _db.transaction(() async {
-      await (_db.update(_db.localInvoices)
-            ..where((t) => t.localId.equals(invoiceLocalId)))
-          .write(
-        LocalInvoicesCompanion(
-          serverId: Value((data['invoice_id'] as num?)?.toInt()),
-          invoiceNumber: Value(data['invoice_number']?.toString()),
-          totalAmount: Value(
-            data['total_amount'] is num
-                ? Money.toCents(data['total_amount'])
-                : (existing?.totalAmount ?? 0),
-          ),
-          syncStatus: const Value('synced'),
-          payloadJson: Value(jsonEncode(merged)),
-        ),
-      );
-      await (_db.update(_db.localPayments)
-            ..where((t) => t.invoiceLocalId.equals(invoiceLocalId)))
-          .write(
-        const LocalPaymentsCompanion(syncStatus: Value('synced')),
-      );
-      await _queue.markSynced(row.id);
-    });
+    await _finalizeInvoice(row, data);
   }
 
   Future<void> _pushCreate(SyncQueueItem row) async {
@@ -1212,8 +1895,9 @@ class SyncEngineV2 {
   }
 
   Future<void> _markOrderFailed(String localId, String error) async {
-    await (_db.update(_db.localOrders)..where((t) => t.localId.equals(localId)))
-        .write(
+    await (_db.update(
+      _db.localOrders,
+    )..where((t) => t.localId.equals(localId))).write(
       LocalOrdersCompanion(
         syncStatus: const Value('failed'),
         lastError: Value(error),
@@ -1223,8 +1907,9 @@ class SyncEngineV2 {
   }
 
   Future<void> _markOrderPending(String localId, String error) async {
-    await (_db.update(_db.localOrders)..where((t) => t.localId.equals(localId)))
-        .write(
+    await (_db.update(
+      _db.localOrders,
+    )..where((t) => t.localId.equals(localId))).write(
       LocalOrdersCompanion(
         syncStatus: const Value('pending'),
         lastError: Value(error),
@@ -1234,9 +1919,9 @@ class SyncEngineV2 {
   }
 
   Future<void> _markCustomerFailed(String localId, String error) async {
-    await (_db.update(_db.localCustomers)
-          ..where((t) => t.localId.equals(localId)))
-        .write(
+    await (_db.update(
+      _db.localCustomers,
+    )..where((t) => t.localId.equals(localId))).write(
       LocalCustomersCompanion(
         syncStatus: const Value('failed'),
         updatedAt: Value(DateTime.now()),
@@ -1245,9 +1930,9 @@ class SyncEngineV2 {
   }
 
   Future<void> _markCustomerPending(String localId, String error) async {
-    await (_db.update(_db.localCustomers)
-          ..where((t) => t.localId.equals(localId)))
-        .write(
+    await (_db.update(
+      _db.localCustomers,
+    )..where((t) => t.localId.equals(localId))).write(
       LocalCustomersCompanion(
         syncStatus: const Value('pending'),
         updatedAt: Value(DateTime.now()),
@@ -1294,6 +1979,16 @@ class SyncEngineV2 {
     await api.delete('/orders/$serverOrderId');
   }
 
+  int? _numericId(dynamic raw) {
+    if (raw is num) {
+      final value = raw.toInt();
+      return value > 0 ? value : null;
+    }
+    final parsed = int.tryParse('$raw');
+    if (parsed == null || parsed <= 0) return null;
+    return parsed;
+  }
+
   Map<String, dynamic> _decode(String raw) {
     if (raw.isEmpty) return <String, dynamic>{};
     try {
@@ -1323,17 +2018,20 @@ class SyncEngineV2 {
       throw StateError('SyncEngineV2 requires API or fetchChanges');
     }
     try {
-      return await api.post('/sync/pull', data: {
-        'device_id': deviceId ?? 'unknown',
-        'cursor': since,
-        'limit': limit,
-      });
+      return await api.post(
+        '/sync/pull',
+        data: {
+          'device_id': deviceId ?? 'unknown',
+          'cursor': since,
+          'limit': limit,
+        },
+      );
     } on ApiException catch (e) {
       if (e.statusCode == 404) {
-        return api.get('/sync/changes', query: {
-          'since': since,
-          'limit': limit,
-        });
+        return api.get(
+          '/sync/changes',
+          query: {'since': since, 'limit': limit},
+        );
       }
       rethrow;
     }
@@ -1350,6 +2048,7 @@ class SyncEngineV2Result {
     this.pulled = 0,
     this.cursor,
     this.pullFailed = false,
+    this.networkError = false,
     this.pullError,
   });
 
@@ -1361,5 +2060,6 @@ class SyncEngineV2Result {
   final int pulled;
   final int? cursor;
   final bool pullFailed;
+  final bool networkError;
   final String? pullError;
 }

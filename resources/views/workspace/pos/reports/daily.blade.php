@@ -8,8 +8,10 @@
                     <h2 class="text-base font-bold text-slate-900">لوحة تقارير الكاشير اليومية</h2>
                     <p class="text-xs text-slate-500">المركز الرئيسي لكل بيانات الكاشير: مبيعات، عملاء، طلبات، فواتير، عمليات.</p>
                 </div>
-                <form method="GET" class="flex items-center gap-2">
+                <form method="GET" class="flex flex-wrap items-center gap-2">
                     <input type="date" name="date" value="{{ $date }}" class="rounded-lg border-slate-300 text-sm" />
+                    <input type="date" name="from" value="{{ $from ?? $date }}" class="rounded-lg border-slate-300 text-sm" />
+                    <input type="date" name="to" value="{{ $to ?? $date }}" class="rounded-lg border-slate-300 text-sm" />
                     <button class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white">تحديث</button>
                 </form>
             </div>
@@ -22,6 +24,10 @@
                 <div class="rounded-xl bg-slate-50 p-3">
                     <p class="text-xs text-slate-500">عدد الفواتير</p>
                     <p class="mt-1 text-lg font-bold">{{ $summary['invoices_count'] }}</p>
+                </div>
+                <div class="rounded-xl bg-slate-50 p-3">
+                    <p class="text-xs text-slate-500">المبيعات النقدية</p>
+                    <p class="mt-1 text-lg font-bold">{{ number_format((float) ($summary['cash_sales_total'] ?? 0), 2) }}</p>
                 </div>
                 <div class="rounded-xl bg-slate-50 p-3">
                     <p class="text-xs text-slate-500">عدد الطلبات</p>
@@ -42,6 +48,30 @@
             </div>
 
             @include('workspace.pos.partials.order-channel-stats', ['orderChannelStats' => $orderChannelStats])
+
+            @if (!empty($salesByDay) && count($salesByDay))
+                <div class="mt-4 overflow-x-auto">
+                    <h3 class="mb-2 text-sm font-bold text-slate-900">المبيعات حسب اليوم</h3>
+                    <table class="w-full text-sm">
+                        <thead class="text-slate-500">
+                            <tr>
+                                <th class="py-2 text-right">اليوم</th>
+                                <th class="py-2 text-right">الفواتير</th>
+                                <th class="py-2 text-right">المبيعات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($salesByDay as $row)
+                                <tr class="border-t border-slate-100">
+                                    <td class="py-2">{{ $row['date'] }}</td>
+                                    <td class="py-2">{{ $row['invoices_count'] }}</td>
+                                    <td class="py-2">{{ number_format((float) $row['sales_total'], 2) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
         </article>
 
         <div class="grid gap-4 xl:grid-cols-3">

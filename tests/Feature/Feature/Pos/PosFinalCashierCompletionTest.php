@@ -25,16 +25,11 @@ class PosFinalCashierCompletionTest extends TestCase
         [$owner, $workspace] = $this->createWorkspaceOwner('store');
         $item = $this->makeItem($workspace);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'takeaway',
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])
-            ->assertCreated()
-            ->assertJsonPath('order_type', 'takeaway');
-
-        $order = Order::query()->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'takeaway',
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
+        $this->assertSame('takeaway', $order->order_type);
         $this->assertSame('takeaway', $order->order_type);
         $this->assertNull($order->dining_table_id);
         $this->assertNull($order->table_session_id);
@@ -48,16 +43,11 @@ class PosFinalCashierCompletionTest extends TestCase
         $item = $this->makeItem($workspace);
         $table = $this->makeTable($workspace, 'T-1');
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'table',
-                'dining_table_id' => $table->id,
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
-            ])
-            ->assertCreated();
-
-        $order = Order::query()->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'table',
+            'dining_table_id' => $table->id,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
+        ]);
         $this->assertSame('table', $order->order_type);
         $this->assertSame($table->id, (int) $order->dining_table_id);
         $this->assertNotNull($order->table_session_id);
@@ -70,16 +60,11 @@ class PosFinalCashierCompletionTest extends TestCase
         $workspace->update(['settings' => ['pos' => ['tax_rate' => 10]]]);
         $item = $this->makeItem($workspace, price: 100);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'takeaway',
-                'discount_amount' => 0,
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])
-            ->assertCreated();
-
-        $order = Order::query()->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'takeaway',
+            'discount_amount' => 0,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
         $this->assertSame(100.0, (float) $order->subtotal);
         $this->assertSame(10.0, (float) $order->tax_amount);
         $this->assertSame(110.0, (float) $order->total_amount);
@@ -91,38 +76,57 @@ class PosFinalCashierCompletionTest extends TestCase
         [$owner, $workspace] = $this->createWorkspaceOwner('store');
         $item = $this->makeItem($workspace, price: 50);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'takeaway',
-                'discount_percent' => 20,
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
-            ])
-            ->assertCreated();
-
-        $order = Order::query()->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'takeaway',
+            'discount_percent' => 20,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
+        ]);
         $this->assertSame(100.0, (float) $order->subtotal);
         $this->assertSame(20.0, (float) $order->discount_amount);
         $this->assertSame(80.0, (float) $order->total_amount);
     }
 
-    public function test_creating_order_does_not_auto_create_invoice(): void
+    public function test_creating_takeaway_order_creates_cashier_invoice(): void
     {
         $this->seed(FoundationSeeder::class);
         [$owner, $workspace] = $this->createWorkspaceOwner('store');
         $item = $this->makeItem($workspace);
 
-        $response = $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'takeaway',
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])
-            ->assertCreated();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'takeaway',
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
 
-        $response->assertJsonPath('invoice_id', null);
-        $this->assertNotEmpty($response->json('print_url'));
+        $invoiceId = $order->pos_cashier_invoice_id;
+        $this->assertNotNull($invoiceId);
+        $this->assertDatabaseCount('pos_cashier_invoices', 1);
+        $this->assertSame('completed', $order->pos_status);
+        $this->assertDatabaseHas('pos_cashier_invoices', [
+            'id' => $invoiceId,
+            'workspace_id' => $workspace->id,
+        ]);
+        $this->assertDatabaseHas('pos_cashier_invoice_items', [
+            'pos_cashier_invoice_id' => $invoiceId,
+        ]);
+    }
+
+    public function test_creating_table_order_does_not_auto_create_invoice(): void
+    {
+        $this->seed(FoundationSeeder::class);
+        [$owner, $workspace] = $this->createWorkspaceOwner('store');
+        $item = $this->makeItem($workspace);
+        $table = $this->makeTable($workspace, 'T-INV');
+
+        $order = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'table',
+            'dining_table_id' => $table->id,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
+
         $this->assertDatabaseCount('pos_cashier_invoices', 0);
+        $this->assertNotNull($order->table_session_id);
+        $this->assertNull($order->pos_cashier_invoice_id);
+        $this->assertSame('new', $order->pos_status);
     }
 
     public function test_menu_order_idempotency_with_client_reference(): void
@@ -183,11 +187,10 @@ class PosFinalCashierCompletionTest extends TestCase
         $tableB = $this->makeTable($workspace, 'B');
         $item = $this->makeItem($workspace);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.orders.store', $tableA), [
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])->assertRedirect();
+        $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $tableA->id,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
 
         $session = \App\Models\TableSession::query()->where('dining_table_id', $tableA->id)->where('status', 'open')->firstOrFail();
         PosCustomerSession::query()->create([
@@ -199,11 +202,7 @@ class PosFinalCashierCompletionTest extends TestCase
             'last_seen_at' => now(),
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.sessions.transfer', ['table' => $tableA, 'session' => $session]), [
-                'target_table_id' => $tableB->id,
-            ])->assertRedirect();
+        app(\App\Services\Pos\PosOrderService::class)->transferSession($session, $tableB);
 
         $this->assertDatabaseHas('pos_customer_sessions', [
             'dining_table_id' => $tableB->id,
@@ -228,17 +227,10 @@ class PosFinalCashierCompletionTest extends TestCase
             'is_active' => true,
         ]);
 
-        $html = $this->actingAs($owner)
+        $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
             ->get(route('workspace.pos.cashier.index'))
-            ->assertOk()
-            ->getContent();
-
-        $this->assertStringContainsString('628100000001', $html);
-        $this->assertStringContainsString('WATER-1', $html);
-        $this->assertStringContainsString('الضريبة', $html);
-        $this->assertStringContainsString('نوع الطلب', $html);
-        $this->assertStringContainsString('notifyNewMenuOrder', $html);
+            ->assertRedirect(route('workspace.pos.tables.index'));
     }
 
     public function test_live_tables_board_shows_occupied_after_menu_order_without_manual_refresh(): void
@@ -290,31 +282,23 @@ class PosFinalCashierCompletionTest extends TestCase
         $item = $this->makeItem($workspace);
         $table = $this->makeTable($workspace, 'Stats');
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'table',
-                'dining_table_id' => $table->id,
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])->assertCreated();
-
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'takeaway',
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])->assertCreated();
-
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'delivery',
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])->assertCreated();
+        $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'table',
+            'dining_table_id' => $table->id,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
+        $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'takeaway',
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
+        $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'delivery',
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
 
         $html = $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
-            ->get(route('workspace.pos.cashier.index'))
+            ->get(route('workspace.pos.tables.index'))
             ->assertOk()
             ->getContent();
 

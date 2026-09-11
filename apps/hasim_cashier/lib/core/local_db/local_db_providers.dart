@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/cashier_api.dart';
+import '../auth/cashier_cloud_link_service.dart';
 import '../device/device_identity.dart';
 import '../device/device_registration_service.dart';
 import '../local_db/app_database.dart';
 import '../local_db/initial_sync_service.dart';
 import '../local_db/workspace_scope.dart';
+import '../pos/application/local_auth_service.dart';
 import '../repositories/catalog_repository.dart';
 import '../repositories/customers_repository.dart';
 import '../repositories/local_finance_repository.dart';
@@ -29,8 +31,24 @@ final deviceIdProvider = FutureProvider<String>((ref) async {
   return ref.watch(deviceIdentityProvider).getOrCreateDeviceId();
 });
 
-final deviceRegistrationServiceProvider = Provider<DeviceRegistrationService>((ref) {
+final deviceRegistrationServiceProvider = Provider<DeviceRegistrationService>((
+  ref,
+) {
   return DeviceRegistrationService(ref.watch(cashierApiProvider));
+});
+
+final cashierCloudLinkServiceProvider = Provider<CashierCloudLinkService>((
+  ref,
+) {
+  return CashierCloudLinkService(
+    api: ref.watch(cashierApiProvider),
+    store: ref.watch(cloudLinkStoreProvider),
+    devices: ref.watch(deviceRegistrationServiceProvider),
+    db: ref.watch(appDatabaseProvider),
+    localAuth: LocalAuthService(ref.watch(appDatabaseProvider)),
+    deviceId: () => ref.read(deviceIdentityProvider).getOrCreateDeviceId(),
+    initialSync: ref.watch(initialSyncServiceProvider),
+  );
 });
 
 final catalogRepositoryProvider = Provider<CatalogRepository>((ref) {
@@ -86,6 +104,12 @@ final invoicesRevisionProvider = StateProvider<int>((ref) => 0);
 /// Bumped after table occupy / close so the board updates without a pull-to-refresh.
 final tablesRevisionProvider = StateProvider<int>((ref) => 0);
 
+/// Bumped after local order wipes so the running-orders tab reloads.
+final ordersRevisionProvider = StateProvider<int>((ref) => 0);
+
+/// Bumped after catalog wipes so cashier/menu grids reload.
+final catalogRevisionProvider = StateProvider<int>((ref) => 0);
+
 final syncPullApplierProvider = Provider<SyncPullApplier>((ref) {
   return SyncPullApplier(
     ref.watch(appDatabaseProvider),
@@ -103,7 +127,10 @@ final initialSyncServiceProvider = Provider<InitialSyncService>((ref) {
 });
 
 /// True when this workspace completed Initial Sync (or already has local products).
-final localPosReadyProvider = FutureProvider.family<bool, int?>((ref, workspaceId) async {
+final localPosReadyProvider = FutureProvider.family<bool, int?>((
+  ref,
+  workspaceId,
+) async {
   if (workspaceId == null || workspaceId <= 0) return false;
   final db = ref.watch(appDatabaseProvider);
   return db.isOfflinePosReady(workspaceId);

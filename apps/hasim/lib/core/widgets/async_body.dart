@@ -11,6 +11,11 @@ class AsyncBody extends StatelessWidget {
     required this.child,
     this.emptyTitle = 'لا توجد بيانات',
     this.emptySubtitle,
+    this.emptyIllustration,
+    this.emptyActionLabel,
+    this.onEmptyAction,
+    this.emptyActionIcon,
+    this.emptyPillAction = false,
   });
 
   final bool loading;
@@ -20,6 +25,11 @@ class AsyncBody extends StatelessWidget {
   final Widget child;
   final String emptyTitle;
   final String? emptySubtitle;
+  final Widget? emptyIllustration;
+  final String? emptyActionLabel;
+  final VoidCallback? onEmptyAction;
+  final IconData? emptyActionIcon;
+  final bool emptyPillAction;
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +52,27 @@ class AsyncBody extends StatelessWidget {
       );
     }
     if (isEmpty) {
-      return EmptyState(title: emptyTitle, subtitle: emptySubtitle);
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: EmptyState(
+                  title: emptyTitle,
+                  subtitle: emptySubtitle,
+                  illustration: emptyIllustration,
+                  actionLabel: emptyActionLabel,
+                  onAction: onEmptyAction,
+                  actionIcon: emptyActionIcon,
+                  pillAction: emptyPillAction,
+                ),
+              ),
+            ],
+          );
+        },
+      );
     }
     return child;
   }

@@ -262,73 +262,73 @@ void main() {
         '$e'.contains('Null check operator'),
   );
 
-  testWidgets(
-    'top nav has no reports/kitchen shortcuts and opens invoices/users',
-    (tester) async {
-      await pumpShell(tester, size: const Size(1400, 900));
+  testWidgets('top nav shows live POS sections and opens invoices/users', (
+    tester,
+  ) async {
+    await pumpShell(tester, size: const Size(1400, 900));
 
-      expect(find.byType(HsNavPill), findsWidgets);
-      expect(find.text('الكاشير'), findsOneWidget);
-      expect(find.text('الفواتير'), findsOneWidget);
-      expect(find.text('المستخدمون'), findsOneWidget);
-      expect(find.text('الإعدادات'), findsOneWidget);
-      expect(find.text('التقارير'), findsNothing);
-      expect(find.text('المطبخ'), findsNothing);
-      expect(find.text('العملاء'), findsNothing);
+    expect(find.byType(HsNavPill), findsWidgets);
+    expect(find.text('الكاشير'), findsOneWidget);
+    expect(find.text('الطاولات'), findsOneWidget);
+    expect(find.text('الفواتير'), findsOneWidget);
+    expect(find.text('إدارة المستخدمين'), findsOneWidget);
+    expect(find.text('التصنيفات'), findsWidgets);
+    expect(find.text('التقارير'), findsOneWidget);
+    expect(find.text('الإعدادات'), findsOneWidget);
+    expect(find.text('المطبخ'), findsNothing);
+    expect(find.text('العملاء'), findsNothing);
 
-      await tapNav(tester, 'الفواتير');
-      expect(find.byType(InvoicesList), findsOneWidget);
-      expect(find.text('INV-TEST-1'), findsOneWidget);
+    await tapNav(tester, 'الفواتير');
+    expect(find.byType(InvoicesList), findsOneWidget);
+    expect(find.text('INV-TEST-1'), findsOneWidget);
 
-      await tapNav(tester, 'المستخدمون');
-      expect(find.byType(UsersAdminPanel), findsOneWidget);
-      expect(find.text('المستخدمون والصلاحيات'), findsOneWidget);
-      final editorScrollable = find
-          .descendant(
-            of: find.byType(UsersAdminPanel),
-            matching: find.byType(Scrollable),
-          )
-          .last;
-      await tester.scrollUntilVisible(
-        find.text('الدخول إلى صفحة التقارير'),
-        240,
-        scrollable: editorScrollable,
-      );
-      expect(find.text('الدخول إلى صفحة التقارير'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('الدخول إلى صفحة المطبخ'),
-        120,
-        scrollable: editorScrollable,
-      );
-      expect(find.text('الدخول إلى صفحة المطبخ'), findsOneWidget);
+    await tapNav(tester, 'إدارة المستخدمين');
+    expect(find.byType(UsersAdminPanel), findsOneWidget);
+    expect(find.text('المستخدمون والصلاحيات'), findsOneWidget);
+    final editorScrollable = find
+        .descendant(
+          of: find.byType(UsersAdminPanel),
+          matching: find.byType(Scrollable),
+        )
+        .last;
+    await tester.scrollUntilVisible(
+      find.text('الدخول إلى صفحة التقارير'),
+      240,
+      scrollable: editorScrollable,
+    );
+    expect(find.text('الدخول إلى صفحة التقارير'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('الدخول إلى صفحة المطبخ'),
+      120,
+      scrollable: editorScrollable,
+    );
+    expect(find.text('الدخول إلى صفحة المطبخ'), findsOneWidget);
 
-      await openStationFromSettings(tester, 'فتح التقارير');
-      expect(find.byType(DailyReportsPanel), findsOneWidget);
-      expect(find.text('التقارير اليومية'), findsOneWidget);
+    await openStationFromSettings(tester, 'فتح التقارير');
+    expect(find.byType(DailyReportsPanel), findsOneWidget);
+    expect(find.text('التقارير اليومية'), findsOneWidget);
 
-      await openStationFromSettings(tester, 'فتح المطبخ');
-      expect(find.byType(KitchenBoard), findsOneWidget);
+    await openStationFromSettings(tester, 'فتح المطبخ');
+    expect(find.byType(KitchenBoard), findsOneWidget);
 
-      await tapNav(tester, 'الكاشير');
-      expect(find.text('شاي اختبار'), findsWidgets);
-      expect(find.text('برجر اختبار'), findsWidgets);
-      expect(find.text('مشروبات'), findsWidgets);
-      expect(find.text('طلب جديد'), findsOneWidget);
-      expect(find.text('طاولة'), findsWidgets);
-      expect(find.text('توصيل'), findsOneWidget);
-      expect(find.text('طلب خارجي'), findsOneWidget);
-      expect(find.text('التقارير'), findsNothing);
-      expect(find.text('المطبخ'), findsNothing);
+    await tapNav(tester, 'الكاشير');
+    expect(find.text('شاي اختبار'), findsWidgets);
+    expect(find.text('برجر اختبار'), findsWidgets);
+    expect(find.text('مشروبات'), findsWidgets);
+    expect(find.text('طلب جديد'), findsOneWidget);
+    expect(find.text('طاولة'), findsWidgets);
+    expect(find.text('توصيل'), findsOneWidget);
+    expect(find.text('طلب خارجي'), findsOneWidget);
+    expect(find.text('المطبخ'), findsNothing);
 
-      await tester.tap(find.text('مشروبات'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(find.text('شاي اختبار'), findsWidgets);
-      expect(find.text('برجر اختبار'), findsNothing);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 50));
-    },
-  );
+    await tester.tap(find.text('مشروبات'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('شاي اختبار'), findsWidgets);
+    expect(find.text('برجر اختبار'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
+  });
 
   testWidgets('tablet cashier shows category chips and filters products', (
     tester,
@@ -362,7 +362,7 @@ void main() {
         expect(find.text('INV-TEST-1'), findsOneWidget);
         expect(find.byType(HsSoftGrid), findsWidgets);
 
-        await tapNav(tester, 'المستخدمون');
+        await tapNav(tester, 'إدارة المستخدمين');
         expect(tester.takeException(), isNull);
         expect(find.byType(UsersAdminPanel), findsOneWidget);
         expect(find.text('المستخدمون والصلاحيات'), findsOneWidget);
@@ -414,6 +414,10 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     expect(tester.takeException(), isNull);
 
+    expect(find.text('تم إنشاء الطلب'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'إغلاق'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
     final invoices = await db.select(db.localInvoices).get();
     final snackTexts = tester
         .widgetList<Text>(
@@ -427,13 +431,8 @@ void main() {
         .toList();
     expect(
       invoices.length,
-      greaterThanOrEqualTo(2),
-      reason: 'checkout did not persist an invoice. snackbars=$snackTexts',
-    );
-    expect(
-      find.text('تم حفظ الفاتورة بنجاح'),
-      findsOneWidget,
-      reason: 'snackbars=$snackTexts invoiceCount=${invoices.length}',
+      1,
+      reason: 'table create must not invoice. snackbars=$snackTexts',
     );
     final table = await (db.select(
       db.localTables,
@@ -441,7 +440,6 @@ void main() {
     expect(table.status, 'occupied');
     expect(table.payloadJson.contains('opened_at'), isTrue);
 
-    await tester.tap(find.widgetWithText(HsOutlineButton, 'إغلاق'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -454,7 +452,7 @@ void main() {
     expect(find.byType(DailyReportsPanel), findsOneWidget);
     expect(find.text('التقارير اليومية'), findsOneWidget);
 
-    await tapNav(tester, 'الطاولات');
+    await openStationFromSettings(tester, 'فتح الطاولات');
     expect(find.byType(TablesBoard), findsOneWidget);
     expect(find.text('مشغولة'), findsWidgets);
     expect(find.byType(OccupiedDurationLabel), findsWidgets);
@@ -486,7 +484,10 @@ void main() {
           !closed.payloadJson.contains('"opened_at":"'),
       isTrue,
     );
-    expect((await db.select(db.localInvoices).get()).length, invoices.length);
+    expect(
+      (await db.select(db.localInvoices).get()).length,
+      greaterThanOrEqualTo(invoices.length),
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 50));
@@ -521,7 +522,7 @@ void main() {
 
       await hoverAndOpen('الفواتير');
       expect(find.byType(InvoicesList), findsOneWidget);
-      await hoverAndOpen('المستخدمون');
+      await hoverAndOpen('إدارة المستخدمين');
       expect(find.byType(UsersAdminPanel), findsOneWidget);
       await hoverAndOpen('الإعدادات');
       await revealSettingsAction(tester, 'فتح التقارير');
@@ -575,8 +576,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.byType(Dialog), findsNothing);
 
-    await tapNav(tester, 'إدارة الأصناف');
-    expect(find.text('إدارة الأصناف'), findsWidgets);
+    await tapNav(tester, 'التصنيفات');
+    expect(find.text('التصنيفات'), findsWidgets);
     expect(find.byType(HsSoftGrid), findsWidgets);
     expect(find.text('مشروبات'), findsWidgets);
     expect(find.text('شاي اختبار'), findsWidgets);
@@ -587,6 +588,14 @@ void main() {
     expect(find.text('فتح المطبخ'), findsOneWidget);
     expect(find.text('افتتاح الكاش'), findsWidgets);
     expect(find.text('إغلاق الكاش'), findsOneWidget);
+    expect(find.text('مزامنة الآن'), findsWidgets);
+    expect(find.text('مزامنة السحابة'), findsOneWidget);
+    await revealSettingsAction(tester, 'حذف جميع الفواتير');
+    expect(find.text('حذف جميع الفواتير'), findsOneWidget);
+    expect(find.text('حذف جميع الأصناف'), findsOneWidget);
+    expect(find.text('حذف جميع الطلبات'), findsOneWidget);
+    expect(find.text('حذف جميع استعلامات المطبخ'), findsOneWidget);
+    expect(find.text('تنظيف البيانات المحلية'), findsOneWidget);
 
     await revealSettingsAction(tester, 'فتح التقارير');
     await tester.tap(find.text('فتح التقارير'));
@@ -632,6 +641,77 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
     expect(find.text('طاولة 1'), findsWidgets);
 
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('settings sync now explains missing cloud link', (tester) async {
+    await pumpShell(tester, size: const Size(1400, 900));
+    await tapNav(tester, 'الإعدادات');
+    expect(find.byType(SettingsPanel), findsOneWidget);
+    await revealSettingsAction(tester, 'مزامنة الآن');
+    expect(find.text('مزامنة السحابة'), findsOneWidget);
+    expect(find.widgetWithText(HsPrimaryButton, 'مزامنة الآن'), findsOneWidget);
+    expect(find.textContaining('غير مرتبط بالسحابة'), findsOneWidget);
+    await tester.tap(find.widgetWithText(HsPrimaryButton, 'مزامنة الآن'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.textContaining('اربط الحساب السحابي'), findsOneWidget);
+  });
+
+  testWidgets('settings bulk wipe asks first then clears local invoices', (
+    tester,
+  ) async {
+    await pumpShell(tester, size: const Size(1400, 900));
+    await tapNav(tester, 'الإعدادات');
+    await revealSettingsAction(tester, 'حذف جميع الفواتير');
+    await tester.tap(find.widgetWithText(HsOutlineButton, 'حذف جميع الفواتير'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('حذف الكل'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: find.byType(Dialog), matching: find.text('إلغاء')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(Dialog), findsNothing);
+
+    await tapNav(tester, 'الفواتير');
+    expect(find.text('INV-TEST-1'), findsOneWidget);
+
+    await tapNav(tester, 'الإعدادات');
+    await revealSettingsAction(tester, 'حذف جميع الفواتير');
+    await tester.tap(find.widgetWithText(HsOutlineButton, 'حذف جميع الفواتير'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.widgetWithText(HsPrimaryButton, 'حذف الكل'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('تم حذف الفواتير محلياً'), findsOneWidget);
+
+    await tapNav(tester, 'الفواتير');
+    expect(find.text('INV-TEST-1'), findsNothing);
+    expect((await db.select(db.localInvoices).get()), isEmpty);
+
+    await tapNav(tester, 'الإعدادات');
+    await revealSettingsAction(tester, 'حذف جميع الأصناف');
+    await tester.tap(find.widgetWithText(HsOutlineButton, 'حذف جميع الأصناف'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.textContaining('سيتم حذف كل الأصناف'), findsOneWidget);
+    await tester.tap(find.widgetWithText(HsPrimaryButton, 'حذف الكل'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('تم حذف الأصناف محلياً'), findsOneWidget);
+
+    await tapNav(tester, 'الكاشير');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('شاي اختبار'), findsNothing);
+    expect(find.text('برجر اختبار'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 50));
   });

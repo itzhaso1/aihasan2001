@@ -3,12 +3,15 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/cashier_api.dart';
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/google_access_token.dart';
 import '../../core/pos/application/pos_providers.dart';
 import '../../core/pos/pos_errors.dart';
 import '../../core/theme/hasim_colors.dart';
 import '../../core/theme/hasim_radius.dart';
 import '../../core/theme/hasim_spacing.dart';
+import '../../core/widgets/hasim_brand_logo.dart';
 import '../../core/widgets/hasim_widgets.dart';
 
 /// Offline-only entry: cashier login, kitchen station, or reports station.
@@ -24,6 +27,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   var _loading = true;
   var _busy = false;
+  var _cloudMode = true;
+  var _linked = false;
+  var _hasStore = false;
+  var _googleWaiting = false;
   String? _error;
 
   @override
@@ -45,13 +52,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
+      final wantCloud =
+          GoRouterState.of(context).uri.queryParameters['cloud'] == '1';
       final store = await ref.read(localAuthServiceProvider).anyStore();
       if (!mounted) return;
-      if (store == null) {
-        context.go('/standalone-setup');
-        return;
+      setState(() {
+        _loading = false;
+        _hasStore = store != null;
+        _cloudMode = store == null || wantCloud;
+      });
+      try {
+        final link = await ref.read(cloudLinkStoreProvider).read();
+        if (!mounted) return;
+        setState(() => _linked = link?.isLinked == true);
+      } catch (_) {
+        // Secure storage can stall in widget tests; store presence is enough.
       }
-      setState(() => _loading = false);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -67,31 +83,90 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
-      await ref.read(authControllerProvider.notifier).loginStandalonePin(
+      if (_cloudMode) {
+        await ref
+            .read(authControllerProvider.notifier)
+            .login(_email.text.trim(), _password.text);
+        if (!mounted) return;
+        await _refreshStoreFlags();
+        return;
+      }
+      await ref
+          .read(authControllerProvider.notifier)
+          .loginStandalonePin(
             username: _email.text.trim(),
             pin: _password.text,
           );
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is PosException ? e.messageAr : e.toString();
+        _error = e is PosException
+            ? e.messageAr
+            : e is ApiException
+            ? e.message
+            : e.toString();
       });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
+  Future<void> _refreshStoreFlags() async {
+    final store = await ref.read(localAuthServiceProvider).anyStore();
+    var linked = false;
+    try {
+      final link = await ref.read(cloudLinkStoreProvider).read();
+      linked = link?.isLinked == true;
+    } catch (_) {
+      // Secure storage can stall in widget tests.
+    }
+    if (!mounted) return;
+    setState(() {
+      _hasStore = store != null;
+      _linked = linked;
+      if (_linked) _cloudMode = false;
+    });
+  }
+
+  Future<void> _google() async {
+    setState(() {
+      _busy = true;
+      _googleWaiting = true;
+      _error = null;
+    });
+    try {
+      final accessToken = await GoogleAccessTokenClient(
+        ref.read(cashierApiProvider),
+      ).obtainAccessToken();
+      await ref
+          .read(authControllerProvider.notifier)
+          .socialLogin(provider: 'google', accessToken: accessToken);
+      if (!mounted) return;
+      await _refreshStoreFlags();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is PosException
+            ? e.messageAr
+            : e is ApiException
+            ? e.message
+            : e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _googleWaiting = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [HasimColors.brandSoft, Color(0xFFF8FAFC), Colors.white],
-          ),
-        ),
+      body: ColoredBox(
+        color: HasimColors.page,
         child: SafeArea(
           child: Center(
             child: ConstrainedBox(
@@ -101,47 +176,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 children: [
                   const SizedBox(height: 24),
                   Column(
-                        children: [
-                          Container(
-                            width: 72,
-                            height: 72,
-                            decoration: BoxDecoration(
-                              color: HasimColors.surface,
-                              borderRadius: BorderRadius.circular(
-                                HasimRadius.lg,
-                              ),
-                              border: Border.all(color: HasimColors.border),
-                            ),
-                            alignment: Alignment.center,
-                            child: const Text(
-                              'ح',
-                              style: TextStyle(
-                                fontSize: 34,
-                                fontWeight: FontWeight.w900,
-                                color: HasimColors.brand,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'حاسم',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              color: HasimColors.brand,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'كاشير حاسم — أوفلاين بالكامل',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      )
-                      .animate()
-                      .fadeIn(duration: 280.ms)
-                      .slideY(begin: 0.06, end: 0),
+                    children: [
+                      const HasimBrandLogo(width: 240),
+                      const SizedBox(height: 8),
+                      Text(
+                        _cloudMode
+                            ? 'تسجيل الدخول بحساب حاسم'
+                            : (_linked
+                                  ? 'كاشير حاسم — مربوط، والعمل المحلي متاح بدون إنترنت'
+                                  : 'كاشير حاسم — أوفلاين بالكامل'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ).animate().fadeIn(duration: 280.ms).slideY(begin: 0.06, end: 0),
                   const SizedBox(height: 28),
                   HsCard(
                     padding: const EdgeInsets.all(HasimSpacing.lg),
@@ -149,12 +197,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          'تشغيل محلي بدون إنترنت',
+                          _cloudMode
+                              ? 'حساب حاسم / Laravel'
+                              : 'تشغيل محلي بدون إنترنت',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'الكاشير للمبيعات. المطبخ والتقارير محطات منفصلة من هذه الشاشة.',
+                          _cloudMode
+                              ? 'الهوية من حساب حاسم. بعد الربط يعمل الكاشير بدون إنترنت بنفس كلمة المرور.'
+                              : 'الكاشير للمبيعات. المطبخ والتقارير محطات منفصلة من هذه الشاشة.',
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         const SizedBox(height: 16),
@@ -199,8 +251,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             controller: _email,
                             keyboardType: TextInputType.emailAddress,
                             autofillHints: const [AutofillHints.email],
-                            decoration: const InputDecoration(
-                              labelText: 'الإيميل',
+                            decoration: InputDecoration(
+                              labelText: _cloudMode
+                                  ? 'البريد أو الجوال'
+                                  : 'الإيميل',
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -208,8 +262,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             controller: _password,
                             obscureText: true,
                             onSubmitted: (_) => _busy ? null : _submit(),
-                            decoration: const InputDecoration(
-                              labelText: 'كلمة المرور',
+                            decoration: InputDecoration(
+                              labelText: _cloudMode
+                                  ? 'كلمة مرور الحساب'
+                                  : 'كلمة المرور',
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -225,7 +281,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ),
                               ),
                               onPressed: _busy ? null : _submit,
-                              icon: const Icon(Icons.storefront_outlined),
+                              icon: Icon(
+                                _cloudMode
+                                    ? Icons.cloud_sync_outlined
+                                    : Icons.storefront_outlined,
+                              ),
                               label: _busy
                                   ? const SizedBox(
                                       width: 18,
@@ -235,41 +295,111 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         color: Colors.white,
                                       ),
                                     )
-                                  : const Text('دخول الكاشير'),
+                                  : Text(
+                                      _cloudMode
+                                          ? 'ربط الجهاز'
+                                          : 'دخول الكاشير',
+                                    ),
                             ),
                           ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            height: 48,
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    HasimRadius.md,
+                          if (_cloudMode) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                const Expanded(child: Divider()),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  child: Text(
+                                    'أو',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
                                   ),
                                 ),
-                              ),
-                              onPressed: () => context.go('/kitchen'),
-                              icon: const Icon(Icons.soup_kitchen_outlined),
-                              label: const Text('دخول المطبخ'),
+                                const Expanded(child: Divider()),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            height: 48,
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    HasimRadius.md,
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              height: 48,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      HasimRadius.md,
+                                    ),
                                   ),
                                 ),
+                                onPressed: _busy ? null : _google,
+                                icon: const Icon(Icons.g_mobiledata_rounded),
+                                label: Text(
+                                  _googleWaiting
+                                      ? 'بانتظار Google…'
+                                      : 'الدخول عبر Google',
+                                ),
                               ),
-                              onPressed: () => context.go('/reports'),
-                              icon: const Icon(Icons.bar_chart_outlined),
-                              label: const Text('دخول التقارير'),
                             ),
-                          ),
+                            if (_googleWaiting) ...[
+                              const SizedBox(height: 10),
+                              Text(
+                                'افتح نافذة المتصفح وأكمل حساب Google، ثم ارجع إلى الكاشير. لا تغلق التطبيق. بعد النجاح قد تُطلب كلمة مرور محلية للجهاز.',
+                                style: Theme.of(context).textTheme.bodySmall,
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ],
+                          if (!_cloudMode) ...[
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: 48,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      HasimRadius.md,
+                                    ),
+                                  ),
+                                ),
+                                onPressed: () => context.go('/kitchen'),
+                                icon: const Icon(Icons.soup_kitchen_outlined),
+                                label: const Text('دخول المطبخ'),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: 48,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      HasimRadius.md,
+                                    ),
+                                  ),
+                                ),
+                                onPressed: () => context.go('/reports'),
+                                icon: const Icon(Icons.bar_chart_outlined),
+                                label: const Text('دخول التقارير'),
+                              ),
+                            ),
+                          ],
+                          if (_hasStore) ...[
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: _busy
+                                  ? null
+                                  : () => setState(() {
+                                      _cloudMode = !_cloudMode;
+                                      _error = null;
+                                    }),
+                              child: Text(
+                                _cloudMode
+                                    ? 'العودة لتسجيل الدخول المحلي'
+                                    : 'ربط الجهاز بحساب حاسم',
+                              ),
+                            ),
+                          ],
                         ],
                       ],
                     ),

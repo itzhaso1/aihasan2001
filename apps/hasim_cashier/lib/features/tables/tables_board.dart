@@ -431,13 +431,10 @@ class _TablesBoardState extends ConsumerState<TablesBoard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'الطاولات',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-              ),
-              const Text(
-                'اضغط على الطاولة للدخول إلى تفاصيلها وعملياتها',
-                style: TextStyle(fontSize: 11, color: HasimColors.muted),
+              const HsPageHeader(
+                icon: Icons.table_restaurant_outlined,
+                title: 'الطاولات',
+                subtitle: 'اضغط على الطاولة للدخول إلى تفاصيلها وعملياتها',
               ),
               const SizedBox(height: 8),
               Wrap(

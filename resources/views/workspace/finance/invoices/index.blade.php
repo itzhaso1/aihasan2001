@@ -23,6 +23,7 @@
             </div>
             <div class="flex flex-wrap gap-2">
                 <a href="{{ route('workspace.finance.billing.dashboard') }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">لوحة التحصيل</a>
+                <a href="{{ route('workspace.finance.exports.download', ['dataset' => 'invoices', 'type' => request('type')]) }}" class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">CSV</a>
                 <a href="{{ route('workspace.finance.invoices.create') }}" class="rounded-lg bg-[#06C2A4] px-4 py-2 text-sm font-semibold text-white hover:bg-[#05ab91]">إنشاء فاتورة</a>
             </div>
         </div>

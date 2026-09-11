@@ -18,6 +18,7 @@ class PosPermissions {
   static const invoicesEdit = StaffPermissions.invoicesEdit;
   static const invoicesDelete = StaffPermissions.invoicesDelete;
   static const kitchen = StaffPermissions.kitchenUse;
+  static const ordersManage = StaffPermissions.ordersManage;
   static const reports = StaffPermissions.reportsView;
   static const users = StaffPermissions.usersManage;
   static const shiftOpen = StaffPermissions.shiftsOpen;

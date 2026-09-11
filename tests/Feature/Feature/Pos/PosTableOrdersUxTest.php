@@ -36,11 +36,12 @@ class PosTableOrdersUxTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertGreaterThanOrEqual(2, substr_count($html, 'إضافة طلب'));
+        $this->assertStringNotContainsString('إضافة طلب', $html);
         $this->assertStringNotContainsString('إضافة صنف', $html);
         $this->assertStringNotContainsString("panel = 'addItem'", $html);
-        $this->assertStringContainsString("panel = 'addOrder'", $html);
+        $this->assertStringNotContainsString("panel = 'addOrder'", $html);
         $this->assertStringContainsString('فارغة', $html);
+        $this->assertStringContainsString('تطبيق الكاشير', $html);
     }
 
     public function test_opening_session_keeps_table_empty_until_first_order(): void
@@ -66,27 +67,11 @@ class PosTableOrdersUxTest extends TestCase
         $this->actingAs($owner)
             ->withSession(['current_workspace_id' => $workspace->id])
             ->post(route('workspace.pos.tables.sessions.open', $table))
-            ->assertRedirect();
+            ->assertForbidden();
 
-        $this->assertDatabaseHas('table_sessions', [
+        $this->assertDatabaseMissing('table_sessions', [
             'dining_table_id' => $table->id,
             'status' => 'open',
-        ]);
-        $this->assertDatabaseHas('dining_tables', [
-            'id' => $table->id,
-            'status' => 'available',
-        ]);
-
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.orders.store', $table), [
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])
-            ->assertRedirect();
-
-        $this->assertDatabaseHas('dining_tables', [
-            'id' => $table->id,
-            'status' => 'occupied',
         ]);
     }
 
@@ -157,19 +142,15 @@ class PosTableOrdersUxTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.orders.store', $table), [
-                'items' => [['pos_menu_item_id' => $tea->id, 'quantity' => 1]],
-            ])
-            ->assertRedirect();
+        $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $table->id,
+            'items' => [['pos_menu_item_id' => $tea->id, 'quantity' => 1]],
+        ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.orders.store', $table), [
-                'items' => [['pos_menu_item_id' => $tea->id, 'quantity' => 2]],
-            ])
-            ->assertRedirect();
+        $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $table->id,
+            'items' => [['pos_menu_item_id' => $tea->id, 'quantity' => 2]],
+        ]);
 
         $session = TableSession::query()->where('dining_table_id', $table->id)->where('status', 'open')->firstOrFail();
         $this->assertSame(1, Order::query()->where('table_session_id', $session->id)->where('pos_status', '!=', 'cancelled')->count());
@@ -201,14 +182,10 @@ class PosTableOrdersUxTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.orders.store', $table), [
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])
-            ->assertRedirect();
-
-        $order = Order::query()->where('dining_table_id', $table->id)->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $table->id,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
         $line = $order->items()->firstOrFail();
 
         $html = $this->actingAs($owner)
@@ -217,18 +194,16 @@ class PosTableOrdersUxTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('تعديل الطلب', $html);
-        $this->assertStringContainsString('حذف الطلب', $html);
-        $this->assertStringContainsString(route('workspace.pos.orders.update-items', $order, false), $html);
+        $this->assertStringContainsString($order->order_number, $html);
+        $this->assertStringNotContainsString('تعديل الطلب', $html);
+        $this->assertStringNotContainsString('حذف الطلب', $html);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.update-items', $order), [
-                'items' => [
-                    ['id' => $line->id, 'quantity' => 4, 'unit_price' => 10],
-                ],
-            ])
-            ->assertRedirect();
+        $pos = app(\App\Services\Pos\PosOrderService::class);
+        $pos->updateOrderItems($order, [
+            'items' => [
+                ['id' => $line->id, 'quantity' => 4, 'unit_price' => 10],
+            ],
+        ]);
 
         $this->assertDatabaseHas('order_items', [
             'id' => $line->id,
@@ -236,12 +211,7 @@ class PosTableOrdersUxTest extends TestCase
             'total_amount' => 40,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.status', $order), [
-                'pos_status' => 'cancelled',
-            ])
-            ->assertRedirect();
+        $pos->updatePosStatus($order->fresh(), 'cancelled', $owner);
 
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,
@@ -273,24 +243,17 @@ class PosTableOrdersUxTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.tables.orders.store', $table), [
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])
-            ->assertRedirect();
-
-        $order = Order::query()->where('dining_table_id', $table->id)->latest('id')->firstOrFail();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'dining_table_id' => $table->id,
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
         $line = $order->items()->firstOrFail();
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.update-items', $order), [
-                'items' => [
-                    ['id' => $line->id, 'quantity' => 1, 'unit_price' => 2, 'remove' => true],
-                ],
-            ])
-            ->assertRedirect();
+        app(\App\Services\Pos\PosOrderService::class)->updateOrderItems($order, [
+            'items' => [
+                ['id' => $line->id, 'quantity' => 1, 'unit_price' => 2, 'remove' => true],
+            ],
+        ]);
 
         $this->assertDatabaseHas('orders', [
             'id' => $order->id,

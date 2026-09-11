@@ -9,8 +9,10 @@ use App\Models\WorkspaceScopedModel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 
 #[Fillable([
     'workspace_id',
@@ -50,6 +52,16 @@ class FinanceCreditNote extends WorkspaceScopedModel
     public const STATUS_ISSUED = 'issued';
 
     public const STATUS_CANCELLED = 'cancelled';
+
+    /**
+     * @var array<int, string>
+     */
+    private const MUTABLE_WHEN_LOCKED = [
+        'status',
+        'cancelled_at',
+        'notes',
+        'updated_at',
+    ];
 
     protected function casts(): array
     {
@@ -92,9 +104,55 @@ class FinanceCreditNote extends WorkspaceScopedModel
         return $this->belongsTo(User::class, 'issued_by');
     }
 
+    public function issuedSnapshot(): HasOne
+    {
+        return $this->hasOne(IssuedDocumentSnapshot::class, 'source_id')
+            ->whereIn('source_type', [
+                IssuedDocumentSnapshot::SOURCE_FINANCE_CREDIT_NOTE,
+                IssuedDocumentSnapshot::SOURCE_FINANCE_DEBIT_NOTE,
+            ]);
+    }
+
     public function isCredit(): bool
     {
         return $this->type === self::TYPE_CREDIT;
+    }
+
+    public function isFinanciallyLocked(): bool
+    {
+        return in_array($this->status, [self::STATUS_ISSUED, self::STATUS_CANCELLED], true);
+    }
+
+    protected static function booted(): void
+    {
+        parent::booted();
+
+        static::updating(function (FinanceCreditNote $note): void {
+            $originalStatus = (string) ($note->getOriginal('status') ?? self::STATUS_DRAFT);
+            if (! in_array($originalStatus, [self::STATUS_ISSUED, self::STATUS_CANCELLED], true)) {
+                return;
+            }
+
+            $dirty = $note->getDirty();
+            if (array_key_exists('status', $dirty)) {
+                $next = (string) $dirty['status'];
+                if (! ($originalStatus === self::STATUS_ISSUED && $next === self::STATUS_CANCELLED)) {
+                    throw new RuntimeException('لا يمكن تغيير حالة الإشعار المعتمد إلا بالإلغاء.');
+                }
+                unset($dirty['status']);
+            }
+
+            $blocked = array_diff(array_keys($dirty), self::MUTABLE_WHEN_LOCKED);
+            if ($blocked !== []) {
+                throw new RuntimeException('الإشعار المعتمد أو الملغى وثيقة مالية ثابتة ولا يمكن تعديل بياناتها.');
+            }
+        });
+
+        static::deleting(function (FinanceCreditNote $note): void {
+            if ($note->isFinanciallyLocked()) {
+                throw new RuntimeException('لا يمكن حذف إشعار معتمد أو ملغى.');
+            }
+        });
     }
 
     public static function hasTaxEngineColumns(): bool

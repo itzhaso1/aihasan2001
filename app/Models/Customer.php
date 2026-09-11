@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Models\Appointment\AppointmentBooking;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Finance\FinanceInvoice;
+use App\Models\Finance\FinanceQuote;
+use Database\Factories\CustomerFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -14,6 +16,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'workspace_id',
     'name',
+    'party_type',
     'phone',
     'client_reference',
     'whatsapp',
@@ -21,6 +24,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'vat_number',
     'commercial_registration',
     'address',
+    'building_number',
+    'street',
+    'district',
+    'city',
+    'postal_code',
+    'country_code',
+    'additional_number',
     'payment_terms',
     'balance',
     'orders_count',
@@ -32,8 +42,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class Customer extends WorkspaceScopedModel
 {
-    /** @use HasFactory<\Database\Factories\CustomerFactory> */
+    /** @use HasFactory<CustomerFactory> */
     use BelongsToWorkspace, HasFactory, SoftDeletes;
+
+    public const PARTY_TYPE_INDIVIDUAL = 'individual';
+
+    public const PARTY_TYPE_COMPANY = 'company';
 
     protected function casts(): array
     {
@@ -44,6 +58,29 @@ class Customer extends WorkspaceScopedModel
             'last_conversation_at' => 'datetime',
             'metadata' => 'array',
         ];
+    }
+
+    public function partyType(): string
+    {
+        $type = strtolower(trim((string) ($this->party_type ?: self::PARTY_TYPE_INDIVIDUAL)));
+
+        return $type === self::PARTY_TYPE_COMPANY
+            ? self::PARTY_TYPE_COMPANY
+            : self::PARTY_TYPE_INDIVIDUAL;
+    }
+
+    public function isCompany(): bool
+    {
+        return $this->partyType() === self::PARTY_TYPE_COMPANY;
+    }
+
+    /**
+     * Stored cache column. Not the AR source of truth.
+     * Use CustomerBalanceService::outstanding() for what the customer owes.
+     */
+    public function storedBalance(): float
+    {
+        return round((float) $this->balance, 2);
     }
 
     public function orders(): HasMany
@@ -59,6 +96,11 @@ class Customer extends WorkspaceScopedModel
     public function financeInvoices(): HasMany
     {
         return $this->hasMany(FinanceInvoice::class);
+    }
+
+    public function financeQuotes(): HasMany
+    {
+        return $this->hasMany(FinanceQuote::class);
     }
 
     public function bookings(): HasMany

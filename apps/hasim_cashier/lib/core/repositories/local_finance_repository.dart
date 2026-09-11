@@ -63,7 +63,10 @@ class LocalFinanceRepository {
           'id': row.localId,
           'local_id': row.localId,
           'invoice_number':
-              row.invoiceNumber ?? row.localInvoiceNumber ?? row.localId,
+              row.serverInvoiceNumber ??
+              row.invoiceNumber ??
+              row.localInvoiceNumber ??
+              row.localId,
           'total_amount': Money.fromCents(row.totalAmount),
           'created_at': row.createdAt.toIso8601String(),
           'closed_at': row.createdAt.toIso8601String(),
@@ -345,10 +348,13 @@ class LocalFinanceRepository {
       'local_id': row.localId,
       'server_id': row.serverId,
       'invoice_number':
+          row.serverInvoiceNumber ??
           row.invoiceNumber ??
           row.localInvoiceNumber ??
           payload['invoice_number']?.toString() ??
           row.localId,
+      'local_invoice_number': row.localInvoiceNumber,
+      'server_invoice_number': row.serverInvoiceNumber,
       'order_local_id': row.orderLocalId ?? payload['order_local_id'],
       'subtotal': Money.fromCents(
         row.subtotal > 0

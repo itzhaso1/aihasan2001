@@ -5,6 +5,7 @@ namespace App\Services\Contracts;
 use App\Models\Contract\Contract;
 use App\Models\Contract\ContractAttachment;
 use App\Models\Customer;
+use App\Models\Finance\FinanceBillingSchedule;
 use App\Models\Finance\FinanceSetting;
 use App\Models\Projects\FinanceProject;
 use App\Models\Workspace;
@@ -144,6 +145,7 @@ class ContractService
                 'status' => 'closed',
                 'closed_at' => now(),
             ]);
+            $this->stopLinkedBillingSchedules($contract);
 
             return $contract->fresh(['customer', 'items', 'attachments']);
         });
@@ -160,9 +162,44 @@ class ContractService
                 'status' => 'cancelled',
                 'cancelled_at' => now(),
             ]);
+            $this->stopLinkedBillingSchedules($contract);
 
             return $contract->fresh(['customer', 'items', 'attachments']);
         });
+    }
+
+    /**
+     * Closed = completed successfully. Cancelled = terminated.
+     * Both must stop future invoice generation from linked schedules.
+     */
+    private function stopLinkedBillingSchedules(Contract $contract): void
+    {
+        if (! Schema::hasTable('finance_billing_schedules')) {
+            return;
+        }
+
+        FinanceBillingSchedule::withoutGlobalScopes()
+            ->where('workspace_id', $contract->workspace_id)
+            ->where('contract_id', $contract->id)
+            ->whereIn('status', [
+                FinanceBillingSchedule::STATUS_DRAFT,
+                FinanceBillingSchedule::STATUS_ACTIVE,
+                FinanceBillingSchedule::STATUS_PAUSED,
+            ])
+            ->update([
+                'status' => FinanceBillingSchedule::STATUS_CANCELLED,
+                'next_run_on' => null,
+            ]);
+    }
+
+    /**
+     * @param  array<int, mixed>  $uploadedFiles
+     */
+    public function storeAttachments(Contract $contract, array $uploadedFiles): Contract
+    {
+        $this->storeUploadedAttachments($contract, $uploadedFiles);
+
+        return $contract->fresh(['customer', 'items', 'attachments', 'billingSchedules']) ?? $contract;
     }
 
     public function deleteAttachment(ContractAttachment $attachment): void

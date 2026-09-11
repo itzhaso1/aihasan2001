@@ -7,6 +7,7 @@ import 'draft_cart_store.dart';
 import 'hive_legacy_migration.dart';
 import 'kitchen_local_service.dart';
 import 'local_auth_service.dart';
+import 'local_data_wipe_service.dart';
 import 'reports_service.dart';
 import 'return_service.dart';
 import 'session_service.dart';
@@ -45,7 +46,11 @@ final shiftServiceProvider = Provider<ShiftService>((ref) {
 });
 
 final catalogAdminServiceProvider = Provider<CatalogAdminService>((ref) {
-  return CatalogAdminService(ref.watch(appDatabaseProvider));
+  return CatalogAdminService(
+    ref.watch(appDatabaseProvider),
+    queue: ref.watch(syncQueueRepositoryProvider),
+    deviceId: () => ref.read(deviceIdentityProvider).getOrCreateDeviceId(),
+  );
 });
 
 final draftCartStoreProvider = Provider<DraftCartStore>((ref) {
@@ -76,7 +81,18 @@ final tableSessionServiceProvider = Provider<TableSessionService>((ref) {
 });
 
 final kitchenLocalServiceProvider = Provider<KitchenLocalService>((ref) {
-  return KitchenLocalService(ref.watch(appDatabaseProvider));
+  return KitchenLocalService(
+    ref.watch(appDatabaseProvider),
+    queue: ref.watch(syncQueueRepositoryProvider),
+    deviceId: () => ref.read(deviceIdentityProvider).getOrCreateDeviceId(),
+  );
+});
+
+final localDataWipeServiceProvider = Provider<LocalDataWipeService>((ref) {
+  return LocalDataWipeService(
+    ref.watch(appDatabaseProvider),
+    queue: ref.watch(syncQueueRepositoryProvider),
+  );
 });
 
 final barcodeInputProvider = Provider<BarcodeInput>((ref) {

@@ -31,6 +31,8 @@ Route::prefix('auth')->group(function (): void {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:mobile-login');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:mobile-login');
     Route::post('/social', [AuthController::class, 'social'])->middleware('throttle:mobile-login');
+    Route::post('/google/start', [AuthController::class, 'googleStart'])->middleware('throttle:mobile-login');
+    Route::get('/google/status', [AuthController::class, 'googleStatus'])->middleware('throttle:cashier-api');
 });
 
 Route::middleware(['auth:sanctum', 'throttle:cashier-api'])->group(function (): void {

@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\Cashier\Concerns\ResolvesCashierWorkspace;
 use App\Http\Resources\Mobile\UserResource;
 use App\Http\Resources\Mobile\WorkspaceResource;
 use App\Models\User;
+use App\Services\Cashier\CashierGoogleBrowserLogin;
 use App\Services\Feature\FeatureAccessService;
 use App\Services\Mobile\MobileAuthService;
 use App\Support\Tenancy\WorkspaceContext;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use RuntimeException;
+use Throwable;
 
 class AuthController extends CashierController
 {
@@ -31,6 +33,7 @@ class AuthController extends CashierController
         private readonly MobileAuthService $mobileAuthService,
         private readonly FeatureAccessService $featureAccessService,
         private readonly WorkspaceContext $workspaceContext,
+        private readonly CashierGoogleBrowserLogin $googleBrowserLogin,
     ) {}
 
     public function login(Request $request): JsonResponse
@@ -104,6 +107,34 @@ class AuthController extends CashierController
         return $this->loginEnvelope($result, 'تم تسجيل الدخول بنجاح.');
     }
 
+    public function googleStart(): JsonResponse
+    {
+        try {
+            return $this->ok($this->googleBrowserLogin->start());
+        } catch (RuntimeException $exception) {
+            return $this->fail($exception->getMessage(), 422);
+        } catch (Throwable) {
+            return $this->fail(
+                'تعذر بدء تسجيل Google. تحقق من GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET و GOOGLE_REDIRECT_URI في .env.',
+                422,
+            );
+        }
+    }
+
+    public function googleStatus(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'ticket' => ['required', 'string', 'uuid'],
+        ]);
+
+        $payload = $this->googleBrowserLogin->status($validated['ticket']);
+        if ($payload['status'] === 'expired') {
+            return $this->fail((string) $payload['error'], 404);
+        }
+
+        return $this->ok($payload);
+    }
+
     public function forgotPassword(Request $request): JsonResponse
     {
         $request->validate(['email' => ['required', 'email']]);
@@ -175,7 +206,7 @@ class AuthController extends CashierController
         return $this->ok([
             'user' => new UserResource($user),
             'workspace' => $workspace ? new WorkspaceResource($workspace) : null,
-            'workspaces' => WorkspaceResource::collection($workspaces),
+            'workspaces' => $this->cashierWorkspacesPayload($workspaces),
             'permissions' => $workspace ? $this->permissionMap($user, $workspace) : [],
             'pos_enabled' => $workspace
                 ? $this->featureAccessService->workspaceHasFeature($workspace, 'pos')
@@ -208,10 +239,29 @@ class AuthController extends CashierController
             'expires_at' => optional($result['token']->accessToken->expires_at)?->toIso8601String(),
             'user' => new UserResource($result['user']),
             'workspace' => $workspace ? new WorkspaceResource($workspace) : null,
-            'workspaces' => WorkspaceResource::collection($result['workspaces']),
+            'workspaces' => $this->cashierWorkspacesPayload($result['workspaces']),
             'permissions' => $permissions,
             'entitlements' => $entitlements,
             'pos_enabled' => $posEnabled,
         ], message: $message);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Workspace>  $workspaces
+     * @return list<array<string, mixed>>
+     */
+    private function cashierWorkspacesPayload($workspaces): array
+    {
+        return $workspaces
+            ->map(function ($workspace): array {
+                return [
+                    'id' => $workspace->id,
+                    'name' => $workspace->name,
+                    'type' => $workspace->type,
+                    'pos_enabled' => $this->featureAccessService->workspaceHasFeature($workspace, 'pos'),
+                ];
+            })
+            ->values()
+            ->all();
     }
 }

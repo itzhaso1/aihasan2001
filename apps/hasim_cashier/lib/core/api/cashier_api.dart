@@ -2,8 +2,11 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../auth/cloud_link_store.dart';
 import '../config/app_config.dart';
 import '../network/cashier_link.dart';
+import 'cashier_network_policy.dart';
+import 'cashier_request_auth.dart';
 import 'network_guard.dart';
 
 final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
@@ -12,9 +15,16 @@ final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   );
 });
 
+final cloudLinkStoreProvider = Provider<CloudLinkStore>((ref) {
+  return CloudLinkStore.secure(ref.watch(secureStorageProvider));
+});
+
 final authTokenProvider = StateProvider<String?>((ref) => null);
 final workspaceIdProvider = StateProvider<int?>((ref) => null);
 final deviceIdHeaderProvider = StateProvider<String?>((ref) => null);
+
+/// In-memory Sanctum link. PIN `cashier_token` stays standalone after bind.
+final cloudLinkSessionProvider = StateProvider<CloudLinkSnapshot?>((ref) => null);
 
 final dioProvider = Provider<Dio>((ref) {
   final dio = Dio(
@@ -33,15 +43,31 @@ final dioProvider = Provider<Dio>((ref) {
     InterceptorsWrapper(
       onRequest: (options, handler) {
         NetworkGuard.recordAttempt();
-        final token = ref.read(authTokenProvider);
-        final workspaceId = ref.read(workspaceIdProvider);
-        final deviceId = ref.read(deviceIdHeaderProvider);
-        // Hard offline: reject every outbound API call.
-        if (AppConfig.offlineOnly ||
-            (token != null &&
-                token.isNotEmpty &&
-                (token.startsWith('standalone:') ||
-                    token == 'local-offline'))) {
+        final cloud = CashierRequestAuth.activeLink(
+          ref.read(cloudLinkSessionProvider),
+        );
+        final token = CashierRequestAuth.bearerToken(
+          sessionToken: ref.read(authTokenProvider),
+          cloud: cloud,
+        );
+        final workspaceId = CashierRequestAuth.workspaceId(
+          sessionWorkspaceId: ref.read(workspaceIdProvider),
+          cloud: cloud,
+        );
+        final deviceId = CashierRequestAuth.deviceId(
+          sessionDeviceId: ref.read(deviceIdHeaderProvider),
+          cloud: cloud,
+        );
+        // Standalone PIN sessions may still push takeaway ops when a Sanctum
+        // cloud link is hydrated. offlineOnly still blocks invoices /
+        // payments / `/orders` writes. Phase 1A setup, Phase 1B snapshot,
+        // and Phase 2B takeaway `/sync/push` are allowed with that token.
+        if (!CashierNetworkPolicy.allowRequest(
+          offlineOnly: AppConfig.offlineOnly,
+          token: token,
+          path: options.path,
+          method: options.method,
+        )) {
           handler.reject(
             DioException(
               requestOptions: options,
@@ -221,9 +247,20 @@ class CashierApiClient {
       );
     }
     final data = map['data'];
-    if (data is Map<String, dynamic>) return data;
-    if (data is Map) return Map<String, dynamic>.from(data);
-    return {'value': data, 'message': map['message'], 'meta': map['meta']};
+    final result = <String, dynamic>{};
+    if (data is Map) {
+      result.addAll(Map<String, dynamic>.from(data));
+    } else {
+      result['value'] = data;
+    }
+    if (map['message'] is String && result['message'] == null) {
+      result['message'] = map['message'];
+    }
+    // Laravel puts pagination on the envelope (`meta`), not inside `data`.
+    if (map['meta'] is Map) {
+      result['meta'] = Map<String, dynamic>.from(map['meta'] as Map);
+    }
+    return result;
   }
 
   ApiException _mapError(DioException e) {

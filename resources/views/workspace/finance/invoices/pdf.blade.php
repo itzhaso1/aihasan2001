@@ -319,8 +319,8 @@
         <table class="items">
             <thead>
                 <tr>
-                    <th>المنتج/الخدمة</th>
-                    <th>الوصف</th>
+                    <th>البند</th>
+                    <th>الوحدة</th>
                     <th>الكمية</th>
                     <th>سعر الوحدة</th>
                     <th>التصنيف</th>
@@ -331,9 +331,19 @@
             </thead>
             <tbody>
                 @foreach($invoice->items as $item)
+                    @php
+                        $lineTitle = $item->lineTitle();
+                        $lineDescription = trim((string) $item->description);
+                        $lineUnit = $item->displayUnit();
+                    @endphp
                     <tr>
-                        <td>{{ $item->product_name }}</td>
-                        <td>{{ $item->description ?: '-' }}</td>
+                        <td>
+                            {{ $lineTitle !== '' ? $lineTitle : '-' }}
+                            @if($lineDescription !== '' && $lineDescription !== $lineTitle)
+                                <div class="muted">{{ $lineDescription }}</div>
+                            @endif
+                        </td>
+                        <td>{{ $lineUnit !== '' ? $lineUnit : '-' }}</td>
                         <td>{{ number_format((float) $item->quantity, 3) }}</td>
                         <td>{{ number_format((float) $item->unit_price, 2) }}</td>
                         <td>{{ $taxProfileLabels[$item->tax_profile_type ?? ''] ?? ($item->tax_profile_type ?: '-') }}</td>

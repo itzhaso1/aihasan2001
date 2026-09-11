@@ -21,20 +21,10 @@ class PosCashierInvoiceEditTest extends TestCase
         [$owner, $workspace] = $this->createWorkspaceOwner('store');
         $item = $this->makeItem($workspace, 10);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'takeaway',
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
-            ])
-            ->assertCreated();
-
-        $order = Order::query()->latest('id')->firstOrFail();
-
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.invoice', $order))
-            ->assertRedirect();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'takeaway',
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 2]],
+        ]);
 
         $invoice = PosCashierInvoice::query()->latest('id')->firstOrFail();
         $line = $invoice->items()->firstOrFail();
@@ -87,20 +77,10 @@ class PosCashierInvoiceEditTest extends TestCase
         [$owner, $workspace] = $this->createWorkspaceOwner('store');
         $item = $this->makeItem($workspace, 8);
 
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->postJson(route('workspace.pos.orders.store'), [
-                'order_type' => 'takeaway',
-                'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
-            ])
-            ->assertCreated();
-
-        $order = Order::query()->latest('id')->firstOrFail();
-
-        $this->actingAs($owner)
-            ->withSession(['current_workspace_id' => $workspace->id])
-            ->post(route('workspace.pos.orders.invoice', $order))
-            ->assertRedirect();
+        $order = $this->placePosOrder($workspace, $owner, [
+            'order_type' => 'takeaway',
+            'items' => [['pos_menu_item_id' => $item->id, 'quantity' => 1]],
+        ]);
 
         $order->update(['payment_status' => 'paid']);
         $invoice = PosCashierInvoice::query()->latest('id')->firstOrFail();

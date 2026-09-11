@@ -21,6 +21,7 @@
                 'product_id' => $item->product_id,
                 'product_name' => $item->product_name,
                 'description' => $item->description,
+                'unit' => $item->unit ?? '',
                 'quantity' => (float) $item->quantity,
                 'unit_price' => (float) $item->unit_price,
                 'discount' => (float) $item->discount,
@@ -34,6 +35,7 @@
                 'product_id' => '',
                 'product_name' => '',
                 'description' => '',
+                'unit' => '',
                 'quantity' => 1,
                 'unit_price' => 0,
                 'discount' => 0,
@@ -209,7 +211,9 @@
                     <table class="min-w-full divide-y divide-slate-200 text-sm">
                         <thead class="bg-slate-50 text-slate-600">
                             <tr>
-                                <th class="px-3 py-2 text-right">المنتج</th>
+                                <th class="px-3 py-2 text-right">المنتج (اختياري)</th>
+                                <th class="px-3 py-2 text-right">اسم البند</th>
+                                <th class="px-3 py-2 text-right">الوحدة</th>
                                 <th class="px-3 py-2 text-right">الوصف</th>
                                 <th class="px-3 py-2 text-right">الكمية</th>
                                 <th class="px-3 py-2 text-right">سعر الوحدة</th>
@@ -225,23 +229,30 @@
                             <template x-for="(item, idx) in items" :key="idx">
                                 <tr>
                                     <td class="px-3 py-2">
-                                        <select class="w-40 rounded-md border-slate-300 text-xs" @change="applyProduct(idx, $event)">
-                                            <option value="">اختيار</option>
+                                        <select class="w-40 rounded-md border-slate-300 text-xs" :value="item.product_id" @change="applyProduct(idx, $event)">
+                                            <option value="">بند حر</option>
                                             @foreach($products as $product)
+                                                @php $listed = ($listPrices ?? [])[$product->id] ?? null; @endphp
                                                 <option
                                                     value="{{ $product->id }}"
                                                     data-name="{{ $product->name }}"
-                                                    data-price="{{ $product->price }}"
+                                                    data-price="{{ $listed['price'] ?? $product->price }}"
+                                                    data-tax-rate="{{ $listed['tax_rate'] ?? '' }}"
                                                 >
                                                     {{ $product->name }} ({{ $product->sku }})
                                                 </option>
                                             @endforeach
                                         </select>
                                         <input type="hidden" x-model="item.product_id">
-                                        <input type="hidden" x-model="item.product_name">
                                     </td>
                                     <td class="px-3 py-2">
-                                        <textarea x-model="item.description" class="w-52 rounded-md border-slate-300 text-xs" rows="2"></textarea>
+                                        <input type="text" x-model="item.product_name" class="w-40 rounded-md border-slate-300 text-xs" placeholder="مثال: عزل أسطح">
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <input type="text" x-model="item.unit" maxlength="32" class="w-20 rounded-md border-slate-300 text-xs" placeholder="متر">
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <textarea x-model="item.description" class="w-44 rounded-md border-slate-300 text-xs" rows="2" placeholder="وصف اختياري"></textarea>
                                     </td>
                                     <td class="px-3 py-2">
                                         <input type="number" step="0.001" min="0.001" x-model.number="item.quantity" @input="recalculate()" class="w-20 rounded-md border-slate-300 text-xs">
@@ -285,8 +296,9 @@
                 </div>
                 <div class="border-t border-slate-200 p-3">
                     <button type="button" @click="addItem()" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">
-                        + إضافة سطر منتج
+                        + إضافة بند
                     </button>
+                    <p class="mt-2 text-[11px] text-slate-500">يمكن إدخال بند حر بالكامل دون اختيار منتج من الكتالوج.</p>
                 </div>
             </div>
 
@@ -348,8 +360,9 @@
                 get serializedItems() {
                     return JSON.stringify(this.items.map((item) => ({
                         product_id: item.product_id || null,
-                        product_name: item.product_name || '',
+                        product_name: item.product_name || item.description || '',
                         description: item.description || '',
+                        unit: item.unit || '',
                         quantity: Number(item.quantity || 0),
                         unit_price: Number(item.unit_price || 0),
                         discount: Number(item.discount || 0),
@@ -360,7 +373,7 @@
                     })));
                 },
                 addItem() {
-                    this.items.push({product_id: '', product_name: '', description: '', quantity: 1, unit_price: 0, discount: 0, tax_rate: Number(this.form.tax_rate || 0), tax_type: this.form.tax_profile_type, exemption_reason: '', exemption_code: '', total: 0});
+                    this.items.push({product_id: '', product_name: '', description: '', unit: '', quantity: 1, unit_price: 0, discount: 0, tax_rate: Number(this.form.tax_rate || 0), tax_type: this.form.tax_profile_type, exemption_reason: '', exemption_code: '', total: 0});
                     this.recalculate();
                 },
                 removeItem(index) {
@@ -377,6 +390,9 @@
                     }
                     if (option.dataset.price) {
                         this.items[index].unit_price = Number(option.dataset.price);
+                    }
+                    if (option.dataset.taxRate !== undefined && option.dataset.taxRate !== '') {
+                        this.items[index].tax_rate = Number(option.dataset.taxRate);
                     }
                     this.recalculate();
                 },

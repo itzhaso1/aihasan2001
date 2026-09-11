@@ -2,6 +2,7 @@
 
 namespace App\Models\Finance;
 
+use App\Enums\Finance\FinanceDocumentType;
 use App\Models\Concerns\BelongsToWorkspace;
 use App\Models\Contract\Contract;
 use App\Models\Customer;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -36,6 +38,7 @@ use RuntimeException;
     'issued_at',
     'issue_date',
     'due_date',
+    'supply_date',
     'currency',
     'subtotal',
     'discount',
@@ -103,6 +106,7 @@ class FinanceInvoice extends WorkspaceScopedModel
         return [
             'issue_date' => 'date',
             'due_date' => 'date',
+            'supply_date' => 'date',
             'issued_at' => 'datetime',
             'subtotal' => 'decimal:2',
             'discount' => 'decimal:2',
@@ -190,6 +194,27 @@ class FinanceInvoice extends WorkspaceScopedModel
         return $this->belongsTo(User::class, 'issued_by');
     }
 
+    public function deliveries(): HasMany
+    {
+        return $this->hasMany(FinanceDocumentDelivery::class, 'document_id')
+            ->whereIn('document_type', [
+                FinanceDocumentType::Invoice->value,
+                FinanceDocumentType::InvoiceReminder->value,
+            ])
+            ->latest('id');
+    }
+
+    public function receipts(): HasMany
+    {
+        return $this->hasMany(FinanceReceipt::class, 'invoice_id')->latest('id');
+    }
+
+    public function issuedSnapshot(): HasOne
+    {
+        return $this->hasOne(IssuedDocumentSnapshot::class, 'source_id')
+            ->where('source_type', IssuedDocumentSnapshot::SOURCE_FINANCE_INVOICE);
+    }
+
     protected static function booted(): void
     {
         parent::booted();
@@ -218,6 +243,19 @@ class FinanceInvoice extends WorkspaceScopedModel
     public function isCancelled(): bool
     {
         return $this->resolvedInvoiceStatus() === 'cancelled';
+    }
+
+    public function isSendable(): bool
+    {
+        return $this->isIssued()
+            && ! $this->trashed()
+            && (string) $this->type === 'sales';
+    }
+
+    public function isRemindable(): bool
+    {
+        return $this->isSendable()
+            && (float) $this->amount_due > 0.009;
     }
 
     public function isFinanciallyLocked(): bool

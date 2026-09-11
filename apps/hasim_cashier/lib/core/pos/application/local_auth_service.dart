@@ -48,6 +48,61 @@ class LocalAuthService {
     return (_db.select(_db.localStores)..limit(1)).getSingleOrNull();
   }
 
+  /// PIN users live on the local store partition (900001), not the Laravel id.
+  Future<int?> localUnlockWorkspaceId() async {
+    final store = await anyStore();
+    return store?.workspaceId;
+  }
+
+  Future<LocalUser?> findUserByEmail(int workspaceId, String email) async {
+    final normalized = email.trim().toLowerCase();
+    if (normalized.isEmpty) return null;
+    return (_db.select(_db.localUsers)..where(
+          (t) =>
+              t.workspaceId.equals(workspaceId) &
+              t.username.equals(normalized) &
+              t.isActive.equals(true),
+        ))
+        .getSingleOrNull();
+  }
+
+  /// Device unlock only. Laravel remains the identity source.
+  /// Does not overwrite an existing PIN for the same email.
+  Future<({LocalStore store, LocalUser user})?> bootstrapUnlockUserFromHasim({
+    required String email,
+    required String displayName,
+    required String password,
+    String storeName = 'حاسم',
+  }) async {
+    final normalized = email.trim().toLowerCase();
+    if (normalized.isEmpty || password.trim().length < 4) {
+      return null;
+    }
+    final store = await anyStore();
+    if (store == null) {
+      return bootstrapStore(
+        storeName: storeName.trim().isEmpty ? 'حاسم' : storeName.trim(),
+        adminName: displayName.trim().isEmpty ? normalized : displayName.trim(),
+        username: normalized,
+        pin: password,
+      );
+    }
+    final existing = await findUserByEmail(store.workspaceId, normalized);
+    if (existing != null) {
+      return (store: store, user: existing);
+    }
+    await createUser(
+      workspaceId: store.workspaceId,
+      name: displayName.trim().isEmpty ? normalized : displayName.trim(),
+      username: normalized,
+      pin: password,
+      role: 'admin',
+    );
+    final created = await findUserByEmail(store.workspaceId, normalized);
+    if (created == null) return null;
+    return (store: store, user: created);
+  }
+
   Future<({LocalStore store, LocalUser user})> bootstrapStore({
     required String storeName,
     required String adminName,
