@@ -19,7 +19,9 @@ class FoundationSeeder extends Seeder
      */
     public function run(): void
     {
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $registrar = app(PermissionRegistrar::class);
+        $registrar->setPermissionsTeamId(null);
+        $registrar->forgetCachedPermissions();
 
         $permissions = [
             'workspace.view',
@@ -111,10 +113,7 @@ class FoundationSeeder extends Seeder
         }
 
         foreach (['owner', 'admin', 'manager', 'agent', 'receptionist', 'staff_doctor', 'accountant'] as $roleName) {
-            Role::query()->firstOrCreate([
-                'name' => $roleName,
-                'guard_name' => 'web',
-            ]);
+            Role::findOrCreate($roleName, 'web');
         }
 
         $ownerRole = Role::findByName('owner', 'web');
