@@ -20,8 +20,8 @@ return new class extends Migration
             $table->string('serial_number', 128);
             $table->text('subject');
             $table->text('issuer');
-            $table->timestamp('not_before');
-            $table->timestamp('not_after');
+            $table->dateTime('not_before');
+            $table->dateTime('not_after');
             $table->string('fingerprint_sha256', 64);
             $table->text('public_certificate');
             $table->string('public_key_algorithm', 32);
