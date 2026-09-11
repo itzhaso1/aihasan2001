@@ -8,6 +8,12 @@ import 'package:hasim/features/auth/providers/auth_controller.dart';
 
 const hasimLoginArtAsset = 'assets/branding/hasim_login.png';
 
+const _loginPage = Color(0xFFF7FEFC);
+const _loginShape = Color(0xFFE8F8F4);
+const _loginInk = Color(0xFF1B2C29);
+const _loginMuted = Color(0xFF8B9B97);
+const _loginLine = Color(0xFFE8F1EE);
+
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -20,10 +26,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _obscure = true;
   bool _googleBusy = false;
-
-  static const _ink = Color(0xFF1A2B28);
-  static const _muted = Color(0xFF8A9A96);
-  static const _fieldBorder = Color(0xFFE7EFEC);
 
   @override
   void dispose() {
@@ -107,30 +109,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     required IconData leading,
     Widget? trailing,
   }) {
-    final radius = BorderRadius.circular(18);
+    final radius = BorderRadius.circular(28);
     return InputDecoration(
       hintText: hint,
       hintStyle: const TextStyle(
-        color: _muted,
+        color: _loginMuted,
         fontSize: 14,
         fontWeight: FontWeight.w500,
       ),
-      prefixIcon: Icon(leading, color: _muted, size: 22),
+      prefixIcon: Icon(leading, color: _loginMuted, size: 22),
       suffixIcon: trailing,
       filled: true,
       fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: radius,
-        borderSide: BorderSide.none,
+        borderSide: const BorderSide(color: _loginLine),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: radius,
-        borderSide: const BorderSide(color: _fieldBorder),
+        borderSide: const BorderSide(color: _loginLine),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: radius,
-        borderSide: BorderSide(color: AppTheme.brand.withValues(alpha: 0.55)),
+        borderSide: BorderSide(color: AppTheme.brand.withValues(alpha: 0.35)),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: radius,
@@ -140,6 +142,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         borderRadius: radius,
         borderSide: const BorderSide(color: Color(0xFFE57373)),
       ),
+    );
+  }
+
+  Widget _whiteField({required Widget child}) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08061C18),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: child,
     );
   }
 
@@ -154,209 +172,236 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
       ),
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF3FCFA),
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            const Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(painter: _LoginShapesPainter()),
+      child: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          backgroundColor: _loginPage,
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              const Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(painter: _LoginShapesPainter()),
+                ),
               ),
-            ),
-            SafeArea(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const SizedBox(height: 8),
-                          Image.asset(
-                            hasimLoginArtAsset,
-                            key: const Key('hasim-login-art'),
-                            height: 168,
-                            fit: BoxFit.contain,
-                            filterQuality: FilterQuality.high,
-                          ),
-                          const SizedBox(height: 28),
-                          Text(
-                            'مرحباً بك مجدداً',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 26,
-                              color: _ink,
-                              height: 1.2,
+              SafeArea(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const SizedBox(height: 8),
+                            Image.asset(
+                              hasimLoginArtAsset,
+                              key: const Key('hasim-login-art'),
+                              height: 186,
+                              fit: BoxFit.contain,
+                              filterQuality: FilterQuality.high,
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'سجّل دخولك إلى حسابك لمتابعة أعمالك',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: _muted,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              height: 1.45,
-                            ),
-                          ),
-                          const SizedBox(height: 28),
-                          TextFormField(
-                            controller: _idController,
-                            decoration: _fieldDecoration(
-                              hint: 'البريد الإلكتروني أو الجوال',
-                              leading: Icons.person_outline,
-                            ),
-                            keyboardType: TextInputType.emailAddress,
-                            validator: (v) => (v == null || v.trim().isEmpty)
-                                ? 'مطلوب'
-                                : null,
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: _obscure,
-                            decoration: _fieldDecoration(
-                              hint: 'كلمة المرور',
-                              leading: Icons.lock_outline,
-                              trailing: IconButton(
-                                onPressed: () =>
-                                    setState(() => _obscure = !_obscure),
-                                icon: Icon(
-                                  _obscure
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
-                                  color: _muted,
-                                ),
-                              ),
-                            ),
-                            validator: (v) =>
-                                (v == null || v.isEmpty) ? 'مطلوب' : null,
-                          ),
-                          Align(
-                            alignment: AlignmentDirectional.centerEnd,
-                            child: TextButton(
-                              onPressed: () => context.push('/forgot-password'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppTheme.brand,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                  vertical: 8,
-                                ),
-                              ),
-                              child: const Text(
-                                'نسيت كلمة المرور؟',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13.5,
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (auth.error != null) ...[
+                            const SizedBox(height: 28),
                             Text(
-                              auth.error!,
-                              style: TextStyle(color: theme.colorScheme.error),
+                              'مرحباً بك مجدداً',
                               textAlign: TextAlign.center,
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 26,
+                                color: _loginInk,
+                                height: 1.2,
+                              ),
                             ),
                             const SizedBox(height: 8),
-                          ],
-                          FilledButton(
-                            onPressed: auth.loading ? null : _submit,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppTheme.brand,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size.fromHeight(52),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              textStyle: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
+                            const Text(
+                              'سجّل دخولك إلى حسابك لمتابعة أعمالك',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: _loginMuted,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                height: 1.45,
                               ),
                             ),
-                            child: auth.loading
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text('دخول'),
-                          ),
-                          const SizedBox(height: 22),
-                          const Row(
-                            children: [
-                              Expanded(
-                                child: Divider(color: Color(0xFFD8E4E0)),
+                            const SizedBox(height: 28),
+                            _whiteField(
+                              child: TextFormField(
+                                controller: _idController,
+                                decoration: _fieldDecoration(
+                                  hint: 'البريد الإلكتروني أو الجوال',
+                                  leading: Icons.person_outline,
+                                ),
+                                keyboardType: TextInputType.emailAddress,
+                                validator: (v) =>
+                                    (v == null || v.trim().isEmpty)
+                                    ? 'مطلوب'
+                                    : null,
                               ),
-                              Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 12),
-                                child: Text(
-                                  'أو',
+                            ),
+                            const SizedBox(height: 12),
+                            _whiteField(
+                              child: TextFormField(
+                                controller: _passwordController,
+                                obscureText: _obscure,
+                                decoration: _fieldDecoration(
+                                  hint: 'كلمة المرور',
+                                  leading: Icons.lock_outline,
+                                  trailing: IconButton(
+                                    onPressed: () =>
+                                        setState(() => _obscure = !_obscure),
+                                    icon: Icon(
+                                      _obscure
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
+                                      color: _loginMuted,
+                                    ),
+                                  ),
+                                ),
+                                validator: (v) =>
+                                    (v == null || v.isEmpty) ? 'مطلوب' : null,
+                              ),
+                            ),
+                            Align(
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: TextButton(
+                                onPressed: () =>
+                                    context.push('/forgot-password'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppTheme.brand,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 8,
+                                  ),
+                                ),
+                                child: const Text(
+                                  'نسيت كلمة المرور؟',
                                   style: TextStyle(
-                                    color: _muted,
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13.5,
                                   ),
                                 ),
                               ),
-                              Expanded(
-                                child: Divider(color: Color(0xFFD8E4E0)),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-                          OutlinedButton(
-                            onPressed: (auth.loading || _googleBusy)
-                                ? null
-                                : _google,
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: _ink,
-                              minimumSize: const Size.fromHeight(52),
-                              side: const BorderSide(color: _fieldBorder),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
                             ),
-                            child: _googleBusy
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      _GoogleMark(),
-                                      SizedBox(width: 10),
-                                      Text(
-                                        'الدخول عبر Google',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 15,
-                                        ),
+                            if (auth.error != null) ...[
+                              Text(
+                                auth.error!,
+                                style: TextStyle(
+                                  color: theme.colorScheme.error,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            FilledButton(
+                              onPressed: auth.loading ? null : _submit,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppTheme.brand,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(52),
+                                shape: const StadiumBorder(),
+                                textStyle: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              child: auth.loading
+                                  ? const SizedBox(
+                                      height: 22,
+                                      width: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
                                       ),
-                                    ],
+                                    )
+                                  : const Text('دخول'),
+                            ),
+                            const SizedBox(height: 22),
+                            const Row(
+                              children: [
+                                Expanded(child: Divider(color: _loginLine)),
+                                Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 12),
+                                  child: Text(
+                                    'أو',
+                                    style: TextStyle(
+                                      color: _loginMuted,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                          ),
-                        ],
+                                ),
+                                Expanded(child: Divider(color: _loginLine)),
+                              ],
+                            ),
+                            const SizedBox(height: 18),
+                            OutlinedButton(
+                              onPressed: (auth.loading || _googleBusy)
+                                  ? null
+                                  : _google,
+                              style: OutlinedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: _loginInk,
+                                minimumSize: const Size.fromHeight(52),
+                                side: const BorderSide(color: _loginLine),
+                                shape: const StadiumBorder(),
+                              ),
+                              child: _googleBusy
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        _GoogleMark(),
+                                        SizedBox(width: 10),
+                                        Text(
+                                          'الدخول عبر Google',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                            const SizedBox(height: 22),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'ليس لديك حساب؟',
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    color: _loginMuted,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'إنشاء حساب',
+                                  style: TextStyle(
+                                    color: AppTheme.brand,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -368,43 +413,42 @@ class _LoginShapesPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final mint = Paint()..color = const Color(0xFFD7F0EA);
-    final mintSoft = Paint()..color = const Color(0xFFE8F6F2);
+    final paint = Paint()..color = _loginShape;
 
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(-36, 72, 120, 120),
-        const Radius.circular(28),
-      ),
-      mint,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(28, 36, 86, 86),
-        const Radius.circular(22),
-      ),
-      mintSoft,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width - 70, 90, 110, 110),
-        const Radius.circular(26),
-      ),
-      mintSoft,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(-28, size.height - 160, 130, 130),
+        const Rect.fromLTWH(-40, 64, 128, 128),
         const Radius.circular(30),
       ),
-      mintSoft,
+      paint,
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width - 90, size.height - 140, 140, 140),
+        const Rect.fromLTWH(36, 28, 92, 92),
+        const Radius.circular(24),
+      ),
+      paint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(size.width - 64, 80, 120, 120),
+        const Radius.circular(28),
+      ),
+      paint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(-36, size.height - 150, 140, 140),
         const Radius.circular(32),
       ),
-      mint,
+      paint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(size.width - 96, size.height - 136, 150, 150),
+        const Radius.circular(34),
+      ),
+      paint,
     );
   }
 

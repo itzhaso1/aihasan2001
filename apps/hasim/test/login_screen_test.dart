@@ -47,7 +47,8 @@ void main() {
     expect(find.text('أو'), findsOneWidget);
     expect(find.text('دخول'), findsOneWidget);
     expect(find.text('الدخول عبر Google'), findsOneWidget);
-    expect(find.text('إنشاء حساب'), findsNothing);
+    expect(find.text('ليس لديك حساب؟'), findsOneWidget);
+    expect(find.text('إنشاء حساب'), findsOneWidget);
     expect(find.text('إدارة المحادثات والحجوزات'), findsNothing);
   });
 }
