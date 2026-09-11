@@ -46,7 +46,10 @@ void main() {
     });
     test('minutes', () {
       final now = DateTime(2026, 1, 1, 12);
-      expect(relativeTimeAr(now.subtract(const Duration(minutes: 5)), now: now), 'منذ 5 د');
+      expect(
+        relativeTimeAr(now.subtract(const Duration(minutes: 5)), now: now),
+        'منذ 5 د',
+      );
     });
   });
 
@@ -60,13 +63,15 @@ void main() {
       addTearDown(container.dispose);
 
       expect(container.read(themeModeControllerProvider), ThemeMode.system);
-      await container.read(themeModeControllerProvider.notifier).setMode(ThemeMode.light);
+      await container
+          .read(themeModeControllerProvider.notifier)
+          .setMode(ThemeMode.light);
       expect(container.read(themeModeControllerProvider), ThemeMode.light);
       expect(prefs.getString('theme_mode'), 'light');
     });
   });
 
-  testWidgets('SplashScreen shows branding mark', (tester) async {
+  testWidgets('SplashScreen shows HASIM splash art then login', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
 
@@ -82,7 +87,8 @@ void main() {
 
     await tester.pump();
     expect(find.byType(SplashScreen), findsOneWidget);
-    await tester.pump(const Duration(milliseconds: 1200));
+    expect(find.byKey(const Key('hasim-splash-art')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 2000));
     await tester.pumpAndSettle();
     expect(find.byType(LoginScreen), findsOneWidget);
     expect(find.text('دخول'), findsOneWidget);

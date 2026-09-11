@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hasim/core/widgets/hasim_logo.dart';
+import 'package:hasim/core/theme/app_theme.dart';
 import 'package:hasim/features/auth/providers/auth_controller.dart';
+
+/// ملصق بداية حاسم شات — أبيض + تيل الهوية بدون تعتيم فوق الألوان.
+const hasimSplashAsset = 'assets/branding/hasim_splash.png';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -19,7 +22,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeNavigate());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      precacheImage(const AssetImage(hasimSplashAsset), context);
+      _maybeNavigate();
+    });
   }
 
   Future<void> _maybeNavigate() async {
@@ -28,7 +34,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     if (auth.bootstrapping) return;
 
     final elapsed = DateTime.now().difference(_started);
-    const min = Duration(milliseconds: 900);
+    const min = Duration(milliseconds: 1800);
     if (elapsed < min) {
       await Future<void>.delayed(min - elapsed);
     }
@@ -53,36 +59,76 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       }
     });
 
-    return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.asset(
-            'assets/branding/splash_bg.png',
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF067E6B), Color(0xFF06C2A4), Color(0xFFF5FAF8)],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 0.92,
+                  colors: [Color(0x4D06C2A4), Color(0x1A06C2A4), Colors.white],
+                  stops: [0.0, 0.42, 1.0],
                 ),
               ),
             ),
-          ),
-          Container(color: Colors.black.withValues(alpha: 0.18)),
-          Center(
-            child: const HasimLogo(size: 128)
-                .animate()
-                .fadeIn(duration: 800.ms, curve: Curves.easeOut)
-                .scale(
-                  begin: const Offset(0.86, 0.86),
-                  end: const Offset(1, 1),
-                  duration: 1000.ms,
-                  curve: Curves.easeOutCubic,
+            Positioned.fill(
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  child: Image.asset(
+                    hasimSplashAsset,
+                    key: const Key('hasim-splash-art'),
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                    height: double.infinity,
+                    alignment: Alignment.center,
+                    filterQuality: FilterQuality.high,
+                    gaplessPlayback: true,
+                    errorBuilder: (_, _, _) => const _SplashColorFallback(),
+                  ),
                 ),
-          ),
-        ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SplashColorFallback extends StatelessWidget {
+  const _SplashColorFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        gradient: RadialGradient(
+          colors: [Color(0xFF06C2A4), Color(0xFF067E6B), Colors.white],
+          radius: 1.05,
+        ),
+      ),
+      child: Text(
+        'حاسم شات',
+        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: AppTheme.brandDark,
+        ),
       ),
     );
   }
