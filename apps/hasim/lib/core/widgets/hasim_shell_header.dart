@@ -12,10 +12,12 @@ class HasimShellHeader extends ConsumerWidget implements PreferredSizeWidget {
     super.key,
     this.showBrand = true,
     this.extraActions = const [],
+    this.backgroundColor,
   });
 
   final bool showBrand;
   final List<Widget> extraActions;
+  final Color? backgroundColor;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -29,6 +31,9 @@ class HasimShellHeader extends ConsumerWidget implements PreferredSizeWidget {
       automaticallyImplyLeading: false,
       centerTitle: false,
       titleSpacing: 16,
+      backgroundColor: backgroundColor,
+      surfaceTintColor: Colors.transparent,
+      scrolledUnderElevation: backgroundColor != null ? 0 : null,
       title: showBrand
           ? InkWell(
               onTap: () => context.push('/profile'),
