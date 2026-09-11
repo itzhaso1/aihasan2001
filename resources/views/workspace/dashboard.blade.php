@@ -97,17 +97,17 @@
                         $pct = ($limit && $limit > 0) ? min(100, round(($used / $limit) * 100)) : 0;
                         $icon = $meterIcons[$meterKey] ?? ['bg' => 'bg-teal-50', 'text' => 'text-teal-600', 'path' => 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'];
                     @endphp
-                    <article class="rounded-2xl border border-[#E7F4F0] bg-[#F9FFFD] p-4">
+                    <article class="rounded-2xl border border-[#E7F4F0] bg-[#F9FFFD] p-4 {{ $loop->last && $loop->count % 3 === 2 ? 'xl:col-span-2' : '' }}">
                         <div class="flex items-start justify-between gap-3">
                             <div>
                                 <h3 class="text-sm font-semibold text-slate-800">{{ $label }}</h3>
-                                <p class="mt-2 text-lg font-bold tabular-nums text-slate-900">
+                                <p class="mt-2 text-right text-lg font-bold tabular-nums text-slate-900" dir="ltr">
                                     {{ $limit === null ? '∞' : number_format((float) $limit) }}
                                     <span class="text-sm font-medium text-slate-400">/ {{ number_format($used) }}</span>
                                 </p>
                                 <p class="mt-1 text-[11px] text-slate-400">
                                     المتبقي
-                                    {{ $remaining === null ? '∞' : number_format((float) $remaining) }}
+                                    <span class="tabular-nums" dir="ltr">{{ $remaining === null ? '∞' : number_format((float) $remaining) }}</span>
                                 </p>
                             </div>
                             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl {{ $icon['bg'] }} {{ $icon['text'] }}">
@@ -155,7 +155,7 @@
                                 <td class="px-3 py-3 text-slate-600">{{ $session->subscription_status === 'cancelled' ? 'الملغي' : ($statusLabels[$session->subscription_status] ?? ($session->subscription_status ?: '—')) }}</td>
                                 <td class="px-3 py-3 text-slate-600">{{ $session->payment_status ?: '—' }}</td>
                                 <td class="px-3 py-3 text-slate-600">{{ $session->checkout_status ?: '—' }}</td>
-                                <td class="px-3 py-3 font-semibold text-slate-800">
+                                <td class="px-3 py-3 font-semibold tabular-nums text-slate-800" dir="ltr">
                                     {{ strtoupper((string) ($session->currency ?: 'SAR')) }}
                                     {{ number_format((float) $session->amount, 2) }}
                                 </td>
@@ -222,7 +222,7 @@
                                     {{ $subscription->current_period_end?->format('Y-m-d') ?? '—' }}
                                 </td>
                                 <td class="px-3 py-3 tabular-nums text-slate-600">{{ $subscription->current_period_end?->format('Y-m-d') ?? '—' }}</td>
-                                <td class="px-3 py-3 font-semibold text-slate-800">
+                                <td class="px-3 py-3 font-semibold tabular-nums text-slate-800" dir="ltr">
                                     {{ strtoupper((string) ($subscription->plan?->currency ?: 'SAR')) }}
                                     {{ $subscription->plan?->price !== null ? number_format((float) $subscription->plan->price, 2) : '—' }}
                                 </td>
