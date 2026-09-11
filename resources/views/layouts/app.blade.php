@@ -42,11 +42,12 @@
                                 <span class="text-sm text-gray-500">منصة SaaS عربية احترافية</span>
                             </div>
                             <div class="flex items-center gap-2 sm:gap-3">
-                                <a href="{{ route('notifications.index') }}" class="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4]">الإشعارات</a>
-                                <a href="{{ route('workspace.choose') }}" class="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4]">المساحات</a>
+                                <a href="{{ route('profile.edit') }}" class="rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4]">اللغة</a>
+                                <a href="{{ route('workspace.choose') }}" class="rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4]">المساحات</a>
+                                <a href="{{ route('notifications.index') }}" class="rounded-full border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4]">الإشعارات</a>
                                 <x-dropdown align="left" width="56">
                                     <x-slot name="trigger">
-                                        <button class="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4] focus:outline-none">
+                                        <button class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:border-[#06C2A4] hover:text-[#06C2A4] focus:outline-none">
                                             <span class="hidden sm:inline">{{ Auth::user()->name }}</span>
                                             <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 011.08 1.04l-4.25 4.512a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
